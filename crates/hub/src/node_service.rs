@@ -8,8 +8,8 @@ use std::sync::Arc;
 use std::time::{SystemTime, UNIX_EPOCH};
 
 use anyhow::{Result, bail};
-use saarthi_proto::control::v1::{Node, PendingClosedOnNode, PendingOnNode, Update, update};
-use saarthi_proto::event::v1::{LaunchProfile, PendingClosed, ReleaseReason, Session};
+use saarthi_proto::control::v1::{PendingClosedOnNode, PendingOnNode, Update, update};
+use saarthi_proto::event::v1::{EventSource, PendingClosed, ReleaseReason, Session};
 use saarthi_proto::node::v1::node_service_server::NodeService;
 use saarthi_proto::node::v1::{
     Ack, HubMessage, NodeMessage, Registered, hub_message, node_message::Body,
@@ -19,6 +19,7 @@ use tokio_stream::wrappers::ReceiverStream;
 use tokio_stream::{Stream, StreamExt};
 use tonic::{Request, Response, Status, Streaming};
 
+use crate::claude_tokens::ClaudeTokens;
 use crate::db::Db;
 use crate::live::{Live, ToNode};
 use crate::notify::Notifier;
@@ -30,6 +31,8 @@ pub struct Hub {
     pub db: Db,
     pub node_tokens: Arc<Tokens>,
     pub client_tokens: Arc<Tokens>,
+    /// The named Claude tokens from `--claude-tokens` (ADR-0039); empty without the flag.
+    pub claude_tokens: Arc<ClaudeTokens>,
     pub live: Arc<Live>,
     /// Push to registered phones and to the ntfy topic, if one is configured.
     pub notifier: Arc<Notifier>,
@@ -111,13 +114,7 @@ async fn serve_node(
         .await;
     tracing::info!(node = %name, %node_id, last_seq, sessions = register.sessions.len(),
         pending = register.pending.len(), "node registered");
-    publish_node(
-        hub,
-        &node_id,
-        name,
-        &register.version,
-        Some((&register.spawn_roots, &register.profiles)),
-    );
+    publish_node(hub, &node_id).await?;
     for s in register.sessions {
         publish_session(hub, &node_id, s);
     }
@@ -147,7 +144,7 @@ async fn serve_node(
     let outcome = serve_link(hub, &node_id, name, &mut inbound, tx).await;
     db.touch_node(&node_id, now_ms()).await?;
     if hub.live.unlink(&node_id, link).await {
-        publish_node(hub, &node_id, name, &register.version, None);
+        publish_node(hub, &node_id).await?;
     }
     tracing::info!(node = %name, "node disconnected");
     outcome
@@ -167,6 +164,9 @@ async fn serve_link(
                 let seq = e.seq;
                 if db.store_event(node_id, &e).await? {
                     hub.notifier.event(name, node_id, &e);
+                    if e.source() == EventSource::Daemon && e.kind == "rate_limit" {
+                        token_usage(hub, node_id, &e).await?;
+                    }
                     hub.live.publish_event(node_id, e);
                 }
                 send(tx, hub_message::Body::Ack(Ack { seq })).await?;
@@ -220,27 +220,34 @@ fn publish_session(hub: &Hub, node_id: &str, mut session: Session) {
     publish(hub, update::Body::Session(session));
 }
 
-/// A node's change of state; `spawning` (its spawn roots and launch profiles) is None when
-/// it went away.
-fn publish_node(
-    hub: &Hub,
-    node_id: &str,
-    name: &str,
-    version: &str,
-    spawning: Option<(&[String], &[LaunchProfile])>,
-) {
-    publish(
-        hub,
-        update::Body::Node(Node {
-            id: node_id.to_string(),
-            name: name.to_string(),
-            version: version.to_string(),
-            connected: spawning.is_some(),
-            last_seen_ms: now_ms(),
-            spawn_roots: spawning.map(|s| s.0.to_vec()).unwrap_or_default(),
-            profiles: spawning.map(|s| s.1.to_vec()).unwrap_or_default(),
-        }),
-    );
+/// A node's change of state, as `ListNodes` shows it.
+async fn publish_node(hub: &Hub, node_id: &str) -> Result<()> {
+    if let Some(row) = hub.db.node(node_id).await? {
+        let node = hub.node_view(row).await;
+        publish(hub, update::Body::Node(node));
+    }
+    Ok(())
+}
+
+/// A session's account windows (ADR-0042): recorded for the Claude token the session runs
+/// under, and alerted on as that account's, once whichever node reports them.
+async fn token_usage(hub: &Hub, node_id: &str, e: &saarthi_proto::event::v1::Event) -> Result<()> {
+    let Some(session) = hub.db.session(node_id, &e.session_id).await? else {
+        return Ok(());
+    };
+    if session.claude_token.is_empty() {
+        return Ok(());
+    }
+    let Some(w) = crate::claude_tokens::windows(&e.payload_json, e.time_ms) else {
+        return Ok(());
+    };
+    hub.db
+        .record_claude_token_usage(&session.claude_token, &w)
+        .await?;
+    hub.notifier
+        .token_usage(&session.claude_token, node_id, &w)
+        .await;
+    Ok(())
 }
 
 async fn send(
@@ -253,7 +260,7 @@ async fn send(
     Ok(())
 }
 
-pub(crate) fn now_ms() -> i64 {
+pub fn now_ms() -> i64 {
     SystemTime::now()
         .duration_since(UNIX_EPOCH)
         .map(|d| d.as_millis() as i64)

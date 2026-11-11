@@ -5,8 +5,9 @@
 //!
 //! - its own state directory: Claude's config directory (`claude/`, which receives the
 //!   registry entry and transcripts), a scratch directory and a home, all read-write;
-//! - the long-lived token of `claude setup-token` as `CLAUDE_CODE_OAUTH_TOKEN`, read from
-//!   a file at each start and never written anywhere (EXP-20261107-413q6m);
+//! - the long-lived token of `claude setup-token` as `CLAUDE_CODE_OAUTH_TOKEN`: the named
+//!   token the hub sent with the command (ADR-0039), else the profile's `token_file` read at
+//!   each start; never written anywhere (EXP-20261107-413q6m);
 //! - the working directory read-write, `/nix/store` and the profile's paths read-only,
 //!   the rest of the home directory unreadable;
 //! - outbound network, no inbound and no loopback TCP: hooks come back over the node's unix
@@ -45,7 +46,8 @@ pub struct Profile {
     /// Read-write; holds `claude/` (the config directory), `tmp/` and `home/`.
     #[serde(default)]
     pub state_dir: Option<PathBuf>,
-    /// A file holding the token `claude setup-token` printed.
+    /// A file holding the token `claude setup-token` printed, used when the hub sends none
+    /// (ADR-0039: until every node's default is set at the hub).
     #[serde(default)]
     pub token_file: Option<PathBuf>,
     /// `PATH` inside, before the system directories.
@@ -79,9 +81,10 @@ pub struct Profiles(BTreeMap<String, Profile>);
 
 impl Profiles {
     /// Reads a profiles file; `~/` in any path is the user's home. Refuses what could not
-    /// run: an unknown field, seatbelt off macOS, a sandbox without a state directory or
-    /// token, two profiles sharing a state directory (a session's profile is found again
-    /// from where its transcript lives).
+    /// run: an unknown field, seatbelt off macOS, a sandbox without a state directory, two
+    /// profiles sharing a state directory (a session's profile is found again from where its
+    /// transcript lives). A sandbox without `token_file` runs only under a token the hub
+    /// sends.
     pub fn load(path: &Path, home: &Path) -> Result<Self, String> {
         let text = std::fs::read_to_string(path).map_err(|e| format!("{}: {e}", path.display()))?;
         Self::parse(&text, home).map_err(|e| format!("{}: {e}", path.display()))
@@ -120,9 +123,6 @@ impl Profiles {
                 }
                 if !dirs.insert(state.clone()) {
                     return Err(format!("profile {name}: another profile has the same state_dir"));
-                }
-                if p.token_file.is_none() {
-                    return Err(format!("profile {name}: a sandbox needs token_file"));
                 }
             }
             out.insert(name, p);
@@ -185,12 +185,21 @@ impl Profile {
         Ok(())
     }
 
-    /// The environment inside: the node's own variables first, then the profile's.
-    fn env(&self, user: &str) -> Result<Vec<(String, String)>, String> {
+    /// The environment inside: the node's own variables first, then the profile's. The
+    /// Claude token is the one the hub sent, else the profile's token file.
+    fn env(&self, user: &str, claude_token: Option<&str>) -> Result<Vec<(String, String)>, String> {
         let state = self.state_dir.as_ref().expect("checked at load");
-        let token_file = self.token_file.as_ref().expect("checked at load");
-        let token = std::fs::read_to_string(token_file)
-            .map_err(|e| format!("reading the profile's token file {}: {e}", token_file.display()))?;
+        let token = match (claude_token, &self.token_file) {
+            (Some(t), _) => t.to_string(),
+            (None, Some(f)) => std::fs::read_to_string(f)
+                .map_err(|e| format!("reading the profile's token file {}: {e}", f.display()))?,
+            (None, None) => {
+                return Err(format!(
+                    "the {} sandbox needs a Claude token: pick one, or set the node's default at the hub",
+                    self.name
+                ));
+            }
+        };
         let path: Vec<&str> = self.path.iter().map(String::as_str).chain(SYSTEM_PATH).collect();
         let s = |p: &Path| p.to_string_lossy().into_owned();
         let mut env: BTreeMap<String, String> = BTreeMap::from([
@@ -321,6 +330,7 @@ pub fn tool_groups(pid: u32) -> Vec<libc::pid_t> {
 #[cfg(target_os = "macos")]
 pub fn spawn_seatbelt(
     profile: &Profile,
+    claude_token: Option<&str>,
     program: &str,
     args: &[String],
     cwd: &Path,
@@ -339,7 +349,7 @@ pub fn spawn_seatbelt(
         .prepare(user_claude)
         .map_err(|e| format!("preparing the profile's state directory: {e}"))?;
     let user = std::env::var("USER").unwrap_or_default();
-    let env = profile.env(&user)?;
+    let env = profile.env(&user, claude_token)?;
     let (readonly, readwrite, denied) = profile.grants(cwd, user_claude, deny);
     let mut seatbelt = SeatbeltConfig::default();
     // getpwuid, which ssh and git need, goes through opendirectoryd (EXP-20261016-rq1407).
@@ -403,6 +413,7 @@ pub fn spawn_seatbelt(
 #[cfg(not(target_os = "macos"))]
 pub fn spawn_seatbelt(
     _profile: &Profile,
+    _claude_token: Option<&str>,
     _program: &str,
     _args: &[String],
     _cwd: &Path,
@@ -464,7 +475,19 @@ backend = "host"
         assert!(bad("[profiles.\"a b\"]\nbackend = \"host\"\n").contains("letters"));
         if cfg!(target_os = "macos") {
             assert!(bad("[profiles.x]\nbackend = \"seatbelt\"\ntoken_file = \"/t\"\n").contains("state_dir"));
-            assert!(bad("[profiles.x]\nbackend = \"seatbelt\"\nstate_dir = \"/s\"\n").contains("token_file"));
+            // Without a token file a sandbox loads, and runs only under a token from the hub.
+            let tokenless = Profiles::parse(
+                "[profiles.x]\nbackend = \"seatbelt\"\nstate_dir = \"/s\"\n",
+                home,
+            )
+            .unwrap();
+            let x = tokenless.get("x").unwrap().unwrap();
+            assert!(
+                x.env("me", None)
+                    .unwrap_err()
+                    .contains("needs a Claude token")
+            );
+            assert!(x.env("me", Some("t")).is_ok());
             let two = "[profiles.a]\nbackend = \"seatbelt\"\nstate_dir = \"/s\"\ntoken_file = \"/t\"\n\
                        [profiles.b]\nbackend = \"seatbelt\"\nstate_dir = \"/s\"\ntoken_file = \"/t\"\n";
             assert!(bad(two).contains("same state_dir"));
@@ -487,8 +510,11 @@ backend = "host"
         );
         let p = Profiles::parse(&text, dir.path()).unwrap();
         let s = p.get("s").unwrap().unwrap();
-        let env: BTreeMap<_, _> = s.env("me").unwrap().into_iter().collect();
+        let env: BTreeMap<_, _> = s.env("me", None).unwrap().into_iter().collect();
         assert_eq!(env["CLAUDE_CODE_OAUTH_TOKEN"], "tok-123");
+        // A token from the hub wins over the file.
+        let env: BTreeMap<_, _> = s.env("me", Some("from-hub")).unwrap().into_iter().collect();
+        assert_eq!(env["CLAUDE_CODE_OAUTH_TOKEN"], "from-hub");
         assert_eq!(env["PATH"], "/p/bin:/usr/bin:/bin:/usr/sbin:/sbin");
         assert_eq!(env["CLAUDE_CONFIG_DIR"], dir.path().join("state/claude").to_string_lossy());
         assert_eq!(env["TMPDIR"], dir.path().join("state/tmp").to_string_lossy());

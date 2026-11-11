@@ -62,6 +62,7 @@ fun HomeScreen(
     openHealth: (NodeInfo) -> Unit,
     spawned: (nodeId: String, sessionId: String) -> Unit,
     openHistory: () -> Unit,
+    openTokens: () -> Unit,
 ) {
     var menu by remember { mutableStateOf(false) }
     var newSession by remember { mutableStateOf(false) }
@@ -94,6 +95,12 @@ fun HomeScreen(
                     Box {
                         IconButton(onClick = { menu = true }) { Icon(Icons.Filled.MoreVert, "More") }
                         DropdownMenu(expanded = menu, onDismissRequest = { menu = false }) {
+                            if (model.claudeTokens.isNotEmpty()) {
+                                DropdownMenuItem(
+                                    text = { Text("Claude accounts") },
+                                    onClick = { menu = false; openTokens() },
+                                )
+                            }
                             DropdownMenuItem(
                                 text = { Text("Change hub or token") },
                                 onClick = { menu = false; model.disconnect() },
@@ -153,9 +160,9 @@ fun HomeScreen(
         }
     }
     if (newSession && spawnable.isNotEmpty()) {
-        NewSessionDialog(model, spawnable, dismiss = { newSession = false }) { nodeId, cwd, prompt, m, create, mode, profile ->
+        NewSessionDialog(model, spawnable, model.claudeTokens, dismiss = { newSession = false }) { nodeId, cwd, prompt, m, create, mode, profile, token ->
             newSession = false
-            model.spawn(nodeId, cwd, prompt, m, create, mode, profile) { id -> spawned(nodeId, id) }
+            model.spawn(nodeId, cwd, prompt, m, create, mode, profile, token) { id -> spawned(nodeId, id) }
         }
     }
 }

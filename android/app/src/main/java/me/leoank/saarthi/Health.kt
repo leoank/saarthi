@@ -1,5 +1,8 @@
 package me.leoank.saarthi
 
+import androidx.compose.material3.FilterChip
+import androidx.compose.foundation.layout.ExperimentalLayoutApi
+import androidx.compose.foundation.layout.FlowRow
 import androidx.compose.foundation.Canvas
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Column
@@ -85,7 +88,7 @@ private val series = listOf(
 )
 
 /** The node's health over a chosen span as a chart per metric, refreshed every minute. */
-@OptIn(ExperimentalMaterial3Api::class)
+@OptIn(ExperimentalMaterial3Api::class, ExperimentalLayoutApi::class)
 @Composable
 fun HealthScreen(model: HubModel, snackbar: SnackbarHostState, nodeId: String, back: () -> Unit) {
     val node = model.node(nodeId)
@@ -164,6 +167,32 @@ fun HealthScreen(model: HubModel, snackbar: SnackbarHostState, nodeId: String, b
                             checked = keepAwake,
                             onCheckedChange = { on -> switched = on; model.setKeepAwake(nodeId, on) },
                         )
+                    }
+                }
+            }
+            if (node != null && model.claudeTokens.isNotEmpty()) {
+                item(key = "token") {
+                    Column(Modifier.fillMaxWidth()) {
+                        Text("Default Claude account", style = MaterialTheme.typography.titleSmall)
+                        Text(
+                            "What sessions started from here run under when none is picked",
+                            style = MaterialTheme.typography.bodySmall,
+                            color = MaterialTheme.colorScheme.onSurfaceVariant,
+                        )
+                        FlowRow(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
+                            FilterChip(
+                                selected = node.defaultClaudeToken.isEmpty(),
+                                onClick = { model.setDefaultClaudeToken(nodeId, "") },
+                                label = { Text("Node's login") },
+                            )
+                            for (t in model.claudeTokens) {
+                                FilterChip(
+                                    selected = node.defaultClaudeToken == t.name,
+                                    onClick = { model.setDefaultClaudeToken(nodeId, t.name) },
+                                    label = { Text(t.name) },
+                                )
+                            }
+                        }
                     }
                 }
             }

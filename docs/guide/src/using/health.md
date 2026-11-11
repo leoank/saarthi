@@ -58,3 +58,10 @@ old. The `usage.age_s` metric says how old.
 
 All the machines logged in to the same Claude account show the same numbers; turning it
 on for one of them is enough.
+
+The accounts the hub holds as [named tokens](../setup/hub.md#claude-accounts) have their
+own figures, under *Claude accounts* in the app's menu and in `saarthi ctl tokens`. The
+usage endpoint refuses those tokens, so they come from the sessions themselves: every turn
+of a session started under a token reports its account's windows, and the hub keeps the
+latest per account, with its time. The alerts go out for those accounts too, titled with
+the account's name.

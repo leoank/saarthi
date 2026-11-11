@@ -24,6 +24,7 @@ import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.unit.dp
+import uniffi.saarthi_core.ClaudeTokenInfo
 import uniffi.saarthi_core.NodeInfo
 
 /** Models offered for a new session: claude's `--model` aliases, empty for its default. */
@@ -35,14 +36,17 @@ private val modes = listOf("Ask" to "", "Accept edits" to "acceptEdits", "Plan" 
 /** A new headless session (ADR-0034): a node that allows spawning, a directory under one of
  *  its roots (made if missing, unless switched off), an optional first prompt, a model, a
  *  permission mode and, when the node has launch profiles (ADR-0038), one of them or the
- *  node's own user. [start] gets the node's id and the choices. */
+ *  node's own user, and, when the hub holds named Claude tokens (ADR-0039), the node's
+ *  default, one of them, or the node's own login. [start] gets the node's id and the
+ *  choices; its token is null for the default, empty for the own login. */
 @OptIn(ExperimentalLayoutApi::class)
 @Composable
 fun NewSessionDialog(
     model: HubModel,
     nodes: List<NodeInfo>,
+    tokens: List<ClaudeTokenInfo>,
     dismiss: () -> Unit,
-    start: (nodeId: String, cwd: String, prompt: String, model: String, create: Boolean, mode: String, profile: String) -> Unit,
+    start: (nodeId: String, cwd: String, prompt: String, model: String, create: Boolean, mode: String, profile: String, token: String?) -> Unit,
 ) {
     var nodeId by remember { mutableStateOf(nodes.first().id) }
     val node = nodes.firstOrNull { it.id == nodeId } ?: nodes.first()
@@ -54,6 +58,8 @@ fun NewSessionDialog(
     var mode by remember { mutableStateOf("") }
     var profileName by remember(nodeId) { mutableStateOf("") }
     val profile = node.profiles.firstOrNull { it.name == profileName }
+    var token by remember(nodeId) { mutableStateOf<String?>(null) }
+    val effective = token ?: node.defaultClaudeToken
     AlertDialog(
         onDismissRequest = dismiss,
         title = { Text("New session") },
@@ -106,14 +112,24 @@ fun NewSessionDialog(
                         Text(profile.description, style = MaterialTheme.typography.bodySmall, color = MaterialTheme.colorScheme.onSurfaceVariant)
                     }
                 }
+                if (tokens.isNotEmpty()) {
+                    Label("Claude account")
+                    FlowRow(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
+                        val default = node.defaultClaudeToken.ifEmpty { "node's login" }
+                        FilterChip(selected = token == null, onClick = { token = null }, label = { Text("Default ($default)") })
+                        for (t in tokens) FilterChip(selected = token == t.name, onClick = { token = t.name }, label = { Text(t.name) })
+                        FilterChip(selected = token == "", onClick = { token = "" }, label = { Text("Node's login") })
+                    }
+                }
                 Label("Permissions")
                 FlowRow(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
                     for ((label, value) in modes) FilterChip(selected = mode == value, onClick = { mode = value }, label = { Text(label) })
                 }
-                val login = if (profile?.sandboxed == true) {
-                    "in the ${profile.name} sandbox, with its own Claude token"
-                } else {
-                    "with this node's own Claude login"
+                val sandbox = if (profile?.sandboxed == true) " in the ${profile.name} sandbox" else ""
+                val login = when {
+                    effective.isNotEmpty() -> "$sandbox under the $effective Claude token".trimStart()
+                    profile?.sandboxed == true -> "in the ${profile.name} sandbox, with its own Claude token"
+                    else -> "with this node's own Claude login"
                 }
                 Text(
                     if (mode == "bypassPermissions") {
@@ -130,7 +146,7 @@ fun NewSessionDialog(
         confirmButton = {
             TextButton(
                 enabled = cwd.isNotBlank(),
-                onClick = { start(node.id, cwd, prompt, chosen, create, mode, profile?.name ?: "") },
+                onClick = { start(node.id, cwd, prompt, chosen, create, mode, profile?.name ?: "", token) },
             ) { Text("Start") }
         },
         dismissButton = { TextButton(onClick = dismiss) { Text("Cancel") } },

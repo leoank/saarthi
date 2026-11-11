@@ -32,13 +32,17 @@ Pick:
 - **runs as**, when the node has launch profiles: *This node's user*, or a profile such
   as a sandbox (see [Sandboxed sessions](../setup/node.md#sandboxed-sessions)). A session
   under a profile shows its name beside it;
+- the **Claude account**, when the hub holds [named tokens](../setup/hub.md#claude-accounts):
+  *Default* (the node's default account, named in brackets), one of the accounts, or
+  *Node's login*, the Claude login of the machine itself;
 - the **permissions**: *Ask* (your default mode: what needs approval comes to the app),
   *Accept edits* (file edits go ahead, the rest asks), *Plan* (Claude plans and changes
   nothing) or *Bypass*, which runs every tool without asking anyone, as
   `--dangerously-skip-permissions` does.
 
-*Start* opens the new session as soon as its node has started it. It runs with the
-node's own Claude login (a sandboxed profile's token instead), as `claude -p` with its input and output owned by the node, so:
+*Start* opens the new session as soon as its node has started it. It runs under the
+account chosen (with no accounts at the hub, the node's own login, or a sandboxed
+profile's token), as `claude -p` with its input and output owned by the node, so:
 
 - prompts, interrupts and kill go straight to the process;
 - its permission requests come to the app like any other, and wait as long as a wrapped
@@ -135,7 +139,7 @@ terminal. Its screen then keeps the prompt bar: type and send, and the node runs
 *Resume* in the menu resumes it without a prompt, waiting for one.
 
 It continues in place: the same session, the same conversation, with everything Claude
-knew before. From then on it is like a session started from the app: prompts, interrupt
+knew before, under the Claude account it last ran under. From then on it is like a session started from the app: prompts, interrupt
 and kill all work, and it ends if the node daemon stops. It runs in your default
 permission mode, whatever mode it was started in. In History it moves to the top,
 with its start time and duration from the latest run.

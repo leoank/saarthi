@@ -253,11 +253,20 @@ async fn act(cmd: &Command, parts: &Parts) -> CommandResult {
             .map(|()| String::new()),
         Some(command::Action::Kill(_)) => terminate(sessions, id).await,
         Some(command::Action::Spawn(s)) => spawner
-            .spawn(id, &s.cwd, &s.prompt, &s.model, s.create, &s.permission_mode, &s.profile)
+            .spawn(
+                id,
+                &s.cwd,
+                &s.prompt,
+                &s.model,
+                s.create,
+                &s.permission_mode,
+                &s.profile,
+                s.claude_token.as_ref(),
+            )
             .await
             .map(|()| String::new()),
         Some(command::Action::Resume(r)) => spawner
-            .resume(id, &r.cwd, &r.prompt, &r.model)
+            .resume(id, &r.cwd, &r.prompt, &r.model, r.claude_token.as_ref())
             .await
             .map(|()| String::new()),
         Some(command::Action::SetKeepAwake(k)) => {

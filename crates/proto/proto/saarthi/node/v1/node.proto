@@ -94,6 +94,15 @@ message Spawn {
   // A launch profile the node's profiles file names, such as a seatbelt sandbox (ADR-0038);
   // empty to run on the host. The node refuses a name it does not have.
   string profile = 6;
+  // The Claude token to run under, chosen by the hub (ADR-0039); absent for the node's own
+  // login. The node keeps it in memory and never logs or writes it.
+  ClaudeToken claude_token = 7;
+}
+
+// A named `claude setup-token` token, passed to claude as CLAUDE_CODE_OAUTH_TOKEN.
+message ClaudeToken {
+  string name = 1;
+  string token = 2;
 }
 
 // Continues the finished session named by the command's session_id headless, in place
@@ -103,6 +112,7 @@ message Resume {
   string cwd = 1;               // the session's directory, from the hub's record
   string prompt = 2;            // the next turn; empty to resume idle
   string model = 3;             // empty for claude's default
+  ClaudeToken claude_token = 4; // as for Spawn
 }
 
 // Node-level: turns the keep-awake hold (ADR-0031) on or off; the command's session_id is

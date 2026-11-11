@@ -186,8 +186,10 @@ PATH, or named with `--claude`. It runs with this machine's own Claude login.
 On macOS a started session can run confined, under a *launch profile* (ADR-0038). The
 session then sees only its working directory, the Nix store and the paths the profile
 lists; the rest of your home directory, your SSH keys and other sessions are out of reach.
-It has the network, but no inbound connections. It uses its own Claude login, a token you
-make once:
+It has the network, but no inbound connections. It never sees your own Claude login: it
+runs under a Claude token, the account picked when it starts or the node's default, from
+the [hub's Claude accounts](hub.md#claude-accounts). A profile can also name a token file
+of its own, used when the hub sends none (no account picked and no default):
 
 ```console
 $ claude setup-token        # in your own terminal; paste the token into a file
@@ -201,7 +203,7 @@ The profiles live in a TOML file given with `--profiles`:
 backend = "seatbelt"
 description = "Confined: the working directory, the nix store, git identity and the SSH agent"
 state_dir = "~/.local/state/saarthi/sandbox"     # its Claude config, scratch and home
-token_file = "~/.config/saarthi/claude-oauth-token"
+token_file = "~/.config/saarthi/claude-oauth-token"   # optional, see above
 path = ["~/.nix-profile/bin", "/etc/profiles/per-user/me/bin", "/run/current-system/sw/bin"]
 readonly = ["/private/etc/profiles", "/private/var/run/current-system", "~/.nix-profile",
             "~/.local/state/nix/profiles", "~/.config/git", "~/.ssh/config", "~/.ssh/known_hosts"]

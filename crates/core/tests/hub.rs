@@ -77,6 +77,7 @@ async fn the_core_lists_watches_answers_and_streams() {
         db,
         node_tokens: Arc::new(Tokens::parse("mac t-node").unwrap()),
         client_tokens: Arc::new(Tokens::parse("phone t-phone").unwrap()),
+        claude_tokens: Default::default(),
         live: Live::new(),
     };
     tokio::spawn(saarthi_hub::serve(listener, hub));

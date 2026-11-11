@@ -58,6 +58,18 @@ in
       description = "File of `<client name> <token>` lines, readable by the service user.";
     };
 
+    claudeTokensFile = lib.mkOption {
+      type = lib.types.nullOr lib.types.path;
+      default = null;
+      example = "/run/agenix/saarthiClaudeTokens";
+      description = ''
+        File of `<name> <token>` lines: `claude setup-token` tokens that spawned sessions
+        may run under, chosen per session or by a node's default (ADR-0039). Readable by the
+        service user; read at start, so a changed file takes a restart. Null: sessions run
+        under each node's own login.
+      '';
+    };
+
     ntfy = lib.mkOption {
       type = lib.types.nullOr lib.types.str;
       default = null;
@@ -76,10 +88,11 @@ in
           "turn"
           "ended"
           "usage"
+          "token"
         ]
       );
       default = [ ];
-      description = "Notification kinds not to send (ADR-0029, ADR-0032).";
+      description = "Notification kinds not to send (ADR-0029, ADR-0032); `token` is a Claude token's expiry reminder.";
     };
 
     extraArgs = lib.mkOption {
@@ -135,6 +148,10 @@ in
             (toString cfg.nodeTokensFile)
             "--client-tokens"
             (toString cfg.clientTokensFile)
+          ]
+          ++ lib.optionals (cfg.claudeTokensFile != null) [
+            "--claude-tokens"
+            (toString cfg.claudeTokensFile)
           ]
           ++ lib.optionals (cfg.ntfy != null) [
             "--ntfy"

@@ -4,6 +4,7 @@
 use std::path::Path;
 
 use anyhow::{Context, Result};
+use saarthi_proto::control::v1::ClaudeToken;
 use saarthi_proto::event::v1::{
     Event, EventSource, HealthSample, Launch, Metric, PendingKind, PendingRequest, ReleaseReason,
     Session, SessionStatus,
@@ -148,13 +149,15 @@ impl Db {
         let just_ended = s.ended_ms.is_some() && matches!(was_live, Some((None,)));
         sqlx::query(
             "INSERT INTO sessions (node_id, id, harness, cwd, transcript_path, launch, pid, account_label, status,
-                                   started_ms, ended_ms, profile)
-             VALUES (?1, ?2, ?3, ?4, ?5, ?6, ?7, ?8, ?9, ?10, ?11, ?12)
+                                   started_ms, ended_ms, profile, claude_token)
+             VALUES (?1, ?2, ?3, ?4, ?5, ?6, ?7, ?8, ?9, ?10, ?11, ?12, ?13)
              ON CONFLICT (node_id, id) DO UPDATE SET
                harness = excluded.harness, cwd = excluded.cwd, transcript_path = excluded.transcript_path,
                launch = excluded.launch, pid = excluded.pid, account_label = excluded.account_label,
                status = excluded.status, started_ms = excluded.started_ms, ended_ms = excluded.ended_ms,
                profile = excluded.profile",
+            // claude_token is the hub's: set by `set_session_claude_token` when it starts or
+            // resumes the session, and kept when a restarted node reports it without one.
         )
         .bind(node_id)
         .bind(&s.id)
@@ -168,6 +171,7 @@ impl Db {
         .bind(s.started_ms)
         .bind(s.ended_ms)
         .bind(&s.profile)
+        .bind(&s.claude_token)
         .execute(&self.pool)
         .await?;
         Ok(just_ended)
@@ -292,13 +296,174 @@ impl Db {
             .collect())
     }
 
-    /// (id, name, version, last seen) of every node.
-    pub async fn nodes(&self) -> Result<Vec<(String, String, String, i64)>> {
+    /// (id, name, version, last seen, default Claude token) of every node.
+    pub async fn nodes(&self) -> Result<Vec<(String, String, String, i64, String)>> {
+        Ok(sqlx::query_as(
+            "SELECT id, name, version, last_seen_ms, default_claude_token FROM nodes ORDER BY name",
+        )
+        .fetch_all(&self.pool)
+        .await?)
+    }
+
+    /// (id, name, version, last seen, default Claude token) of one node.
+    pub async fn node(
+        &self,
+        node_id: &str,
+    ) -> Result<Option<(String, String, String, i64, String)>> {
+        Ok(sqlx::query_as(
+            "SELECT id, name, version, last_seen_ms, default_claude_token FROM nodes WHERE id = ?1",
+        )
+        .bind(node_id)
+        .fetch_optional(&self.pool)
+        .await?)
+    }
+
+    /// The Claude token a node's spawned sessions run under when none is picked; empty for
+    /// its own login.
+    pub async fn default_claude_token(&self, node_id: &str) -> Result<Option<String>> {
         Ok(
-            sqlx::query_as("SELECT id, name, version, last_seen_ms FROM nodes ORDER BY name")
-                .fetch_all(&self.pool)
+            sqlx::query_scalar("SELECT default_claude_token FROM nodes WHERE id = ?1")
+                .bind(node_id)
+                .fetch_optional(&self.pool)
                 .await?,
         )
+    }
+
+    /// Sets a node's default Claude token; false when there is no such node.
+    pub async fn set_default_claude_token(&self, node_id: &str, name: &str) -> Result<bool> {
+        let done = sqlx::query("UPDATE nodes SET default_claude_token = ?2 WHERE id = ?1")
+            .bind(node_id)
+            .bind(name)
+            .execute(&self.pool)
+            .await?;
+        Ok(done.rows_affected() == 1)
+    }
+
+    /// Records the token the hub started or resumed a session under.
+    pub async fn set_session_claude_token(
+        &self,
+        node_id: &str,
+        id: &str,
+        name: &str,
+    ) -> Result<()> {
+        sqlx::query("UPDATE sessions SET claude_token = ?3 WHERE node_id = ?1 AND id = ?2")
+            .bind(node_id)
+            .bind(id)
+            .bind(name)
+            .execute(&self.pool)
+            .await?;
+        Ok(())
+    }
+
+    /// Brings the token record up to the file the hub read at start: a new name is first
+    /// seen now; a known name whose fingerprint changed is a renewed token, first seen now
+    /// with its hand-set expiry, reminder and usage cleared. Names no longer in the file
+    /// keep their rows.
+    pub async fn sync_claude_tokens(
+        &self,
+        fingerprints: &[(String, String)],
+        now_ms: i64,
+    ) -> Result<()> {
+        let mut tx = self.pool.begin().await?;
+        for (name, fp) in fingerprints {
+            sqlx::query(
+                "INSERT INTO claude_tokens (name, fingerprint, first_seen_ms) VALUES (?1, ?2, ?3)
+                 ON CONFLICT (name) DO UPDATE SET
+                   fingerprint = excluded.fingerprint, first_seen_ms = excluded.first_seen_ms,
+                   expires_ms = NULL, reminded_ms = NULL, usage_ms = NULL,
+                   five_hour_pct = NULL, five_hour_resets_s = NULL,
+                   seven_day_pct = NULL, seven_day_resets_s = NULL
+                 WHERE claude_tokens.fingerprint <> excluded.fingerprint",
+            )
+            .bind(name)
+            .bind(fp)
+            .bind(now_ms)
+            .execute(&mut *tx)
+            .await?;
+        }
+        tx.commit().await?;
+        Ok(())
+    }
+
+    /// The named tokens' records, in the order given (the names the hub holds now).
+    pub async fn claude_tokens(&self, names: &[&str]) -> Result<Vec<ClaudeToken>> {
+        let mut out = Vec::new();
+        for name in names {
+            let Some(r) = sqlx::query("SELECT * FROM claude_tokens WHERE name = ?1")
+                .bind(name)
+                .fetch_optional(&self.pool)
+                .await?
+            else {
+                continue;
+            };
+            let first_seen_ms: i64 = r.get("first_seen_ms");
+            let set: Option<i64> = r.get("expires_ms");
+            out.push(ClaudeToken {
+                name: r.get("name"),
+                first_seen_ms,
+                expires_ms: set.unwrap_or(first_seen_ms + crate::claude_tokens::LIFETIME_MS),
+                expiry_set: set.is_some(),
+                usage_ms: r.get::<Option<i64>, _>("usage_ms").unwrap_or(0),
+                five_hour_pct: r.get("five_hour_pct"),
+                five_hour_resets_s: r.get("five_hour_resets_s"),
+                seven_day_pct: r.get("seven_day_pct"),
+                seven_day_resets_s: r.get("seven_day_resets_s"),
+            });
+        }
+        Ok(out)
+    }
+
+    /// Sets (or with None clears) a token's expiry by hand, and lets its reminder go out
+    /// again for the new date; false when the hub has no such token.
+    pub async fn set_claude_token_expiry(
+        &self,
+        name: &str,
+        expires_ms: Option<i64>,
+    ) -> Result<bool> {
+        let done = sqlx::query(
+            "UPDATE claude_tokens SET expires_ms = ?2, reminded_ms = NULL WHERE name = ?1",
+        )
+        .bind(name)
+        .bind(expires_ms)
+        .execute(&self.pool)
+        .await?;
+        Ok(done.rows_affected() == 1)
+    }
+
+    /// Claims the expiry reminder of a token due one by `now_ms`: true once, when it is
+    /// within `REMIND_MS` of expiring and has not been reminded for this date.
+    pub async fn claim_expiry_reminder(&self, name: &str, now_ms: i64) -> Result<bool> {
+        let done = sqlx::query(
+            "UPDATE claude_tokens SET reminded_ms = ?2
+             WHERE name = ?1 AND reminded_ms IS NULL
+               AND coalesce(expires_ms, first_seen_ms + ?3) - ?4 <= ?2",
+        )
+        .bind(name)
+        .bind(now_ms)
+        .bind(crate::claude_tokens::LIFETIME_MS)
+        .bind(crate::claude_tokens::REMIND_MS)
+        .execute(&self.pool)
+        .await?;
+        Ok(done.rows_affected() == 1)
+    }
+
+    /// Records the windows a session under a token reported; older reports than the one
+    /// stored are ignored.
+    pub async fn record_claude_token_usage(&self, name: &str, w: &Windows) -> Result<()> {
+        sqlx::query(
+            "UPDATE claude_tokens SET usage_ms = ?2, five_hour_pct = ?3, five_hour_resets_s = ?4,
+               seven_day_pct = ?5, seven_day_resets_s = ?6
+             WHERE name = ?1 AND coalesce(usage_ms, 0) <= ?2",
+        )
+        .bind(name)
+        .bind(w.time_ms)
+        .bind(w.five_hour_pct)
+        .bind(w.five_hour_resets_s)
+        .bind(w.seven_day_pct)
+        .bind(w.seven_day_resets_s)
+        .execute(&self.pool)
+        .await?;
+        Ok(())
     }
 
     /// Sessions of one node, or of every node when `node_id` is empty.
@@ -487,7 +652,18 @@ fn session_from(r: &sqlx::sqlite::SqliteRow) -> Session {
             .unwrap_or_default()
             .into(),
         profile: r.get("profile"),
+        claude_token: r.get("claude_token"),
     }
+}
+
+/// An account's rate-limit windows as one `rate_limit_event` reported them (ADR-0042).
+#[derive(Debug, Default, Clone, PartialEq)]
+pub struct Windows {
+    pub time_ms: i64,
+    pub five_hour_pct: Option<f64>,
+    pub five_hour_resets_s: Option<i64>,
+    pub seven_day_pct: Option<f64>,
+    pub seven_day_resets_s: Option<i64>,
 }
 
 #[cfg(test)]
@@ -556,5 +732,76 @@ mod tests {
         assert!(db.claim_usage_alert("seven_day:29889300:pace", "n1", 1).await.unwrap());
         assert!(!db.claim_usage_alert("seven_day:29889300:pace", "n2", 2).await.unwrap());
         assert!(db.claim_usage_alert("seven_day:29889300:near80", "n1", 3).await.unwrap());
+    }
+
+    #[tokio::test]
+    async fn a_renewed_token_starts_its_year_again_and_reminds_once_per_expiry() {
+        use crate::claude_tokens::{LIFETIME_MS, REMIND_MS};
+        let dir = tempfile::tempdir().unwrap();
+        let db = Db::open(&dir.path().join("hub.db")).await.unwrap();
+        let fp = |n: &str, f: &str| vec![(n.to_string(), f.to_string())];
+        db.sync_claude_tokens(&fp("work", "aaaa"), 1_000)
+            .await
+            .unwrap();
+        // The same token at the next start: nothing changes.
+        db.sync_claude_tokens(&fp("work", "aaaa"), 2_000)
+            .await
+            .unwrap();
+        let t = &db.claude_tokens(&["work", "gone"]).await.unwrap()[0];
+        assert_eq!(
+            (t.first_seen_ms, t.expires_ms),
+            (1_000, 1_000 + LIFETIME_MS)
+        );
+
+        let due = 1_000 + LIFETIME_MS - REMIND_MS;
+        assert!(
+            !db.claim_expiry_reminder("work", due - 1).await.unwrap(),
+            "not yet"
+        );
+        assert!(
+            db.claim_expiry_reminder("work", due).await.unwrap(),
+            "a month before"
+        );
+        assert!(
+            !db.claim_expiry_reminder("work", due + 1).await.unwrap(),
+            "once"
+        );
+        // A new date by hand: reminded again when that one is near.
+        assert!(
+            db.set_claude_token_expiry("work", Some(due + REMIND_MS + 10))
+                .await
+                .unwrap()
+        );
+        assert!(!db.claim_expiry_reminder("work", due).await.unwrap());
+        assert!(db.claim_expiry_reminder("work", due + 10).await.unwrap());
+
+        let w = Windows {
+            time_ms: 50,
+            five_hour_pct: Some(4.0),
+            ..Default::default()
+        };
+        db.record_claude_token_usage("work", &w).await.unwrap();
+        let older = Windows {
+            time_ms: 40,
+            five_hour_pct: Some(99.0),
+            ..Default::default()
+        };
+        db.record_claude_token_usage("work", &older).await.unwrap();
+        assert_eq!(
+            db.claude_tokens(&["work"]).await.unwrap()[0].five_hour_pct,
+            Some(4.0)
+        );
+
+        // Renewed: a new fingerprint under the name starts over, its hand-set date and
+        // usage gone.
+        db.sync_claude_tokens(&fp("work", "bbbb"), 9_000)
+            .await
+            .unwrap();
+        let t = &db.claude_tokens(&["work"]).await.unwrap()[0];
+        assert_eq!(
+            (t.first_seen_ms, t.expires_ms, t.expiry_set, t.usage_ms),
+            (9_000, 9_000 + LIFETIME_MS, false, 0)
+        );
+        assert!(!db.set_claude_token_expiry("nope", None).await.unwrap());
     }
 }

@@ -27,6 +27,9 @@ message Session {
   optional int64 ended_ms = 10;
   SessionStatus status = 11;
   string profile = 12;         // the launch profile a spawned session runs under; empty for the host
+  // The named Claude token a spawned session runs under (ADR-0039); empty for the node's own
+  // login, or for a session the node did not start.
+  string claude_token = 13;
 }
 
 // A way a node can start a session (`--profiles`, ADR-0038), as the app offers it.

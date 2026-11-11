@@ -132,6 +132,7 @@ async fn a_client_spawns_prompts_and_kills_a_headless_session() {
         create: false,
         permission_mode: String::new(),
         profile: "plain".into(),
+        claude_token: None,
     };
     let r = c.spawn(req(spawn)).await.unwrap().into_inner();
     assert!(r.ok, "{}", r.error);
@@ -169,6 +170,7 @@ async fn a_client_spawns_prompts_and_kills_a_headless_session() {
         create: false,
         permission_mode: String::new(),
         profile: String::new(),
+        claude_token: None,
     };
     let r = c.spawn(req(outside)).await.unwrap().into_inner();
     assert!(!r.ok && r.error.contains("spawn root"), "{}", r.error);
@@ -183,6 +185,7 @@ async fn a_client_spawns_prompts_and_kills_a_headless_session() {
         create: false,
         permission_mode: "--yolo".into(),
         profile: String::new(),
+        claude_token: None,
     };
     let r = c.spawn(req(flag)).await.unwrap().into_inner();
     assert!(!r.ok && r.error.contains("permission mode"), "{}", r.error);
@@ -196,6 +199,7 @@ async fn a_client_spawns_prompts_and_kills_a_headless_session() {
         create: false,
         permission_mode: String::new(),
         profile: "boxed".into(),
+        claude_token: None,
     };
     let r = c.spawn(req(unknown)).await.unwrap().into_inner();
     assert!(!r.ok && r.error.contains("no launch profile boxed"), "{}", r.error);
@@ -227,6 +231,7 @@ async fn a_node_without_spawn_roots_refuses_to_spawn() {
         create: false,
         permission_mode: String::new(),
         profile: String::new(),
+        claude_token: None,
     };
     let r = c.spawn(req(spawn)).await.unwrap().into_inner();
     assert!(!r.ok && r.error.contains("--spawn-root"), "{}", r.error);
@@ -268,6 +273,7 @@ async fn history_lists_a_session_with_its_first_prompt_and_usage_and_it_resumes_
         create: false,
         permission_mode: String::new(),
         profile: String::new(),
+        claude_token: None,
     };
     let id = c.spawn(req(spawn)).await.unwrap().into_inner().session_id;
 
@@ -320,6 +326,7 @@ async fn history_lists_a_session_with_its_first_prompt_and_usage_and_it_resumes_
         session_id: id.clone(),
         prompt: "and run them".into(),
         model: String::new(),
+        claude_token: None,
     };
     let r = c.resume(req(resume.clone())).await.unwrap().into_inner();
     assert!(r.ok, "{}", r.error);

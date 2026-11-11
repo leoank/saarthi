@@ -71,6 +71,8 @@ pub enum Ctl {
         /// The node's launch profile, such as a sandbox (ADR-0038); the host when omitted.
         #[arg(long, default_value = "")]
         profile: String,
+        #[command(flatten)]
+        token: TokenChoice,
     },
     /// Continue a finished session headless, in place; without a prompt it resumes idle.
     Resume {
@@ -81,6 +83,23 @@ pub enum Ctl {
         /// The model, as claude's `--model` takes it; claude's default when omitted.
         #[arg(long, default_value = "")]
         model: String,
+        #[command(flatten)]
+        token: TokenChoice,
+    },
+    /// The named Claude tokens the hub holds (ADR-0039): expiry and the account's latest
+    /// usage seen under each.
+    Tokens,
+    /// Set a Claude token's expiry by hand (`YYYY-MM-DD`), or `clear` it back to a year
+    /// after the hub first saw the token.
+    TokenExpiry { name: String, date: String },
+    /// Set the Claude token a node's spawned sessions run under when none is picked.
+    DefaultToken {
+        node: String,
+        #[arg(required_unless_present = "own_login")]
+        name: Option<String>,
+        /// The node's own login instead of a token.
+        #[arg(long, conflicts_with = "name")]
+        own_login: bool,
     },
     /// Past and live sessions, newest first: id, start, directory and first prompt.
     History {
@@ -103,6 +122,35 @@ pub enum Ctl {
         #[arg(long)]
         then: Option<String>,
     },
+}
+
+/// Which Claude credential a spawn or resume runs under (ADR-0039).
+#[derive(Debug, clap::Args)]
+pub struct TokenChoice {
+    /// A named Claude token the hub holds (`saarthi ctl tokens`). Without it a spawn runs
+    /// under the node's default token and a resume under the session's last.
+    #[arg(long)]
+    claude_token: Option<String>,
+    /// The node's own login, not a token.
+    #[arg(long, conflicts_with = "claude_token")]
+    own_login: bool,
+}
+
+impl TokenChoice {
+    fn pick(self) -> Option<String> {
+        if self.own_login {
+            Some(String::new())
+        } else {
+            self.claude_token
+        }
+    }
+}
+
+/// A Unix time in milliseconds as a UTC date.
+fn date(ms: i64) -> String {
+    jiff::Timestamp::from_millisecond(ms)
+        .map(|t| t.strftime("%Y-%m-%d").to_string())
+        .unwrap_or_else(|_| ms.to_string())
 }
 
 struct Client {
@@ -208,7 +256,15 @@ pub async fn run(hub: &str, token: &str, cmd: Ctl) -> Result<()> {
                     let names: Vec<_> = n.profiles.iter().map(|p| p.name.as_str()).collect();
                     format!("  profiles: {}", names.join(", "))
                 };
-                println!("{}  {}  {}  {state}{roots}{profiles}", n.id, n.name, n.version);
+                let token = if n.default_claude_token.is_empty() {
+                    String::new()
+                } else {
+                    format!("  default token: {}", n.default_claude_token)
+                };
+                println!(
+                    "{}  {}  {}  {state}{roots}{profiles}{token}",
+                    n.id, n.name, n.version
+                );
             }
         }
         Ctl::Sessions { all } => {
@@ -317,6 +373,7 @@ pub async fn run(hub: &str, token: &str, cmd: Ctl) -> Result<()> {
             model,
             permission_mode,
             profile,
+            token,
         } => {
             let node_id = c.node_id(&node).await?;
             let req = SpawnRequest {
@@ -327,6 +384,7 @@ pub async fn run(hub: &str, token: &str, cmd: Ctl) -> Result<()> {
                 create,
                 permission_mode,
                 profile,
+                claude_token: token.pick(),
             };
             let r = c.inner.spawn(c.request(req)).await?.into_inner();
             if !r.ok {
@@ -339,6 +397,7 @@ pub async fn run(hub: &str, token: &str, cmd: Ctl) -> Result<()> {
             session_id,
             prompt,
             model,
+            token,
         } => {
             let node_id = c.node_id(&node).await?;
             let req = ResumeRequest {
@@ -346,8 +405,47 @@ pub async fn run(hub: &str, token: &str, cmd: Ctl) -> Result<()> {
                 session_id,
                 prompt,
                 model,
+                claude_token: token.pick(),
             };
             report(c.inner.resume(c.request(req)).await?.into_inner())?;
+        }
+        Ctl::Tokens => {
+            let r = c
+                .inner
+                .list_claude_tokens(c.request(ListClaudeTokensRequest {}))
+                .await?;
+            for t in r.into_inner().tokens {
+                println!("{}", token_line(&t, saarthi_node::outbox::now_ms()));
+            }
+        }
+        Ctl::TokenExpiry { name, date } => {
+            let expires_ms = if date == "clear" {
+                0
+            } else {
+                let d: jiff::civil::Date = date
+                    .parse()
+                    .with_context(|| format!("{date:?} is not a date (YYYY-MM-DD) or clear"))?;
+                d.to_zoned(jiff::tz::TimeZone::UTC)?
+                    .timestamp()
+                    .as_millisecond()
+            };
+            let req = SetClaudeTokenExpiryRequest { name, expires_ms };
+            let r = c.inner.set_claude_token_expiry(c.request(req)).await?;
+            for t in r.into_inner().tokens {
+                println!("{}", token_line(&t, saarthi_node::outbox::now_ms()));
+            }
+        }
+        Ctl::DefaultToken {
+            node,
+            name,
+            own_login: _,
+        } => {
+            let node_id = c.node_id(&node).await?;
+            let req = SetDefaultClaudeTokenRequest {
+                node_id,
+                name: name.unwrap_or_default(),
+            };
+            c.inner.set_default_claude_token(c.request(req)).await?;
         }
         Ctl::History { node, limit } => {
             let node_id = match node {
@@ -411,6 +509,22 @@ async fn resolve(
         }),
     };
     report(c.inner.resolve(c.request(req)).await?.into_inner())
+}
+
+/// `work  expires 2027-11-11 (set)  5h 4%  7d 36%  (2 min ago)`
+fn token_line(t: &ClaudeToken, now_ms: i64) -> String {
+    let set = if t.expiry_set { " (set)" } else { "" };
+    let mut line = format!("{}  expires {}{set}", t.name, date(t.expires_ms));
+    if t.usage_ms > 0 {
+        let pct = |p: Option<f64>| p.map(|p| format!("{p:.0}%")).unwrap_or_else(|| "-".into());
+        let age = (now_ms - t.usage_ms).max(0) / 60_000;
+        line += &format!(
+            "  5h {}  7d {}  ({age} min ago)",
+            pct(t.five_hour_pct),
+            pct(t.seven_day_pct)
+        );
+    }
+    line
 }
 
 fn report(r: CommandResponse) -> Result<()> {

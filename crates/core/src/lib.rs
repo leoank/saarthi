@@ -63,6 +63,26 @@ pub struct NodeInfo {
     /// The launch profiles a spawn may name besides the host (ADR-0038); empty when the
     /// node has none or is offline.
     pub profiles: Vec<ProfileInfo>,
+    /// The Claude token its spawned sessions run under when none is picked; empty for the
+    /// node's own login (ADR-0039).
+    pub default_claude_token: String,
+}
+
+/// A named Claude token the hub holds (ADR-0039): its name, dates and the account's latest
+/// usage seen under it (ADR-0042); never its value.
+#[derive(Debug, Clone, PartialEq, uniffi::Record)]
+pub struct ClaudeTokenInfo {
+    pub name: String,
+    pub first_seen_ms: i64,
+    /// Set by hand, else a year after first seen.
+    pub expires_ms: i64,
+    pub expiry_set: bool,
+    /// When a session under it last reported the account's windows; 0 for never.
+    pub usage_ms: i64,
+    pub five_hour_pct: Option<f64>,
+    pub five_hour_resets_s: Option<i64>,
+    pub seven_day_pct: Option<f64>,
+    pub seven_day_resets_s: Option<i64>,
 }
 
 #[derive(Debug, Clone, PartialEq, uniffi::Record)]
@@ -90,6 +110,8 @@ pub struct SessionInfo {
     pub ended_ms: Option<i64>,
     /// The launch profile it runs under; empty for the host.
     pub profile: String,
+    /// The named Claude token it last ran under; empty for the node's own login.
+    pub claude_token: String,
 }
 
 /// A session as a history list shows it (ADR-0036).
@@ -385,6 +407,8 @@ impl Hub {
     /// directory under the node's spawn root; an empty `permission_mode` is the user's
     /// default, `bypassPermissions` runs every tool without asking; an empty `profile` runs
     /// it as the node's user, otherwise under that launch profile of the node (ADR-0038).
+    /// `claude_token` names the Claude token to run under: None for the node's default,
+    /// empty for the node's own login (ADR-0039).
     #[allow(clippy::too_many_arguments)]
     pub async fn spawn(
         &self,
@@ -395,6 +419,7 @@ impl Hub {
         create: bool,
         permission_mode: String,
         profile: String,
+        claude_token: Option<String>,
     ) -> Result<String, CoreError> {
         let req = SpawnRequest {
             node_id,
@@ -404,6 +429,7 @@ impl Hub {
             create,
             permission_mode,
             profile,
+            claude_token,
         };
         let r = self.client.clone().spawn(self.req(req)).await?.into_inner();
         let id = r.session_id.clone();
@@ -411,19 +437,22 @@ impl Hub {
     }
 
     /// Continues a finished session headless, in place (ADR-0036); an empty prompt resumes
-    /// it idle.
+    /// it idle. `claude_token` as for `spawn`, except that None is the token the session
+    /// last ran under.
     pub async fn resume(
         &self,
         node_id: String,
         session_id: String,
         prompt: String,
         model: String,
+        claude_token: Option<String>,
     ) -> Result<String, CoreError> {
         let req = ResumeRequest {
             node_id,
             session_id,
             prompt,
             model,
+            claude_token,
         };
         outcome(self.client.clone().resume(self.req(req)).await?.into_inner())
     }
@@ -455,6 +484,43 @@ impl Hub {
                 .await?
                 .into_inner(),
         )
+    }
+
+    /// The named Claude tokens the hub holds, with their dates and latest usage.
+    pub async fn claude_tokens(&self) -> Result<Vec<ClaudeTokenInfo>, CoreError> {
+        let r = self
+            .client
+            .clone()
+            .list_claude_tokens(self.req(ListClaudeTokensRequest {}))
+            .await?;
+        Ok(r.into_inner().tokens.into_iter().map(claude_token).collect())
+    }
+
+    /// Sets a token's expiry by hand, or with 0 goes back to a year after first seen;
+    /// returns the tokens as they are now.
+    pub async fn set_claude_token_expiry(
+        &self,
+        name: String,
+        expires_ms: i64,
+    ) -> Result<Vec<ClaudeTokenInfo>, CoreError> {
+        let req = SetClaudeTokenExpiryRequest { name, expires_ms };
+        let r = self
+            .client
+            .clone()
+            .set_claude_token_expiry(self.req(req))
+            .await?;
+        Ok(r.into_inner().tokens.into_iter().map(claude_token).collect())
+    }
+
+    /// Sets the token a node's spawned sessions run under when none is picked; empty for
+    /// the node's own login.
+    pub async fn set_default_claude_token(&self, node_id: String, name: String) -> Result<(), CoreError> {
+        let req = SetDefaultClaudeTokenRequest { node_id, name };
+        self.client
+            .clone()
+            .set_default_claude_token(self.req(req))
+            .await?;
+        Ok(())
     }
 
     /// Has the hub post notifications to a UnifiedPush endpoint (ADR-0026).
@@ -613,6 +679,21 @@ fn node(n: Node) -> NodeInfo {
                 sandboxed: p.sandboxed,
             })
             .collect(),
+        default_claude_token: n.default_claude_token,
+    }
+}
+
+fn claude_token(t: ClaudeToken) -> ClaudeTokenInfo {
+    ClaudeTokenInfo {
+        name: t.name,
+        first_seen_ms: t.first_seen_ms,
+        expires_ms: t.expires_ms,
+        expiry_set: t.expiry_set,
+        usage_ms: t.usage_ms,
+        five_hour_pct: t.five_hour_pct,
+        five_hour_resets_s: t.five_hour_resets_s,
+        seven_day_pct: t.seven_day_pct,
+        seven_day_resets_s: t.seven_day_resets_s,
     }
 }
 
@@ -647,6 +728,7 @@ fn session(s: ev::Session) -> SessionInfo {
         started_ms: s.started_ms,
         ended_ms: s.ended_ms,
         profile: s.profile,
+        claude_token: s.claude_token,
     }
 }
 

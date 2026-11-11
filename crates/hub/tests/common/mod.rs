@@ -4,6 +4,7 @@
 use std::sync::Arc;
 use std::time::Duration;
 
+use saarthi_hub::claude_tokens::ClaudeTokens;
 use saarthi_hub::db::Db;
 use saarthi_hub::live::Live;
 use saarthi_hub::node_service::Hub;
@@ -36,6 +37,17 @@ impl HubProc {
         addr: &str,
         ntfy: Option<String>,
     ) -> (Self, String) {
+        Self::start_full(db_path, addr, ntfy, "")
+    }
+
+    /// The same, holding the named Claude tokens of a `--claude-tokens` file's text.
+    pub fn start_full(
+        db_path: &std::path::Path,
+        addr: &str,
+        ntfy: Option<String>,
+        claude_tokens: &str,
+    ) -> (Self, String) {
+        let claude_tokens = claude_tokens.to_string();
         let (stop, stopped) = tokio::sync::oneshot::channel();
         let (bound_tx, bound_rx) = std::sync::mpsc::channel();
         let (db_path, addr) = (db_path.to_path_buf(), addr.to_string());
@@ -43,6 +55,14 @@ impl HubProc {
             let rt = tokio::runtime::Runtime::new().unwrap();
             rt.block_on(async move {
                 let db = Db::open(&db_path).await.unwrap();
+                let claude_tokens = ClaudeTokens::parse(&claude_tokens).unwrap();
+                let fps: Vec<(String, String)> = claude_tokens
+                    .fingerprints()
+                    .map(|(n, f)| (n.to_string(), f))
+                    .collect();
+                db.sync_claude_tokens(&fps, saarthi_hub::node_service::now_ms())
+                    .await
+                    .unwrap();
                 let listener = TcpListener::bind(&addr).await.unwrap();
                 bound_tx
                     .send(listener.local_addr().unwrap().to_string())
@@ -52,6 +72,7 @@ impl HubProc {
                     db,
                     node_tokens: Arc::new(Tokens::parse(TOKENS).unwrap()),
                     client_tokens: Arc::new(Tokens::parse(CLIENT_TOKENS).unwrap()),
+                    claude_tokens: Arc::new(claude_tokens),
                     live: Live::new(),
                 };
                 tokio::select! {

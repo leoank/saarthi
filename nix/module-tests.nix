@@ -38,6 +38,7 @@ let
   hubBase = hub { };
   hubFull = hub {
     ntfy = "http://127.0.0.1:2586/saarthi";
+    claudeTokensFile = "/run/agenix/k";
     noNotify = [ "turn" ];
     dataDir = "/srv/saarthi";
     openFirewall = true;
@@ -58,6 +59,7 @@ let
           db = lib.hasInfix "--db /var/lib/saarthi-hub/hub.db" e;
           tokens = lib.hasInfix "--node-tokens /run/agenix/n --client-tokens /run/agenix/c" e;
           noNtfy = !(lib.hasInfix "--ntfy" e);
+          noClaudeTokens = !(lib.hasInfix "--claude-tokens" e);
           systemUser = hubBase.users.users.saarthi-hub.isSystemUser;
           rw = s.serviceConfig.ReadWritePaths;
           firewallClosed = !(builtins.elem 7700 hubBase.networking.firewall.allowedTCPPorts);
@@ -68,6 +70,7 @@ let
         db = true;
         tokens = true;
         noNtfy = true;
+        noClaudeTokens = true;
         systemUser = true;
         rw = [ "/var/lib/saarthi-hub" ];
         firewallClosed = true;
@@ -79,7 +82,7 @@ let
           e = exec hubFull;
         in
         {
-          tail = lib.hasSuffix "--ntfy http://127.0.0.1:2586/saarthi --no-notify turn --x" e;
+          tail = lib.hasSuffix "--claude-tokens /run/agenix/k --ntfy http://127.0.0.1:2586/saarthi --no-notify turn --x" e;
           db = lib.hasInfix "--db /srv/saarthi/hub.db" e;
           port = builtins.elem 7700 hubFull.networking.firewall.allowedTCPPorts;
         };

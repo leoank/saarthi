@@ -18,6 +18,7 @@ import java.io.File
 import kotlinx.coroutines.isActive
 import kotlinx.coroutines.launch
 import uniffi.saarthi_core.Change
+import uniffi.saarthi_core.ClaudeTokenInfo
 import uniffi.saarthi_core.CoreException
 import uniffi.saarthi_core.HealthPoint
 import uniffi.saarthi_core.HistoryItem
@@ -154,6 +155,10 @@ class HubModel(app: Application) : AndroidViewModel(app) {
     val health = mutableStateListOf<HealthPoint>()
     var healthLoading by mutableStateOf(false)
 
+    /** The named Claude tokens the hub holds (ADR-0039), with their expiry and the usage
+     *  last seen under each; empty when it holds none or is older than this app. */
+    val claudeTokens = mutableStateListOf<ClaudeTokenInfo>()
+
     /** Sessions newest first as the history screen pages them in (ADR-0036). */
     val history = mutableStateListOf<HistoryItem>()
     var historyLoading by mutableStateOf(false)
@@ -272,6 +277,8 @@ class HubModel(app: Application) : AndroidViewModel(app) {
         val n = h.nodes()
         val s = h.sessions(false)
         val p = h.pending()
+        val t = tokensOf(h)
+        claudeTokens.replaceAll(t)
         nodes.replaceAll(n)
         sessions.replaceAll(s)
         pending.replaceAll(p)
@@ -344,8 +351,26 @@ class HubModel(app: Application) : AndroidViewModel(app) {
      *  directory made first when [create] asks, in claude's permission [mode] (empty for the
      *  user's default), under the node's launch [profile] (empty for its own user); [opened]
      *  gets its id once the node has started it. */
-    fun spawn(nodeId: String, cwd: String, prompt: String, model: String, create: Boolean, mode: String, profile: String, opened: (String) -> Unit) =
-        withHub { opened(it.spawn(nodeId, cwd.trim(), prompt.trim(), model, create, mode, profile)) }
+    /** [claudeToken]: null for the node's default, empty for its own login (ADR-0039). */
+    fun spawn(nodeId: String, cwd: String, prompt: String, model: String, create: Boolean, mode: String, profile: String, claudeToken: String?, opened: (String) -> Unit) =
+        withHub { opened(it.spawn(nodeId, cwd.trim(), prompt.trim(), model, create, mode, profile, claudeToken)) }
+
+    private suspend fun tokensOf(h: Hub): List<ClaudeTokenInfo> =
+        try { h.claudeTokens() } catch (e: CoreException.Hub) { emptyList() }
+
+    fun loadClaudeTokens() = withHub { claudeTokens.replaceAll(tokensOf(it)) }
+
+    /** Sets a token's expiry by hand; 0 goes back to a year after the hub first saw it. */
+    fun setClaudeTokenExpiry(name: String, expiresMs: Long) = withHub {
+        claudeTokens.replaceAll(it.setClaudeTokenExpiry(name, expiresMs))
+    }
+
+    /** The token a node's spawned sessions run under when none is picked; empty for its own
+     *  login. The node's change comes back through the watch. */
+    fun setDefaultClaudeToken(nodeId: String, name: String) = withHub {
+        it.setDefaultClaudeToken(nodeId, name)
+        say(if (name.isEmpty()) "New sessions use the node's own login" else "New sessions use the $name token")
+    }
 
     /** Loads the first page of history for a node (empty for every node), or with [more]
      *  the page after what is loaded. */
@@ -375,7 +400,8 @@ class HubModel(app: Application) : AndroidViewModel(app) {
     /** Continues a finished session in place (ADR-0036); its screen turns live when the
      *  watch reports it running. A blank prompt resumes it idle. */
     fun resume(s: SessionInfo, prompt: String) = withHub {
-        done(it.resume(s.nodeId, s.id, prompt.trim(), ""), "Resumed")
+        // Under the token the session last ran under.
+        done(it.resume(s.nodeId, s.id, prompt.trim(), "", null), "Resumed")
     }
 
     /** Directories to offer for a new session on a node: its spawn roots, then where its

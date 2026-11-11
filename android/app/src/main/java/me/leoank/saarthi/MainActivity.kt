@@ -49,6 +49,7 @@ sealed interface Screen {
     data object Home : Screen
     data class Session(val nodeId: String, val sessionId: String, val from: Screen = Home) : Screen
     data object History : Screen
+    data object Tokens : Screen
     data class Health(val nodeId: String, val from: Screen) : Screen
 }
 
@@ -112,6 +113,7 @@ fun App(requested: Pair<String, String>?, consumed: () -> Unit, model: HubModel 
             openHealth = { screen = Screen.Health(it.id, Screen.Home) },
             spawned = { node, id -> spawned = node to id },
             openHistory = { screen = Screen.History },
+            openTokens = { screen = Screen.Tokens },
         )
         Screen.History -> HistoryScreen(
             model, snackbar,
@@ -127,5 +129,6 @@ fun App(requested: Pair<String, String>?, consumed: () -> Unit, model: HubModel 
             openHealth = { screen = Screen.Health(s.nodeId, s) },
         )
         is Screen.Health -> HealthScreen(model, snackbar, s.nodeId, back = { screen = s.from })
+        Screen.Tokens -> TokensScreen(model, snackbar, back = { screen = Screen.Home })
     }
 }

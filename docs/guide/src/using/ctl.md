@@ -71,6 +71,24 @@ $ saarthi ctl resume laptop <session id> "and now the docs"
 `resume` continues a finished session in place, idle without a prompt; see
 [Resuming a session](sessions.md#resuming-a-session).
 
+## Claude accounts
+
+```console
+$ saarthi ctl tokens                              # name, expiry, the account's latest usage
+work      expires 2027-11-11  5h 8%  7d 36%  (3 min ago)
+personal  expires 2027-11-12
+$ saarthi ctl default-token laptop work           # what laptop's sessions run under by default
+$ saarthi ctl default-token laptop --own-login    # back to laptop's own login
+$ saarthi ctl spawn laptop ~/workspace/app "go" --claude-token personal
+$ saarthi ctl spawn laptop ~/workspace/app "go" --own-login
+$ saarthi ctl resume laptop <session id> "go on" --claude-token work
+$ saarthi ctl token-expiry work 2027-10-01        # or clear, for a year after first seen
+```
+
+Without `--claude-token` or `--own-login`, `spawn` runs under the node's default account
+and `resume` under the one the session last ran under. See
+[Claude accounts](../setup/hub.md#claude-accounts).
+
 `spawn` starts a headless session in a directory under one of the node's spawn roots
 (the `spawn:` column of `nodes`) and prints its id, for `prompt`, `interrupt` and `kill`. Without a prompt the session
 starts idle; `--create` makes a missing directory under the root first;

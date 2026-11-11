@@ -76,6 +76,24 @@ impl Notifier {
         }
     }
 
+    /// Rate-limit alerts for the account behind a Claude token (ADR-0042), from the windows
+    /// a session under it reported; each once, keyed by the token, whichever node reports it.
+    pub async fn token_usage(&self, name: &str, node_id: &str, w: &crate::db::Windows) {
+        let now = now_ms();
+        for (key, m) in for_token_usage(name, node_id, w, now / 1000) {
+            match self.db.claim_usage_alert(&key, node_id, now).await {
+                Ok(true) => self.send(m),
+                Ok(false) => {}
+                Err(e) => tracing::warn!(error = %e, "recording a usage alert failed"),
+            }
+        }
+    }
+
+    /// The reminder that a Claude token expires soon (ADR-0039).
+    pub fn token_expiry(&self, name: &str, expires_ms: i64, now_ms: i64) {
+        self.send(for_token_expiry(name, expires_ms, now_ms));
+    }
+
     fn send(&self, m: Message) {
         if m.push["kind"].as_str().is_some_and(|k| self.off.iter().any(|o| o == k)) {
             return;
@@ -240,6 +258,72 @@ pub fn for_usage(node: &str, node_id: &str, metrics: &[Metric], now_s: i64) -> V
     out
 }
 
+/// The alerts of `for_usage` for the account behind a Claude token: titled with the token's
+/// name and keyed by it, so two accounts whose windows reset together alert separately.
+pub fn for_token_usage(
+    name: &str,
+    node_id: &str,
+    w: &crate::db::Windows,
+    now_s: i64,
+) -> Vec<(String, Message)> {
+    let mut metrics = Vec::new();
+    let mut add = |n: &str, v: Option<f64>| {
+        if let Some(value) = v {
+            metrics.push(Metric {
+                name: n.to_string(),
+                value,
+            });
+        }
+    };
+    add("usage.five_hour_pct", w.five_hour_pct);
+    add(
+        "usage.five_hour_resets_s",
+        w.five_hour_resets_s.map(|s| s as f64),
+    );
+    add("usage.seven_day_pct", w.seven_day_pct);
+    add(
+        "usage.seven_day_resets_s",
+        w.seven_day_resets_s.map(|s| s as f64),
+    );
+    for_usage(&format!("{name} account"), node_id, &metrics, now_s)
+        .into_iter()
+        .map(|(key, mut m)| {
+            let key = format!("token:{name}:{key}");
+            m.push["key"] = json!(key);
+            m.push["claude_token"] = json!(name);
+            (key, m)
+        })
+        .collect()
+}
+
+/// "Claude token work expires in 30 days": the reminder, sent once per expiry date.
+pub fn for_token_expiry(name: &str, expires_ms: i64, now_ms: i64) -> Message {
+    let left = (expires_ms - now_ms) / 1000;
+    let (title, body) = if left > 0 {
+        (
+            format!("Claude token {name} expires in {}", span(left)),
+            "Make a new one with `claude setup-token` and replace it in the hub's token file."
+                .to_string(),
+        )
+    } else {
+        (
+            format!("Claude token {name} has expired"),
+            "Sessions under it will fail. Make a new one with `claude setup-token`.".to_string(),
+        )
+    };
+    let push = json!({
+        "kind": "token", "claude_token": name, "expires_ms": expires_ms,
+        "key": format!("token-expiry:{name}:{expires_ms}"),
+        "title": title, "body": body,
+    });
+    Message {
+        title,
+        body,
+        priority: 4,
+        push,
+    }
+}
+
 /// "3 days" (to the nearest day), "1 day 4 h", "2 h 20 min", "40 min".
 fn span(secs: i64) -> String {
     let (d, h, m) = (secs / 86400, secs % 86400 / 3600, secs % 3600 / 60);
@@ -396,5 +480,38 @@ mod tests {
             ..stop
         };
         assert!(for_event("mac", "n1", &other).is_none());
+    }
+
+    #[test]
+    fn a_token_s_usage_alerts_name_the_account_and_are_keyed_by_it() {
+        let now = 1_800_000_000;
+        let w = crate::db::Windows {
+            time_ms: 0,
+            five_hour_pct: Some(96.0),
+            five_hour_resets_s: Some(now + 3600),
+            seven_day_pct: Some(10.0),
+            seven_day_resets_s: Some(now + 6 * 86400),
+        };
+        let got = for_token_usage("work", "n1", &w, now);
+        assert_eq!(got.len(), 1, "{got:?}");
+        let (key, m) = &got[0];
+        assert!(key.starts_with("token:work:five_hour:"), "{key}");
+        assert_eq!(m.title, "work account: Claude 5-hour limit at 96%");
+        assert_eq!(m.push["claude_token"], "work");
+        assert_eq!(m.push["key"], key.as_str());
+        let other = for_token_usage("personal", "n1", &w, now);
+        assert_ne!(other[0].0, *key);
+    }
+
+    #[test]
+    fn the_expiry_reminder_says_when() {
+        let day = 86_400_000;
+        let m = for_token_expiry("work", 30 * day, 0);
+        assert_eq!(m.title, "Claude token work expires in 30 days");
+        assert_eq!(m.push["kind"], "token");
+        assert_eq!(
+            for_token_expiry("work", 0, day).title,
+            "Claude token work has expired"
+        );
     }
 }

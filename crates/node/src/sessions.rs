@@ -127,8 +127,9 @@ impl Sessions {
     /// Starts tracking a session the spawner has just started, before the registry or a
     /// hook reports it: spawned, busy when it was given a first prompt, idle otherwise, its
     /// transcript tailed (from when the first prompt writes it) in `claude_dir`, the node's
-    /// own config directory or a sandboxed profile's, and under the launch `profile` (empty
-    /// for the host).
+    /// own config directory or a sandboxed profile's, under the launch `profile` (empty for
+    /// the host) and the named Claude token `claude_token` (empty for the node's own login).
+    #[allow(clippy::too_many_arguments)]
     pub async fn add_spawned(
         &self,
         id: &str,
@@ -136,6 +137,7 @@ impl Sessions {
         cwd: &str,
         claude_dir: &Path,
         profile: &str,
+        claude_token: &str,
         busy: bool,
     ) {
         let mut entries = self.entries.lock().await;
@@ -150,9 +152,23 @@ impl Sessions {
             .into_owned();
         s.status = if busy { SessionStatus::Busy } else { SessionStatus::Idle }.into();
         s.profile = profile.to_string();
+        s.claude_token = claude_token.to_string();
         s.ended_ms = None;
         self.ensure_tail(entry).await;
         self.outbox.session(entry.session.clone()).await;
+    }
+
+    /// A fact about a session only the daemon knows, such as a spawned session's rate-limit
+    /// windows from its stream.
+    pub async fn daemon_event(&self, id: &str, kind: &str, payload_json: String) {
+        self.outbox
+            .event(
+                id,
+                saarthi_proto::event::v1::EventSource::Daemon,
+                kind,
+                payload_json,
+            )
+            .await;
     }
 
     /// Sets an open session's status, as the spawner reads it from the stream.

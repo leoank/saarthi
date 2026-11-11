@@ -332,12 +332,19 @@ with the spawn or resume command; the node keeps it in memory and passes it to t
 session, or, for a profile whose egress goes through the node's proxy, to the proxy, which
 adds it to requests to the Anthropic API while the sandbox holds a dummy. Nothing is
 written to disk, read back or returned. Any node may use any token for now; a list of
-nodes per token comes later. Clients see names and dates, never a value. Until the hub
-side is built, a launch profile's `token_file` (ADR-0038) is how a sandbox gets its token.
+nodes per token comes later. Clients see names and dates, never a value. A launch
+profile's `token_file` (ADR-0038) remains a fallback for a sandbox the hub sends no token
+to. On the host, the token in the environment wins over the keychain login
+([[EXP-20261111-q6sgt8]]).
+
+Usage per token (ADR-0042): the usage endpoint refuses a setup-token
+([[RUN-20261111-q60gf1]]), so the hub takes each account's 5-hour and 7-day windows from
+the `rate_limit_event`s of sessions running under its token, which the node forwards as
+daemon `rate_limit` events, and alerts on them per account as on a node's health
+(ADR-0032).
 
 Still to check against the real thing: that one token stays good used from several
-machines at once ([[EXP-20261110-g5mh7g]]), whether the usage endpoint accepts it
-([[EXP-20261110-g5mht5]]), that one token can be revoked on its own
+machines at once ([[EXP-20261110-g5mh7g]]), that one token can be revoked on its own
 ([[EXP-20261110-g5mh2z]]), and how a sandboxed session reaches the proxy without TLS
 interception ([[EXP-20261110-g5mh89]]).
 
@@ -424,14 +431,14 @@ PTY. The wrapper never parses terminal output for state; the TUI positions text 
 moves and the text is unreliable. Hooks and the transcript are the only sources of truth.
 
 ### Spawn (phase 2, sandboxed in phase 3)
-Built so far (ADR-0034, ADR-0038): steps 1 and 3 without the token choice; a session
-runs with the node's own login or a profile's token file, and on exit the node only reports
-the end.
+Built so far (ADR-0034, ADR-0038, ADR-0039): steps 1 to 3 with the token choice, without
+the proxy; on exit the node only reports the end.
 
 1. Client picks a node, a directory from that node's allowed roots, a token (the node's
    default unless changed), and a launch profile. The allowed roots are configured on the node and reported to the hub.
-2. Hub looks up the token by name (ADR-0039), records the session as starting with the
-   token's name, and sends the token with the spawn command.
+2. Hub looks up the token by name (ADR-0039), refusing one it does not hold, sends the
+   token with the spawn command, and records the token's name on the session once the
+   node has started it.
 3. Daemon prepares the state directory, provisions the sandbox if the profile asks for
    one, and starts `claude -p --input-format stream-json --output-format stream-json`
    with the profile's `CLAUDE_CONFIG_DIR` and the token as `CLAUDE_CODE_OAUTH_TOKEN` (or a
@@ -455,12 +462,13 @@ relies on hooks and the transcript.
 ## Data model
 
 Hub tables, all keyed by hub-assigned ids with the node's own ids stored alongside. Built
-so far, in `crates/hub/migrations/`: `nodes`, `sessions`, `events`, `health` and
-`pending`; the rest come with credentials and spawning.
+so far, in `crates/hub/migrations/`: `nodes`, `sessions`, `events`, `health`, `pending`
+and `claude_tokens`; the rest come with tailnets and profiles at the hub.
 
 - `nodes`: id, name, tailnets, last seen, capabilities, allowed spawn roots, profiles.
-- `claude_tokens`: name, fingerprint, first seen, expiry set by hand, reminded; never the
-  token (ADR-0039). Each node's default token is a column of `nodes`.
+- `claude_tokens`: name, fingerprint, first seen, expiry set by hand, reminded, and the
+  latest usage windows seen under it (ADR-0042); never the token (ADR-0039). Each node's
+  default token is a column of `nodes`.
 - `profiles`: name, node, backend, policy JSON.
 - `sessions`: id, node, token name, profile, harness, cwd, started, ended, how it was
   started (wrapper, bare, spawned), transcript path.

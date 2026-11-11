@@ -31,6 +31,14 @@ service ControlService {
   // Turns a node's keep-awake hold on or off.
   rpc SetKeepAwake(SetKeepAwakeRequest) returns (CommandResponse);
 
+  // The named Claude tokens the hub holds (ADR-0039), by name, with their dates and the
+  // latest usage seen under each; never their values.
+  rpc ListClaudeTokens(ListClaudeTokensRequest) returns (ListClaudeTokensResponse);
+  // Sets or clears a token's expiry by hand.
+  rpc SetClaudeTokenExpiry(SetClaudeTokenExpiryRequest) returns (ListClaudeTokensResponse);
+  // Sets or clears the token a node's spawned sessions run under when none is picked.
+  rpc SetDefaultClaudeToken(SetDefaultClaudeTokenRequest) returns (SetDefaultClaudeTokenResponse);
+
   // Adds (or with `unregister`, removes) a UnifiedPush endpoint the hub posts notifications
   // to: a JSON object per held request or finished turn (ADR-0026).
   rpc RegisterPush(RegisterPushRequest) returns (RegisterPushResponse);
@@ -47,6 +55,9 @@ message Node {
   repeated string spawn_roots = 6;
   // The launch profiles a spawn may name, besides the host, as the node last registered them.
   repeated saarthi.event.v1.LaunchProfile profiles = 7;
+  // The Claude token its spawned sessions run under when none is picked; empty for the
+  // node's own login.
+  string default_claude_token = 8;
 }
 
 message ListNodesRequest {}
@@ -136,6 +147,9 @@ message SpawnRequest {
   bool create = 5;              // make cwd under the spawn root if it does not exist
   string permission_mode = 6;   // claude's --permission-mode; empty for the user's default
   string profile = 7;           // the node's launch profile (ADR-0038); empty for the host
+  // The named Claude token to run under (ADR-0039): absent for the node's default, empty for
+  // the node's own login.
+  optional string claude_token = 8;
 }
 
 message ResumeRequest {
@@ -143,6 +157,8 @@ message ResumeRequest {
   string session_id = 2;
   string prompt = 3;            // empty to resume idle
   string model = 4;             // empty for claude's default
+  // As for Spawn, except that absent means the token the session last ran under.
+  optional string claude_token = 5;
 }
 
 message HistoryRequest {
@@ -168,6 +184,38 @@ message SetKeepAwakeRequest {
   string node_id = 1;
   bool on = 2;
 }
+
+message ClaudeToken {
+  string name = 1;
+  int64 first_seen_ms = 2;      // when the hub first read this token under this name
+  int64 expires_ms = 3;         // the hand-set expiry, else a year after first seen
+  bool expiry_set = 4;          // whether expires_ms was set by hand
+  // The account's windows as last reported by a session under this token, from its
+  // rate_limit_event (ADR-0042); usage_ms 0 when none has been seen.
+  int64 usage_ms = 5;
+  optional double five_hour_pct = 6;
+  optional int64 five_hour_resets_s = 7;
+  optional double seven_day_pct = 8;
+  optional int64 seven_day_resets_s = 9;
+}
+
+message ListClaudeTokensRequest {}
+
+message ListClaudeTokensResponse {
+  repeated ClaudeToken tokens = 1;
+}
+
+message SetClaudeTokenExpiryRequest {
+  string name = 1;
+  int64 expires_ms = 2;         // 0 to clear: a year after first seen again
+}
+
+message SetDefaultClaudeTokenRequest {
+  string node_id = 1;
+  string name = 2;              // empty for the node's own login
+}
+
+message SetDefaultClaudeTokenResponse {}
 
 message RegisterPushRequest {
   string endpoint = 1;

@@ -16,6 +16,9 @@ one process, a SQLite file, a few tens of MB of memory.
   The hub knows a peer by its token, not its name; the name is what logs and the app show.
   Use long random tokens (`openssl rand -hex 24`), and give every node and client its
   own, so one can be revoked by deleting its line and restarting the hub.
+- Optionally, a file of **Claude tokens**, kept secret: `<name> <token>` lines of tokens
+  from `claude setup-token`, one per Claude account sessions should be able to run under
+  (see [Claude accounts](#claude-accounts)).
 - Optionally, an [ntfy](https://ntfy.sh) topic URL for notifications. The phone's push
   works without it; see [Notifications](notifications.md).
 
@@ -25,6 +28,7 @@ one process, a SQLite file, a few tens of MB of memory.
 $ saarthi-hub --listen 100.101.102.103:7700 --db /var/lib/saarthi-hub/hub.db \
     --node-tokens /run/secrets/saarthi-node-tokens \
     --client-tokens /run/secrets/saarthi-client-tokens \
+    --claude-tokens /run/secrets/saarthi-claude-tokens \
     --ntfy https://ntfy.example.org/saarthi
 ```
 
@@ -33,11 +37,45 @@ $ saarthi-hub --listen 100.101.102.103:7700 --db /var/lib/saarthi-hub/hub.db \
 | `--listen` | Where nodes and clients connect. Default `127.0.0.1:7700`, reachable only from the same machine. Use the machine's tailnet address, or `0.0.0.0:7700` with the port closed in every firewall except to the tailnet. |
 | `--db` | The SQLite database. Back it up like any other SQLite file; it is the hub's whole record. |
 | `--node-tokens`, `--client-tokens` | The token files. Read at start; restart the hub after editing them. |
+| `--claude-tokens` | The Claude tokens file. Read at start, like the others. Without it, sessions run under each node's own login. |
 | `--ntfy` | An ntfy topic URL to publish notifications to, besides the phones' own push. |
-| `--no-notify <kind>` | Turn one kind of notification off: `permission`, `question`, `turn`, `ended` or `usage`. Repeat for several. |
+| `--no-notify <kind>` | Turn one kind of notification off: `permission`, `question`, `turn`, `ended`, `usage` or `token` (a Claude token about to expire). Repeat for several. |
 
 The hub speaks plain gRPC with no TLS. Tailscale encrypts the traffic between machines;
 do not expose the port to the internet.
+
+## Claude accounts
+
+Sessions started from the app or `saarthi ctl` can run under a Claude account other than
+the node's own login: under a named token the hub holds (ADR-0039). Make one per account
+with `claude setup-token`, in a terminal logged in to that account; it lasts a year and
+never needs refreshing, so any number of sessions on any number of nodes can share it.
+Put them in the file, one per line:
+
+```text
+# <name> <token>
+work      sk-ant-oat01-...
+personal  sk-ant-oat01-...
+```
+
+and give it to the hub with `--claude-tokens`. The names are what the app and `ctl` show;
+the tokens never leave the hub except to a node starting a session, which keeps it in
+memory. Adding, replacing or removing one is an edit to the file and a restart. Then:
+
+- each node gets a **default account**, set from its health screen in the app or with
+  `saarthi ctl default-token <node> <name>`; sessions started on it run under that token
+  unless another account, or the node's own login, is picked on *New session*;
+- the hub dates each token from when it first read it and **reminds you a month before**
+  it expires, a year later; set another date from *Claude accounts* in the app's menu or
+  with `saarthi ctl token-expiry`. A new token under the same name starts a new year;
+- each account's **5-hour and 7-day usage** shows under *Claude accounts*, from the last
+  session that ran under its token, and the hub sends the
+  [rate-limit alerts](notifications.md#rate-limit-alerts) per account. Anthropic's usage
+  endpoint does not accept these tokens, so an account no session has used lately shows
+  older figures, with their age.
+
+Interactive sessions you start in a terminal are never touched: they use whatever login
+that machine has.
 
 ## On NixOS
 
@@ -53,7 +91,8 @@ The flake exports a NixOS module, with the token files from your secrets manager
     listen = "0.0.0.0:7700";
     nodeTokensFile = "/run/agenix/saarthiNodeTokens";
     clientTokensFile = "/run/agenix/saarthiClientTokens";
-    ntfy = "http://127.0.0.1:2586/saarthi";   # optional
+    claudeTokensFile = "/run/agenix/saarthiClaudeTokens";   # optional
+    ntfy = "http://127.0.0.1:2586/saarthi";                  # optional
   };
 }
 ```
