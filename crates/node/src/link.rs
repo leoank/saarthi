@@ -189,6 +189,31 @@ async fn stream(
             }
             reply = inbound.message() => match reply?.and_then(|m| m.body) {
                 Some(hub_message::Body::Ack(ack)) => buffer.ack(ack.seq),
+                // A usage probe takes a model turn: it runs on its own task and answers
+                // through the outbox, so the link keeps flowing meanwhile.
+                Some(hub_message::Body::Command(cmd)) if matches!(cmd.action, Some(command::Action::Probe(_))) => {
+                    let (spawner, sessions) = (parts.spawner.clone(), parts.sessions.clone());
+                    tokio::spawn(async move {
+                        let Some(command::Action::Probe(p)) = &cmd.action else { return };
+                        let outcome = spawner.probe(p.claude_token.as_ref()).await;
+                        if let Err(e) = &outcome {
+                            tracing::info!(id = %cmd.id, error = %e, "usage probe failed");
+                        }
+                        let (ok, probe_json, error) = match outcome {
+                            Ok(json) => (true, json, String::new()),
+                            Err(e) => (false, String::new(), e),
+                        };
+                        sessions
+                            .command_result(CommandResult {
+                                command_id: cmd.id.clone(),
+                                ok,
+                                error,
+                                note: String::new(),
+                                probe_json,
+                            })
+                            .await;
+                    });
+                }
                 Some(hub_message::Body::Command(cmd)) => {
                     let result = act(&cmd, parts).await;
                     tx.send(NodeMessage { body: Some(Body::CommandResult(result)) })
@@ -274,6 +299,7 @@ async fn act(cmd: &Command, parts: &Parts) -> CommandResult {
             tracing::info!(on = k.on, "keep-awake switched from a client");
             Ok(String::new())
         }
+        Some(command::Action::Probe(_)) => Err("a probe is run apart".to_string()),
         None => Err("the command has no action".to_string()),
     };
     if let Err(e) = &outcome {
@@ -288,6 +314,7 @@ async fn act(cmd: &Command, parts: &Parts) -> CommandResult {
         ok,
         error,
         note,
+        probe_json: String::new(),
     }
 }
 

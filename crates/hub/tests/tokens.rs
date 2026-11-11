@@ -3,7 +3,9 @@
 //! under the node's own login until the node has a default, then under the default, or
 //! under a token picked or the own login picked; an unknown token is refused before the
 //! node is asked; a resume keeps the token the session last ran under; the account windows
-//! a session's stream reports land on its token; expiry is set by hand and cleared.
+//! a session's stream reports land on its token; expiry is set by hand and cleared. Usage
+//! probes (ADR-0043) keep every account's windows fresh without listing a session, and only
+//! a node that runs headless sessions takes them.
 
 mod common;
 
@@ -258,5 +260,111 @@ async fn sessions_run_under_named_tokens_chosen_or_by_default_and_report_their_u
         .await
         .unwrap_err();
     assert_eq!(missing.code(), tonic::Code::NotFound);
+    hub.stop();
+}
+
+/// Answers a `-p` probe at once: records the token, streams the windows and a result.
+const PROBE_FAKE: &str = r#"#!/bin/sh
+echo "probe ${CLAUDE_CODE_OAUTH_TOKEN:-none} $(basename "$CLAUDE_CONFIG_DIR")" >> LOG
+echo '{"type":"system","subtype":"init"}'
+echo '{"type":"rate_limit_event","rate_limit_info":{"status":"allowed","unifiedWindows":{"five_hour":{"utilization":0.04,"resetsAt":1792255200},"seven_day":{"utilization":0.36,"resetsAt":1792753200}}}}'
+echo '{"type":"result","subtype":"success","is_error":false}'
+"#;
+
+#[tokio::test(flavor = "multi_thread")]
+async fn usage_probes_keep_every_account_fresh_without_listing_a_session() {
+    let dir = tempfile::tempdir().unwrap();
+    let root = dir.path().join("work");
+    std::fs::create_dir_all(&root).unwrap();
+    let log = dir.path().join("probes.log");
+    let fake = dir.path().join("claude");
+    std::fs::write(&fake, PROBE_FAKE.replace("LOG", &format!("'{}'", log.display()))).unwrap();
+    std::fs::set_permissions(&fake, std::fs::Permissions::from_mode(0o755)).unwrap();
+
+    let (hub, addr) = HubProc::start_probing(
+        &dir.path().join("hub.db"),
+        "127.0.0.1:0",
+        TOKENS,
+        "test-node",
+        // Short, so the loop ticks often enough for a test; a second round may come.
+        Duration::from_secs(4),
+    );
+    let _node = start_spawning_node(
+        &addr,
+        "t-node",
+        &dir.path().join(".claude"),
+        HOLD,
+        &fake.to_string_lossy(),
+        std::slice::from_ref(&root),
+        Default::default(),
+    )
+    .await;
+    let mut c = ControlServiceClient::connect(format!("http://{addr}")).await.unwrap();
+    let mut both = None;
+    for _ in 0..250 {
+        let t = tokens(&mut c).await;
+        if t.iter().all(|t| t.usage_ms > 0) {
+            both = Some(t);
+            break;
+        }
+        tokio::time::sleep(Duration::from_millis(20)).await;
+    }
+    let t = both.expect("both accounts probed");
+    for t in &t {
+        assert_eq!((t.five_hour_pct, t.seven_day_pct), (Some(4.0), Some(36.0)), "{}", t.name);
+    }
+    // Each under its own token, in a config directory of its own, and nothing listed.
+    let mut lines: Vec<String> = std::fs::read_to_string(&log).unwrap().lines().map(str::to_string).collect();
+    lines.sort();
+    lines.dedup();
+    assert_eq!(lines, ["probe tok-personal claude", "probe tok-work claude"]);
+    let sessions = c
+        .list_sessions(req(ListSessionsRequest {
+            node_id: String::new(),
+            include_ended: true,
+        }))
+        .await
+        .unwrap()
+        .into_inner()
+        .sessions;
+    assert!(sessions.is_empty(), "{sessions:?}");
+    // The probe's directory is gone.
+    let left: Vec<_> = std::fs::read_dir(std::env::temp_dir())
+        .unwrap()
+        .filter_map(|e| e.ok())
+        .filter(|e| e.file_name().to_string_lossy().starts_with("saarthi-probe-"))
+        .collect();
+    assert!(left.is_empty(), "{left:?}");
+    hub.stop();
+}
+
+#[tokio::test(flavor = "multi_thread")]
+async fn a_node_without_spawn_roots_takes_no_probes() {
+    let dir = tempfile::tempdir().unwrap();
+    let (hub, addr) = HubProc::start_probing(
+        &dir.path().join("hub.db"),
+        "127.0.0.1:0",
+        TOKENS,
+        "test-node",
+        Duration::from_secs(4),
+    );
+    // The stand-in that would answer a probe, so only the missing roots can stop one.
+    let fake = dir.path().join("claude");
+    std::fs::write(&fake, PROBE_FAKE.replace("LOG", &format!("'{}'", dir.path().join("probes.log").display()))).unwrap();
+    std::fs::set_permissions(&fake, std::fs::Permissions::from_mode(0o755)).unwrap();
+    let _node = start_spawning_node(
+        &addr,
+        "t-node",
+        &dir.path().join(".claude"),
+        HOLD,
+        &fake.to_string_lossy(),
+        &[],
+        Default::default(),
+    )
+    .await;
+    let mut c = ControlServiceClient::connect(format!("http://{addr}")).await.unwrap();
+    connected(&mut c).await;
+    tokio::time::sleep(Duration::from_millis(1500)).await;
+    assert!(tokens(&mut c).await.iter().all(|t| t.usage_ms == 0));
     hub.stop();
 }

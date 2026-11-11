@@ -37,6 +37,15 @@ struct Cli {
     /// may run under (ADR-0039). Read at start; clients see the names, never the tokens.
     #[arg(long)]
     claude_tokens: Option<PathBuf>,
+    /// The node that runs usage probes: one throwaway Haiku turn under each Claude token
+    /// about every `--usage-probe-minutes`, so every account's usage stays fresh (ADR-0043).
+    /// It must allow headless sessions (`--spawn-root`). Without it, an account's usage
+    /// comes only from the sessions that run under its token.
+    #[arg(long)]
+    usage_probe_node: Option<String>,
+    /// Minutes between an account's usage probes, each wait drawn within 15% of it.
+    #[arg(long, default_value_t = 30)]
+    usage_probe_minutes: u64,
     /// An ntfy topic URL, `http(s)://host/topic`, for notifications when a session waits on
     /// a person or finishes a turn. Without it nothing is pushed.
     #[arg(long)]
@@ -78,6 +87,18 @@ async fn main() -> Result<()> {
         .await
         .with_context(|| format!("binding {}", cli.listen))?;
     tracing::info!(listen = %cli.listen, db = %cli.db.display(), "hub serving");
+    if let Some(node) = cli.usage_probe_node.clone() {
+        tracing::info!(%node, minutes = cli.usage_probe_minutes, "usage probes");
+        let every = std::time::Duration::from_secs(cli.usage_probe_minutes.max(1) * 60);
+        // The first round after a start comes within five minutes, spread out.
+        let first = every.min(std::time::Duration::from_secs(5 * 60));
+        tokio::spawn(saarthi_hub::run_usage_probes(
+            hub.clone(),
+            node,
+            every,
+            first,
+        ));
+    }
     let reminders = hub.clone();
     tokio::spawn(async move {
         let mut hourly = tokio::time::interval(std::time::Duration::from_secs(3600));

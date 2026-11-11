@@ -341,7 +341,9 @@ Usage per token (ADR-0042): the usage endpoint refuses a setup-token
 ([[RUN-20261111-q60gf1]]), so the hub takes each account's 5-hour and 7-day windows from
 the `rate_limit_event`s of sessions running under its token, which the node forwards as
 daemon `rate_limit` events, and alerts on them per account as on a node's health
-(ADR-0032).
+(ADR-0032). With `--usage-probe-node`, one node also runs a throwaway Haiku turn under
+each token about every half hour, in an empty config directory nothing lists, skipping an
+account a session reported on lately, so idle accounts stay fresh too (ADR-0043).
 
 Still to check against the real thing: that one token stays good used from several
 machines at once ([[EXP-20261110-g5mh7g]]), that one token can be revoked on its own

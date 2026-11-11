@@ -64,6 +64,7 @@ message Command {
     Spawn spawn = 7;
     SetKeepAwake set_keep_awake = 8;
     Resume resume = 9;
+    Probe probe = 10;
   }
 }
 
@@ -115,6 +116,15 @@ message Resume {
   ClaudeToken claude_token = 4; // as for Spawn
 }
 
+// Node-level: one throwaway Haiku turn under a Claude token, for the account's rate-limit
+// windows (ADR-0043): in an empty config directory under a temporary directory, never
+// listed as a session, everything removed afterwards. The command's session_id is empty;
+// the result carries the turn's rate_limit_info in probe_json. Refused by a node that does
+// not run headless sessions (no spawn roots).
+message Probe {
+  ClaudeToken claude_token = 1;
+}
+
 // Node-level: turns the keep-awake hold (ADR-0031) on or off; the command's session_id is
 // empty.
 message SetKeepAwake {
@@ -127,4 +137,5 @@ message CommandResult {
   string error = 3;             // why it was refused, shown to the person as is
   string note = 4;              // a caveat on a command carried out, such as a prompt held
                                 // for approval at the terminal; shown as is
+  string probe_json = 5;        // Probe only: the turn's rate_limit_info, as claude streamed it
 }

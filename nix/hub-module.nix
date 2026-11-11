@@ -70,6 +70,24 @@ in
       '';
     };
 
+    usageProbeNode = lib.mkOption {
+      type = lib.types.nullOr lib.types.str;
+      default = null;
+      example = "ghost001";
+      description = ''
+        The node that runs usage probes: one throwaway Haiku turn under each Claude token
+        about every `usageProbeMinutes`, so every account's usage stays fresh (ADR-0043).
+        It must allow headless sessions (`spawnRoots`). Null: an account's usage comes only
+        from the sessions that run under its token.
+      '';
+    };
+
+    usageProbeMinutes = lib.mkOption {
+      type = lib.types.ints.positive;
+      default = 30;
+      description = "Minutes between an account's usage probes, each wait drawn within 15% of it.";
+    };
+
     ntfy = lib.mkOption {
       type = lib.types.nullOr lib.types.str;
       default = null;
@@ -152,6 +170,12 @@ in
           ++ lib.optionals (cfg.claudeTokensFile != null) [
             "--claude-tokens"
             (toString cfg.claudeTokensFile)
+          ]
+          ++ lib.optionals (cfg.usageProbeNode != null) [
+            "--usage-probe-node"
+            cfg.usageProbeNode
+            "--usage-probe-minutes"
+            (toString cfg.usageProbeMinutes)
           ]
           ++ lib.optionals (cfg.ntfy != null) [
             "--ntfy"

@@ -93,6 +93,18 @@ impl Live {
         session_id: &str,
         action: command::Action,
     ) -> Result<CommandResult, Status> {
+        self.command_within(node_id, session_id, action, COMMAND_TIMEOUT)
+            .await
+    }
+
+    /// The same, waiting up to `timeout`: a usage probe takes a model turn.
+    pub async fn command_within(
+        &self,
+        node_id: &str,
+        session_id: &str,
+        action: command::Action,
+        timeout: Duration,
+    ) -> Result<CommandResult, Status> {
         let tx = match self.nodes.lock().await.get(node_id) {
             Some(n) => n.tx.clone(),
             None => return Err(Status::unavailable("the node is not connected")),
@@ -112,7 +124,7 @@ impl Live {
             .await;
         let outcome = match sent {
             Err(_) => Err(Status::unavailable("the node went away")),
-            Ok(()) => match tokio::time::timeout(COMMAND_TIMEOUT, result).await {
+            Ok(()) => match tokio::time::timeout(timeout, result).await {
                 Ok(Ok(result)) => Ok(result),
                 Ok(Err(_)) => Err(Status::unavailable("the node went away")),
                 Err(_) => Err(Status::deadline_exceeded("the node did not answer in time")),

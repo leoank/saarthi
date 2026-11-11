@@ -40,12 +40,40 @@ impl HubProc {
         Self::start_full(db_path, addr, ntfy, "")
     }
 
+    /// The same, holding Claude tokens, with usage probes run on `node` about every `every`,
+    /// the first at once (ADR-0043).
+    pub fn start_probing(
+        db_path: &std::path::Path,
+        addr: &str,
+        claude_tokens: &str,
+        node: &str,
+        every: Duration,
+    ) -> (Self, String) {
+        Self::start_inner(
+            db_path,
+            addr,
+            None,
+            claude_tokens,
+            Some((node.to_string(), every)),
+        )
+    }
+
     /// The same, holding the named Claude tokens of a `--claude-tokens` file's text.
     pub fn start_full(
         db_path: &std::path::Path,
         addr: &str,
         ntfy: Option<String>,
         claude_tokens: &str,
+    ) -> (Self, String) {
+        Self::start_inner(db_path, addr, ntfy, claude_tokens, None)
+    }
+
+    fn start_inner(
+        db_path: &std::path::Path,
+        addr: &str,
+        ntfy: Option<String>,
+        claude_tokens: &str,
+        probes: Option<(String, Duration)>,
     ) -> (Self, String) {
         let claude_tokens = claude_tokens.to_string();
         let (stop, stopped) = tokio::sync::oneshot::channel();
@@ -75,6 +103,14 @@ impl HubProc {
                     claude_tokens: Arc::new(claude_tokens),
                     live: Live::new(),
                 };
+                if let Some((node, every)) = probes {
+                    tokio::spawn(saarthi_hub::run_usage_probes(
+                        hub.clone(),
+                        node,
+                        every,
+                        Duration::from_millis(1),
+                    ));
+                }
                 tokio::select! {
                     r = saarthi_hub::serve(listener, hub) => r.unwrap(),
                     _ = stopped => {}

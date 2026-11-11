@@ -57,6 +57,7 @@ spawns, with the owner's answers of 2026-11-07.
 | [ADR-0040](ADR-0040-the-project-is-renamed-saarthi.md) | The project is renamed saarthi, "Guiding agents to victory", all the way down | accepted |
 | [ADR-0041](ADR-0041-the-nix-modules-live-here-as-their-source-of-truth.md) | The hub and node Nix modules live in this repo as their source of truth | accepted |
 | [ADR-0042](ADR-0042-a-token-s-usage-comes-from-the-sessions-under-it.md) | A Claude token's usage comes from the sessions that run under it | accepted |
+| [ADR-0043](ADR-0043-usage-probes-keep-every-account-fresh.md) | Usage probes keep every account's usage fresh, half-hourly | accepted |
 
 Each record:
 

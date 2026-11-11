@@ -63,5 +63,7 @@ The accounts the hub holds as [named tokens](../setup/hub.md#claude-accounts) ha
 own figures, under *Claude accounts* in the app's menu and in `saarthi ctl tokens`. The
 usage endpoint refuses those tokens, so they come from the sessions themselves: every turn
 of a session started under a token reports its account's windows, and the hub keeps the
-latest per account, with its time. The alerts go out for those accounts too, titled with
+latest per account, with its time. With
+[usage probes](../setup/hub.md#claude-accounts) on, the hub also runs a tiny turn under
+each account about every half hour, so none is more than that old. The alerts go out for those accounts too, titled with
 the account's name.

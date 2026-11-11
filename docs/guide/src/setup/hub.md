@@ -38,6 +38,7 @@ $ saarthi-hub --listen 100.101.102.103:7700 --db /var/lib/saarthi-hub/hub.db \
 | `--db` | The SQLite database. Back it up like any other SQLite file; it is the hub's whole record. |
 | `--node-tokens`, `--client-tokens` | The token files. Read at start; restart the hub after editing them. |
 | `--claude-tokens` | The Claude tokens file. Read at start, like the others. Without it, sessions run under each node's own login. |
+| `--usage-probe-node` | A node that runs a throwaway Haiku turn under each Claude token about every `--usage-probe-minutes` (default 30), so every account's usage stays fresh. It must allow headless sessions. |
 | `--ntfy` | An ntfy topic URL to publish notifications to, besides the phones' own push. |
 | `--no-notify <kind>` | Turn one kind of notification off: `permission`, `question`, `turn`, `ended`, `usage` or `token` (a Claude token about to expire). Repeat for several. |
 
@@ -71,8 +72,12 @@ memory. Adding, replacing or removing one is an edit to the file and a restart. 
 - each account's **5-hour and 7-day usage** shows under *Claude accounts*, from the last
   session that ran under its token, and the hub sends the
   [rate-limit alerts](notifications.md#rate-limit-alerts) per account. Anthropic's usage
-  endpoint does not accept these tokens, so an account no session has used lately shows
-  older figures, with their age.
+  endpoint does not accept these tokens, so the figures come from the sessions themselves;
+  with `--usage-probe-node <node>` (`usageProbeNode` in the NixOS module), that node runs
+  one throwaway Haiku turn under each token about every half hour, at a slightly random
+  time, skipping an account a session reported on lately. A probe costs a small turn
+  (about $0.0015 at list price); it is never listed and leaves nothing behind. Without
+  probes, an account no session has used lately shows older figures, with their age.
 
 Interactive sessions you start in a terminal are never touched: they use whatever login
 that machine has.
@@ -92,6 +97,7 @@ The flake exports a NixOS module, with the token files from your secrets manager
     nodeTokensFile = "/run/agenix/saarthiNodeTokens";
     clientTokensFile = "/run/agenix/saarthiClientTokens";
     claudeTokensFile = "/run/agenix/saarthiClaudeTokens";   # optional
+    usageProbeNode = "server";                               # optional, a node on the hub's host
     ntfy = "http://127.0.0.1:2586/saarthi";                  # optional
   };
 }

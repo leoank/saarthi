@@ -28,6 +28,12 @@ use tokio::sync::{Mutex, mpsc};
 use crate::containment::{self, Child, Profile, Profiles, Proc};
 use crate::sessions::Sessions;
 
+/// A usage probe's one turn (ADR-0043): as short as a model turn gets.
+const PROBE_PROMPT: &str = "Reply with the single word ok.";
+
+/// How long a usage probe may take before it is given up.
+const PROBE_TIMEOUT: Duration = Duration::from_secs(90);
+
 /// How long a killed session has to exit after its input closes before it is killed.
 const KILL_GRACE: Duration = Duration::from_secs(5);
 
@@ -398,6 +404,86 @@ impl Spawner {
             this.sessions.finish(&sid).await;
         });
         Ok(())
+    }
+
+    /// One throwaway Haiku turn under `claude_token`, for its account's rate-limit windows
+    /// (ADR-0043): claude runs through the login shell in a fresh temporary directory, with
+    /// an empty config directory there, so no settings, hooks or session of the node's see
+    /// it; the directory is removed afterwards. Returns the turn's `rate_limit_info` as JSON.
+    /// Only a node that runs headless sessions (spawn roots) takes probes.
+    pub async fn probe(&self, claude_token: Option<&ClaudeToken>) -> Result<String, String> {
+        let Some(token) = claude_token else {
+            return Err("a usage probe needs a Claude token".into());
+        };
+        if self.roots.is_empty() {
+            return Err("this node does not run headless sessions (no --spawn-root)".into());
+        }
+        let dir =
+            std::env::temp_dir().join(format!("saarthi-probe-{}", uuid::Uuid::new_v4().simple()));
+        let (cfg, work) = (dir.join("claude"), dir.join("work"));
+        let made = std::fs::create_dir_all(&cfg).and_then(|()| std::fs::create_dir_all(&work));
+        let outcome = match made {
+            Ok(()) => self.probe_in(&token.token, &cfg, &work).await,
+            Err(e) => Err(format!("making {}: {e}", dir.display())),
+        };
+        let _ = std::fs::remove_dir_all(&dir);
+        outcome
+    }
+
+    async fn probe_in(&self, token: &str, cfg: &Path, work: &Path) -> Result<String, String> {
+        let mut child = tokio::process::Command::new(&self.shell)
+            .arg("-l")
+            .arg("-c")
+            .arg(r#"exec "$0" "$@""#)
+            .arg(&self.claude)
+            .args([
+                "-p",
+                PROBE_PROMPT,
+                "--model",
+                "haiku",
+                "--output-format",
+                "stream-json",
+                "--verbose",
+            ])
+            .env("CLAUDE_CONFIG_DIR", cfg)
+            .env("CLAUDE_CODE_OAUTH_TOKEN", token)
+            .current_dir(work)
+            .stdin(Stdio::null())
+            .stdout(Stdio::piped())
+            .stderr(Stdio::null())
+            .kill_on_drop(true)
+            .spawn()
+            .map_err(|e| format!("starting {}: {e}", self.shell.display()))?;
+        let stdout = child.stdout.take().expect("piped");
+        let read = async {
+            let mut lines = BufReader::new(stdout).lines();
+            let (mut info, mut failed) = (None, None);
+            while let Ok(Some(line)) = lines.next_line().await {
+                let Ok(msg) = serde_json::from_str::<Value>(&line) else {
+                    continue;
+                };
+                if msg["type"] == "rate_limit_event" {
+                    info = Some(msg["rate_limit_info"].to_string());
+                } else if msg["type"] == "result" && msg["is_error"] == true {
+                    failed = Some(
+                        msg["result"]
+                            .as_str()
+                            .unwrap_or("the turn failed")
+                            .to_string(),
+                    );
+                }
+            }
+            (info, failed)
+        };
+        let (info, failed) = tokio::time::timeout(PROBE_TIMEOUT, read)
+            .await
+            .map_err(|_| "the probe turn did not finish in time".to_string())?;
+        let _ = child.wait().await;
+        match (info, failed) {
+            (Some(info), _) => Ok(info),
+            (None, Some(why)) => Err(format!("the probe turn failed: {why}")),
+            (None, None) => Err("the probe turn reported no rate limits".into()),
+        }
     }
 
     /// Starts claude on the host through the user's login shell, for a terminal's PATH,

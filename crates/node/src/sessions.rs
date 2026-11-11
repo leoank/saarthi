@@ -171,6 +171,11 @@ impl Sessions {
             .await;
     }
 
+    /// The result of a command answered later than it arrived, such as a usage probe.
+    pub async fn command_result(&self, result: saarthi_proto::node::v1::CommandResult) {
+        self.outbox.command_result(result).await;
+    }
+
     /// Sets an open session's status, as the spawner reads it from the stream.
     pub async fn set_status(&self, id: &str, status: SessionStatus) {
         let mut entries = self.entries.lock().await;
