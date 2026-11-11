@@ -106,7 +106,7 @@ private fun TokenCard(t: ClaudeTokenInfo, defaultOn: List<String>, edit: () -> U
         colors = CardDefaults.cardColors(containerColor = MaterialTheme.colorScheme.surfaceContainer),
     ) {
         Column(Modifier.padding(start = 16.dp, end = 8.dp, top = 12.dp, bottom = 4.dp)) {
-            Text(t.name, style = MaterialTheme.typography.titleMedium)
+            Text(t.name, style = MaterialTheme.typography.titleMedium, color = MaterialTheme.colorScheme.onSurface)
             val left = when {
                 t.expiresMs <= now -> "expired"
                 days == 0L -> "today"
