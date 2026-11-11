@@ -4,7 +4,7 @@ type: experiment
 schema_version: 1
 title: Does one claude setup-token token, used by several headless sessions at once on two machines, keep working through hours of turns, with no session or the owner's login disturbed
 project: PRJ-0001
-status: planned           # planned | active | paused | concluded | abandoned
+status: active            # planned | active | paused | concluded | abandoned
 outcome: null             # null | positive | negative | inconclusive | infra
 influenced_by: []
 created: 2026-11-10
@@ -48,6 +48,9 @@ auth error, and ADR-0039 falls back to one token per session or to leases.
 ## Runs
 One line per run after its link, what was tried and what it showed; `yajna validate`
 rejects a bare link here. Metric runs also land in results.tsv.
+- [[RUN-20261111-q7np8h]] rogue's half: three Haiku sessions on one token, a turn each
+  every ten minutes for four hours, then a resume; running (the second machine's half
+  waits for one)
 
 ## Conclusion
 Written once, by a human, when status becomes `concluded`.

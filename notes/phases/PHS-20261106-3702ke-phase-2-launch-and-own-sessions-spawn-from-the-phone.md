@@ -59,13 +59,29 @@ done ones. The project page's *Progress* lists this phase on one line.
   - [ ] 3.1 Check the assumptions first: one token used from two machines at once
     ([[EXP-20261110-g5mh7g]]), the usage endpoint with a token ([[EXP-20261110-g5mht5]]),
     revoking one token alone ([[EXP-20261110-g5mh2z]])
-  - [ ] 3.2 The hub reads `--claude-tokens` and keeps each name's fingerprint and dates;
+    - [x] 3.1.1 The usage endpoint refuses a setup-token; any turn under it streams the
+      account's windows, so usage per account comes from sessions (ADR-0042;
+      [[RUN-20261111-q60gf1]], [[RUN-20261111-q6afjv]]); and a token in the environment
+      wins over the keychain login on the host ([[EXP-20261111-q6sgt8]]) (2026-11-11;
+      [[AGS-20261111-q5z55t]])
+    - [ ] 3.1.2 One token shared by several sessions for hours: rogue's half running
+      ([[RUN-20261111-q7np8h]]); a second machine's half to come
+    - [ ] 3.1.3 Revoking one token alone: needs the owner to revoke a throwaway token
+  - [x] 3.2 The hub reads `--claude-tokens` and keeps each name's fingerprint and dates;
     a default token per node; a spawn or resume names a token or takes the default, and
     the node takes it from the command; `rc2s2 ctl` and the app list tokens, pick one on
-    *New session* and set a node's default
-  - [ ] 3.3 Expiry: a year after first seen or set by hand from the app or `ctl`; a
-    reminder a month before
-  - [ ] 3.4 neusis: the hub module provides the token file as an agenix secret
+    *New session* and set a node's default. Also each account's 5-hour and 7-day usage
+    from the sessions under its token, with alerts per account (ADR-0042). Unit and
+    end-to-end tests; checked live against a scratch hub with the real Claude Code (the
+    default token applied, the account's windows recorded on it, the own login picked,
+    an unknown token refused, no token in the logs); the APK builds (2026-11-11;
+    [[AGS-20261111-q5z55t]])
+  - [x] 3.3 Expiry: a year after first seen or set by hand from the app or `ctl`; a
+    reminder a month before, notification kind `token` (2026-11-11;
+    [[AGS-20261111-q5z55t]])
+  - [ ] 3.4 neusis: the hub module provides the token file as an agenix secret. The
+    module's `claudeTokensFile` option is in this repo (ADR-0041); the secret and its
+    wiring in neusis are the owner's
   - [ ] 3.5 The egress proxy that adds the token, so a sandbox holds a dummy (phase 3
     with the sandbox's network policy; [[EXP-20261110-g5mh89]] decides its transport)
 

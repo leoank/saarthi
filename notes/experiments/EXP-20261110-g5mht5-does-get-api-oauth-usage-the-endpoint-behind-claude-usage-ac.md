@@ -4,7 +4,7 @@ type: experiment
 schema_version: 1
 title: Does GET /api/oauth/usage, the endpoint behind --claude-usage, accept a claude setup-token token, and if not what other source gives an idle account's usage
 project: PRJ-0001
-status: planned           # planned | active | paused | concluded | abandoned
+status: active            # planned | active | paused | concluded | abandoned
 outcome: null             # null | positive | negative | inconclusive | infra
 influenced_by: []
 created: 2026-11-10
@@ -44,6 +44,11 @@ minimal Haiku turn (or `claude -p "/usage"` with the token) as a probe.
 ## Runs
 One line per run after its link, what was tried and what it showed; `yajna validate`
 rejects a bare link here. Metric runs also land in results.tsv.
+- [[RUN-20261111-q60gf1]] the endpoint with a setup-token: 403, "OAuth token does not meet
+  scope requirement user:profile"; the hub cannot poll an account through it
+- [[RUN-20261111-q6afjv]] the alternatives: `/usage` gives only its own session's totals;
+  `count_tokens` carries no windows; any inference request carries every window in its
+  headers, which Claude Code streams as `rate_limit_event` (the design uses those, ADR-0042)
 
 ## Conclusion
 Written once, by a human, when status becomes `concluded`.
