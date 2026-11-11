@@ -17,6 +17,16 @@
   outputs = inputs@{ flake-parts, ... }:
     flake-parts.lib.mkFlake { inherit inputs; } {
       systems = [ "aarch64-darwin" "x86_64-darwin" "x86_64-linux" "aarch64-linux" ];
+
+      # The hub (NixOS) and node (home-manager) modules; this repo is their source of truth
+      # (ADR-0041). Each defaults to this flake's package for the host's system.
+      flake = let
+        module = file: { _file = file; imports = [ (import file inputs.self) ]; };
+      in {
+        nixosModules.saarthi-hub = module ./nix/hub-module.nix;
+        homeModules.saarthi-node = module ./nix/node-module.nix;
+      };
+
       perSystem = { config, system, lib, ... }:
         let
           # The Android SDK is unfree: its licence is accepted here, and only its components
@@ -79,8 +89,7 @@
         {
           _module.args.pkgs = pkgs;
 
-          # The deployable binaries, consumed by the hub (NixOS) and node
-          # (home-manager) modules in the owner's neusis fleet config.
+          # The deployable binaries, the defaults of the hub and node modules.
           packages = rec {
             saarthi-hub = mkBin "saarthi-hub" "saarthi-hub";
             saarthi = mkBin "saarthi" "saarthi";
@@ -151,6 +160,12 @@
             yajna --root . validate
             touch $out
           '';
+
+          # The modules evaluate to the services and flags they promise.
+          checks.modules = import ./nix/module-tests.nix {
+            inherit pkgs lib;
+            inherit (inputs) nixpkgs self;
+          };
 
           # The guide builds and every relative link in it resolves.
           checks.docs = config.packages.docs;

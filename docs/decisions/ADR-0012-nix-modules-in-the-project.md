@@ -1,6 +1,6 @@
 # ADR-0012: The hub and node Nix modules live in the project until they move to neusis
 
-Status: accepted
+Status: superseded by ADR-0041
 Date: 2026-10-16
 
 ## Context

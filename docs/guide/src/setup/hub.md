@@ -41,35 +41,28 @@ do not expose the port to the internet.
 
 ## On NixOS
 
-A systemd service is all it takes. A minimal module, with the token files from your
-secrets manager (agenix, sops-nix):
+The flake exports a NixOS module, with the token files from your secrets manager
+(agenix, sops-nix):
 
 ```nix
-{ inputs, pkgs, ... }:
-let hub = inputs.saarthi.packages.${pkgs.system}.saarthi-hub; in
+{ inputs, ... }:
 {
-  users.users.saarthi-hub = { isSystemUser = true; group = "saarthi-hub"; home = "/var/lib/saarthi-hub"; };
-  users.groups.saarthi-hub = { };
-  systemd.tmpfiles.rules = [ "d /var/lib/saarthi-hub 0750 saarthi-hub saarthi-hub - -" ];
-  systemd.services.saarthi-hub = {
-    wantedBy = [ "multi-user.target" ];
-    after = [ "network-online.target" ];
-    wants = [ "network-online.target" ];
-    serviceConfig = {
-      User = "saarthi-hub";
-      ExecStart = ''
-        ${hub}/bin/saarthi-hub --listen 0.0.0.0:7700 --db /var/lib/saarthi-hub/hub.db \
-          --node-tokens /run/agenix/saarthiNodeTokens --client-tokens /run/agenix/saarthiClientTokens
-      '';
-      Restart = "on-failure";
-    };
+  imports = [ inputs.saarthi.nixosModules.saarthi-hub ];
+  services.saarthi-hub = {
+    enable = true;
+    listen = "0.0.0.0:7700";
+    nodeTokensFile = "/run/agenix/saarthiNodeTokens";
+    clientTokensFile = "/run/agenix/saarthiClientTokens";
+    ntfy = "http://127.0.0.1:2586/saarthi";   # optional
   };
 }
 ```
 
-with `inputs.saarthi.url = "github:leoank/saarthi";` in your flake. The author's own fleet
-runs the hub this way; its module, with options for each flag, is
-[`rc2s2-hub.nix` in neusis](https://github.com/leoank/neusis/blob/main/modules/nixosModules/rc2s2-hub.nix).
+with `inputs.saarthi.url = "github:leoank/saarthi";` in your flake. It creates the
+`saarthi-hub` user, keeps the database in `/var/lib/saarthi-hub` (`dataDir`), and runs a
+hardened systemd service. The port stays closed in the firewall unless you set
+`openFirewall`. Every option is in
+[`nix/hub-module.nix`](https://github.com/leoank/saarthi/blob/main/nix/hub-module.nix).
 
 ## Checking it
 

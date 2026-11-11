@@ -26,7 +26,7 @@ spawns, with the owner's answers of 2026-11-07.
 | [ADR-0009](ADR-0009-rust-core-under-compose.md) | A Rust client core through UniFFI under a Compose app | accepted |
 | [ADR-0010](ADR-0010-agent-adapter-trait.md) | A thin agent adapter trait with Claude Code as its one implementation | accepted |
 | [ADR-0011](ADR-0011-humans-decide-in-phase-1.md) | Only humans decide in phase 1; policy rules come later | accepted |
-| [ADR-0012](ADR-0012-nix-modules-in-the-project.md) | The hub and node Nix modules live in the project until they move to neusis | accepted |
+| [ADR-0012](ADR-0012-nix-modules-in-the-project.md) | The hub and node Nix modules live in the project until they move to neusis | superseded by ADR-0041 |
 | [ADR-0013](ADR-0013-permission-request-hook-with-keystroke-release.md) | The PermissionRequest hook is the permission callback, held and released on a keystroke | accepted |
 | [ADR-0014](ADR-0014-prompts-over-the-messaging-socket.md) | Prompts go over Claude Code's messaging socket; interrupts over the PTY | accepted |
 | [ADR-0015](ADR-0015-libtailscale-through-a-hand-written-sys-crate.md) | libtailscale is linked through a hand-written sys crate built by Nix | accepted |
@@ -55,6 +55,7 @@ spawns, with the owner's answers of 2026-11-07.
 | [ADR-0038](ADR-0038-sandboxed-spawns-on-seatbelt-with-a-long-lived-token.md) | Sandboxed spawns on seatbelt, under launch profiles from the node's config, with a long-lived token | accepted |
 | [ADR-0039](ADR-0039-sessions-run-under-named-setup-tokens-the-hub-holds.md) | Sessions run under named `claude setup-token` tokens the hub holds, not leased slots | accepted |
 | [ADR-0040](ADR-0040-the-project-is-renamed-saarthi.md) | The project is renamed saarthi, "Guiding agents to victory", all the way down | accepted |
+| [ADR-0041](ADR-0041-the-nix-modules-live-here-as-their-source-of-truth.md) | The hub and node Nix modules live in this repo as their source of truth | accepted |
 
 Each record:
 

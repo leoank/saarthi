@@ -121,12 +121,28 @@ $ loginctl enable-linger $USER     # keep it running when you are logged out
 
 ### With home-manager
 
-The author's fleet runs the daemon from a home-manager module that writes the launchd
-agent or the systemd user service, with an option per flag:
-[`rc2s2-node.nix` in neusis](https://github.com/leoank/neusis/blob/main/modules/homeModules/rc2s2-node.nix).
-It adds the hooks block to the Claude settings home-manager declares (`claudeHooks`), and
-its `profiles` option is written to the file `--profiles` reads, so a sandbox's token can
-be an agenix secret at the path its `token_file` names.
+The flake exports a home-manager module that writes the launchd agent or the systemd
+user service, with an option per flag, and puts `saarthi` on your PATH:
+
+```nix
+{ inputs, config, ... }:
+{
+  imports = [ inputs.saarthi.homeModules.saarthi-node ];
+  services.saarthi-node = {
+    enable = true;
+    hub = "http://hub:7700";
+    tokenFile = "${config.home.homeDirectory}/.config/saarthi/node-token";
+    spawnRoots = [ "${config.home.homeDirectory}/workspace" ];
+  };
+}
+```
+
+with `inputs.saarthi.url = "github:leoank/saarthi";` in your flake. It adds the hooks
+block to the Claude settings home-manager declares (`claudeHooks`, on by default), and its
+`profiles` option is written to the file `--profiles` reads, so a sandbox's token can be a
+secret at the path its `token_file` names. On macOS give `tokenFile` a fixed path: launchd
+does not expand the per-user temporary directory agenix uses by default. Every option is
+in [`nix/node-module.nix`](https://github.com/leoank/saarthi/blob/main/nix/node-module.nix).
 
 ## 5. The wrapper
 

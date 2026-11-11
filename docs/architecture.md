@@ -524,8 +524,9 @@ saarthi/
   android/               compose app, consumes core as an aar
   .github/workflows/     the user guide to GitHub Pages
   nix/
-    hub-module.nix       nixos module
-    node-module.nix      home-manager module (launchd and systemd)
+    hub-module.nix       nixos module, `nixosModules.saarthi-hub`
+    node-module.nix      home-manager module (launchd and systemd), `homeModules.saarthi-node`
+    module-tests.nix     their evaluation tests, `checks.modules`
   docs/
     guide/               the user guide (mdBook, ADR-0033), `nix build .#docs`
 ```
@@ -536,7 +537,8 @@ Android SDK, NDK, emulator and a Rust toolchain with the Android target are in
 `nix develop .#android` (ADR-0024); it may add inputs of its own, such as crane or rust-overlay,
 followed by `nix flake lock` at the root. Rust, protoc, Go, and the Android SDK all exist
 in nixpkgs. The Android SDK needs an unfree licence accepted in the nixpkgs config. The
-nix modules live here for now and move to neusis later.
+nix modules live here and are their source of truth (ADR-0041): neusis imports them and
+keeps only what is its own, the secrets, the data volume and ntfy.
 
 ## Phases
 
