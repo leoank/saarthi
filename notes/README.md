@@ -46,7 +46,9 @@ landed and links the pages with the detail.
   this repo on 2026-11-11 (ADR-0040, [[AGS-20261111-ffkhjn]]): binaries, crates, protocol,
   app id and label, default paths, living docs, the notebook's namespace, and the code moved
   to `github:leoank/saarthi`. Left to the owner: the neusis modules and their option names,
-  the flake input there, and the links to this project in `manthan`.
+  the flake input there, and the links to this project in `manthan`. Since then the modules
+  live here (ADR-0041, [[AGS-20261111-htctc0]]) and manthan links by `saarthi`; neusis is
+  to be rewritten on them.
 
 ## Design
 The architecture is `docs/architecture.md`
