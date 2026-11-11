@@ -53,7 +53,22 @@ shared-token run in the background; usage per account if the endpoint allows; hu
   account's real windows recorded on it (5h 8%, 7d 36%), the own login recorded empty, an
   unknown token refused before the node, expiry set and cleared, and neither log holding
   the token's value.
-- The APK builds; not yet run on the emulator or the phone.
+- The app on the emulator against a scratch hub holding `work` (the real token) and
+  `personal` (a display-only dummy): *Claude accounts* listed both with their expiry;
+  the date picker set work's to 1 Nov 2027 ("set by hand") and *Use a year from added*
+  cleared it; the node's health screen set work as default (the watch brought it back);
+  *New session* offered *Default (work)*, personal, work and *Node's login*, and a Haiku
+  session under the default answered; *Claude accounts* then showed work's "5-hour 1% ·
+  7-day 37% · just now" and "Default on scratch". An account's name drew dimmer than its
+  expiry line; fixed (8a3ac25) and rechecked.
+- Afterwards, for the owner: node tokens generated for curiosity and ghost001, each
+  node's copy encrypted to the master key in neusis (curiosity's placeholder replaced,
+  ghost001's new), the two hub lines left in a mode-600 scratch file for `agenix edit`;
+  an empty `saarthiClaudeTokens` secret wired to the hub; ghost001 given the
+  agent-harness and a node bundle with linger. Nothing decrypted; neusis left
+  uncommitted, its checks not run (the owner's). One throwaway Haiku turn costs about
+  18.7k input tokens, nearly all cached, $0.0015 at list price, for the periodic probe
+  the owner asked about.
 - The host's `yajna` is 0.19.0 after the owner's switch; this session used the flake's
   0.30.1. Formatting: only the lines this change touched were run through rustfmt, the
   repo's older unformatted code left as it was.
