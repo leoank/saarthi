@@ -65,7 +65,12 @@ async fn main() -> Result<()> {
     let cli = Cli::parse();
     let db = Db::open(&cli.db).await?;
     let claude_tokens = match &cli.claude_tokens {
-        Some(path) => ClaudeTokens::load(path)?,
+        // A bad file costs the Claude tokens, not the hub: sessions run under each node's
+        // own login until it is fixed and the hub restarted (ADR-0044).
+        Some(path) => ClaudeTokens::load(path).unwrap_or_else(|e| {
+            tracing::error!(error = %format!("{e:#}"), "Claude tokens left out");
+            ClaudeTokens::default()
+        }),
         None => ClaudeTokens::default(),
     };
     let fingerprints: Vec<(String, String)> = claude_tokens

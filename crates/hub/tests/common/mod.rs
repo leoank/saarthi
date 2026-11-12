@@ -180,8 +180,7 @@ pub async fn start_spawning_node(
     let wrappers =
         saarthi_node::wrapper::Wrappers::new(sessions.clone(), pending.clone(), outbox.clone());
     let spawner =
-        saarthi_node::spawner::Spawner::new(claude.into(), "/bin/sh".into(), roots, None, contained, sessions.clone())
-            .unwrap();
+        saarthi_node::spawner::Spawner::new(claude.into(), "/bin/sh".into(), roots, None, contained, sessions.clone());
     let parts = link::Parts {
         sessions: sessions.clone(),
         pending: pending.clone(),

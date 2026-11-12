@@ -104,8 +104,7 @@ async fn the_core_lists_watches_answers_and_streams() {
         None,
         Default::default(),
         sessions.clone(),
-    )
-    .unwrap();
+    );
     let parts = saarthi_node::link::Parts {
         sessions: sessions.clone(),
         pending: pending.clone(),

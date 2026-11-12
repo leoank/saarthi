@@ -239,7 +239,11 @@ async fn serve(args: Serve) -> Result<()> {
     tracing::info!(socket = %wrapper_socket.display(), "listening for wrappers");
     tokio::spawn(wrappers.clone().serve(listener));
     let profiles = match &args.profiles {
-        Some(path) => Profiles::load(path, &home).map_err(anyhow::Error::msg)?,
+        // A bad profiles file costs the profiles, not the node (ADR-0044).
+        Some(path) => Profiles::load(path, &home).unwrap_or_else(|e| {
+            tracing::error!(path = %path.display(), error = %e, "launch profiles left out");
+            Profiles::default()
+        }),
         None => Profiles::default(),
     };
     let hook_socket = args
@@ -262,8 +266,7 @@ async fn serve(args: Serve) -> Result<()> {
         Some(hooks::settings(args.hook_addr, HOOK_TIMEOUT_SECS)),
         contained,
         sessions.clone(),
-    )
-    .context("--spawn-root")?;
+    );
     let sandboxed = spawner.profiles().any_sandboxed();
     let profile_dirs = spawner.claude_dirs();
     for p in spawner.profiles().all() {

@@ -37,7 +37,7 @@ $ saarthi-hub --listen 100.101.102.103:7700 --db /var/lib/saarthi-hub/hub.db \
 | `--listen` | Where nodes and clients connect. Default `127.0.0.1:7700`, reachable only from the same machine. Use the machine's tailnet address, or `0.0.0.0:7700` with the port closed in every firewall except to the tailnet. |
 | `--db` | The SQLite database. Back it up like any other SQLite file; it is the hub's whole record. |
 | `--node-tokens`, `--client-tokens` | The token files. Read at start; restart the hub after editing them. |
-| `--claude-tokens` | The Claude tokens file. Read at start, like the others. Without it, sessions run under each node's own login. |
+| `--claude-tokens` | The Claude tokens file. Read at start, like the others. Without it, or when it does not parse (the log says why), sessions run under each node's own login. |
 | `--usage-probe-node` | A node that runs a throwaway Haiku turn under each Claude token about every `--usage-probe-minutes` (default 30), so every account's usage stays fresh. It must allow headless sessions. |
 | `--ntfy` | An ntfy topic URL to publish notifications to, besides the phones' own push. |
 | `--no-notify <kind>` | Turn one kind of notification off: `permission`, `question`, `turn`, `ended`, `usage` or `token` (a Claude token about to expire). Repeat for several. |

@@ -31,9 +31,9 @@ Useful flags (all of them are in the [command line reference](../reference/cli.m
 |---|---|
 | `--claude-usage` | Report your Claude rate-limit usage as health, polled every five minutes. See [Rate limits](../using/health.md#rate-limits). Off by default. |
 | `--keep-awake` | Keep the machine from idle-sleeping while any session is busy (macOS, `caffeinate -i`), so a turn finishes when the screen turns off. Lid-close sleep still happens. Off at start by default; the switch on the node's health screen turns it on and off while the daemon runs. |
-| `--spawn-root <dir>` | Allow the app to start sessions in this directory or below it. Repeatable; without it, nobody can start sessions on this node. See [Starting sessions from the app](#starting-sessions-from-the-app). |
+| `--spawn-root <dir>` | Allow the app to start sessions in this directory or below it. Repeatable; without it, nobody can start sessions on this node. A missing directory is created at start; one that cannot be is left out, with an error in the log. See [Starting sessions from the app](#starting-sessions-from-the-app). |
 | `--claude <path>` | The `claude` that started sessions run. Default `claude`, found on your login shell's PATH. |
-| `--profiles <file>` | Launch profiles a started session may run under, such as a sandbox. See [Sandboxed sessions](#sandboxed-sessions). |
+| `--profiles <file>` | Launch profiles a started session may run under, such as a sandbox. A file that does not parse is left out, with an error in the log, and sessions run on the host. See [Sandboxed sessions](#sandboxed-sessions). |
 | `--hook-socket <path>` | Where sandboxed sessions send their hooks. Default `~/.local/state/saarthi/hook.sock`. |
 | `--ignore-cwd <glob>` | Do not track sessions whose working directory matches, for example throwaway test sessions. Repeatable. |
 | `--hold-secs` | How long a permission dialog of a plain `claude` session waits for the phone before falling through to the terminal. Default 120. |

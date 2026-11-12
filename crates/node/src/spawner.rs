@@ -70,8 +70,34 @@ pub struct Contained {
     pub deny: Vec<PathBuf>,
 }
 
+/// A spawn root as a canonical directory, created when missing; None, logged, when it
+/// cannot be made or is not a directory.
+fn resolve_root(root: &Path) -> Option<PathBuf> {
+    if !root.exists() {
+        match std::fs::create_dir_all(root) {
+            Ok(()) => tracing::info!(root = %root.display(), "created a missing spawn root"),
+            Err(e) => {
+                tracing::error!(root = %root.display(), error = %e, "spawn root left out: cannot create it");
+                return None;
+            }
+        }
+    }
+    match root.canonicalize() {
+        Ok(dir) if dir.is_dir() => Some(dir),
+        Ok(_) => {
+            tracing::error!(root = %root.display(), "spawn root left out: not a directory");
+            None
+        }
+        Err(e) => {
+            tracing::error!(root = %root.display(), error = %e, "spawn root left out");
+            None
+        }
+    }
+}
+
 impl Spawner {
-    /// Roots that do not exist are an error, so a typo in the service's flags shows at start.
+    /// A root that does not exist is created; one that cannot be is left out with an error in
+    /// the log, so a bad root costs that root and never the node (ADR-0044).
     /// `hooks` is the settings block that points Claude Code's hooks at this node.
     pub fn new(
         claude: String,
@@ -80,12 +106,9 @@ impl Spawner {
         hooks: Option<Value>,
         contained: Contained,
         sessions: Arc<Sessions>,
-    ) -> std::io::Result<Arc<Self>> {
-        let roots = roots
-            .iter()
-            .map(|r| r.canonicalize())
-            .collect::<std::io::Result<_>>()?;
-        Ok(Arc::new(Self {
+    ) -> Arc<Self> {
+        let roots = roots.iter().filter_map(|r| resolve_root(r)).collect();
+        Arc::new(Self {
             claude,
             shell,
             roots,
@@ -93,7 +116,7 @@ impl Spawner {
             contained,
             sessions,
             procs: Mutex::new(HashMap::new()),
-        }))
+        })
     }
 
     pub fn profiles(&self) -> &Profiles {
@@ -632,8 +655,7 @@ echo closed >> LOG
             None,
             Contained::default(),
             sessions.clone(),
-        )
-        .unwrap();
+        );
         Fixture {
             root: root.canonicalize().unwrap(),
             _dir: dir,
@@ -736,8 +758,7 @@ echo closed >> LOG
             Some(json!({"hooks": {"PermissionRequest": "node"}})),
             Contained::default(),
             f.sessions.clone(),
-        )
-        .unwrap();
+        );
         let cwd = f.root.join("repo").to_string_lossy().into_owned();
         let id = uuid::Uuid::new_v4().to_string();
         let err = hooked
@@ -793,7 +814,7 @@ echo closed >> LOG
                 .await
                 .is_err()
         );
-        let off = Spawner::new("claude".into(), "/bin/sh".into(), &[], None, Contained::default(), f.sessions.clone()).unwrap();
+        let off = Spawner::new("claude".into(), "/bin/sh".into(), &[], None, Contained::default(), f.sessions.clone());
         let err = off
             .spawn(
                 &id,
@@ -908,8 +929,7 @@ echo closed >> LOG
                 deny: Vec::new(),
             },
             f.sessions.clone(),
-        )
-        .unwrap();
+        );
         assert_eq!(spawner.claude_dirs(), [("box".to_string(), base.join("state/claude"))]);
         assert_eq!(
             spawner.launch_profiles(),
