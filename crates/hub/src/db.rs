@@ -14,6 +14,22 @@ use sqlx::sqlite::{
     SqliteConnectOptions, SqliteJournalMode, SqlitePool, SqlitePoolOptions, SqliteRow,
 };
 
+/// A node as the hub records it.
+#[derive(Clone, Debug, sqlx::FromRow)]
+pub struct NodeRow {
+    pub id: String,
+    pub name: String,
+    pub version: String,
+    pub last_seen_ms: i64,
+    /// The Claude token its spawned sessions run under when none is picked; empty for its
+    /// own login.
+    pub default_claude_token: String,
+    /// The tailnet its link last came over, empty for plain TCP (ADR-0048).
+    pub tailnet: String,
+    /// Who that tailnet said the caller was: `host (login)`.
+    pub tailnet_peer: String,
+}
+
 #[derive(Clone)]
 pub struct Db {
     pool: SqlitePool,
@@ -299,26 +315,37 @@ impl Db {
             .collect())
     }
 
-    /// (id, name, version, last seen, default Claude token) of every node.
-    pub async fn nodes(&self) -> Result<Vec<(String, String, String, i64, String)>> {
+    /// Every node's record.
+    pub async fn nodes(&self) -> Result<Vec<NodeRow>> {
         Ok(sqlx::query_as(
-            "SELECT id, name, version, last_seen_ms, default_claude_token FROM nodes ORDER BY name",
+            "SELECT id, name, version, last_seen_ms, default_claude_token, tailnet, tailnet_peer
+             FROM nodes ORDER BY name",
         )
-        .fetch_all(&self.pool)
-        .await?)
+            .fetch_all(&self.pool)
+            .await?)
     }
 
-    /// (id, name, version, last seen, default Claude token) of one node.
-    pub async fn node(
-        &self,
-        node_id: &str,
-    ) -> Result<Option<(String, String, String, i64, String)>> {
+    /// One node's record.
+    pub async fn node(&self, node_id: &str) -> Result<Option<NodeRow>> {
         Ok(sqlx::query_as(
-            "SELECT id, name, version, last_seen_ms, default_claude_token FROM nodes WHERE id = ?1",
+            "SELECT id, name, version, last_seen_ms, default_claude_token, tailnet, tailnet_peer
+             FROM nodes WHERE id = ?1",
         )
-        .bind(node_id)
-        .fetch_optional(&self.pool)
-        .await?)
+            .bind(node_id)
+            .fetch_optional(&self.pool)
+            .await?)
+    }
+
+    /// Records the tailnet a node's link came over and who the tailnet says the caller is
+    /// (ADR-0048); both empty for a link over plain TCP. Recorded, not checked.
+    pub async fn set_node_tailnet(&self, node_id: &str, tailnet: &str, peer: &str) -> Result<()> {
+        sqlx::query("UPDATE nodes SET tailnet = ?2, tailnet_peer = ?3 WHERE id = ?1")
+            .bind(node_id)
+            .bind(tailnet)
+            .bind(peer)
+            .execute(&self.pool)
+            .await?;
+        Ok(())
     }
 
     /// The Claude token a node's spawned sessions run under when none is picked; empty for
@@ -685,6 +712,21 @@ pub struct Windows {
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    #[tokio::test]
+    async fn a_node_keeps_the_tailnet_it_last_linked_over_until_it_links_over_tcp() {
+        let dir = tempfile::tempdir().unwrap();
+        let db = Db::open(&dir.path().join("hub.db")).await.unwrap();
+        let (node, _) = db.register_node("mac", "0.4.0", 1).await.unwrap();
+        let row = db.node(&node).await.unwrap().unwrap();
+        assert_eq!((row.tailnet.as_str(), row.tailnet_peer.as_str()), ("", ""));
+        db.set_node_tailnet(&node, "home", "mac (me@github)").await.unwrap();
+        db.register_node("mac", "0.4.0", 2).await.unwrap();
+        let row = db.nodes().await.unwrap().remove(0);
+        assert_eq!((row.tailnet.as_str(), row.tailnet_peer.as_str()), ("home", "mac (me@github)"));
+        db.set_node_tailnet(&node, "", "").await.unwrap();
+        assert_eq!(db.node(&node).await.unwrap().unwrap().tailnet, "");
+    }
 
     #[tokio::test]
     async fn a_session_counts_as_just_ended_once() {

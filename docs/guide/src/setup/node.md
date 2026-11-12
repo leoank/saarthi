@@ -44,6 +44,25 @@ Useful flags (all of them are in the [command line reference](../reference/cli.m
 Without `--hub`, the daemon prints everything it observes to stdout as JSON lines, which
 is a handy way to see what it sees.
 
+### Reaching the hub on another tailnet
+
+If the hub serves a tailnet this machine is not on (see
+[On several tailnets](hub.md#on-several-tailnets)), the daemon can join it with a machine
+of its own, whatever tailnet the host itself uses (ADR-0048). Make a pre-approved auth key
+on the hub's tailnet and:
+
+```console
+$ saarthi node serve --hub http://saarthi-hub:7700 --token-file ~/.config/saarthi/node-token \
+    --tailnet --tailnet-authkey-file ~/.config/saarthi/tailnet-key
+```
+
+Every connection to the hub then goes through that machine, named `saarthi-<name>`
+(`--tailnet-hostname` to change it), with its state in `~/.local/state/saarthi/tailnet`
+(`--tailnet-state`). The key is read only for the first join; you can delete it after.
+The log says `on the tailnet` once it has joined; until then, and for a moment after a
+restart, the link reports `not on the tailnet yet` or a name it cannot resolve, and
+retries.
+
 ## 3. The hooks
 
 Claude Code has to be told to send its events to the daemon. `saarthi node hooks` prints
@@ -157,6 +176,8 @@ user service, with an option per flag, and puts `saarthi` on your PATH:
     hub = "http://hub:7700";
     tokenFile = "${config.home.homeDirectory}/.config/saarthi/node-token";
     spawnRoots = [ "${config.home.homeDirectory}/workspace" ];
+    # optional: reach the hub through a tailnet machine of the node's own
+    # tailnet = { enable = true; authKeyFile = "/run/agenix/saarthiNodeTailnetKey"; };
   };
 }
 ```

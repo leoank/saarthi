@@ -134,6 +134,20 @@ struct Serve {
     /// A file holding this node's pre-shared hub token.
     #[arg(long)]
     token_file: Option<PathBuf>,
+    /// Reach the hub through a tailnet identity of the node's own instead of the host's
+    /// network (ADR-0048); `--hub` then names the hub as on that tailnet,
+    /// `http://saarthi-hub:7700`.
+    #[arg(long, requires = "hub")]
+    tailnet: bool,
+    /// The auth key for the first join; not read once the state exists.
+    #[arg(long, requires = "tailnet")]
+    tailnet_authkey_file: Option<PathBuf>,
+    /// The node's machine name on the tailnet. Defaults to `saarthi-<name>`.
+    #[arg(long, requires = "tailnet")]
+    tailnet_hostname: Option<String>,
+    /// Where the identity keeps its state. Defaults to `~/.local/state/saarthi/tailnet`.
+    #[arg(long, requires = "tailnet")]
+    tailnet_state: Option<PathBuf>,
     /// The name this node registers under; the hub keys nodes by token, not by name.
     #[arg(long)]
     name: Option<String>,
@@ -324,6 +338,30 @@ async fn serve(args: Serve) -> Result<()> {
                 .name
                 .or_else(sysinfo::System::host_name)
                 .unwrap_or_else(|| "node".to_string());
+            if args.tailnet {
+                link::dial_via_tailnet();
+                let opts = saarthi_tailnet::Options {
+                    name: "hub".to_string(),
+                    dir: args.tailnet_state.unwrap_or_else(|| {
+                        home.join(".local/state/saarthi/tailnet")
+                    }),
+                    hostname: args
+                        .tailnet_hostname
+                        .unwrap_or_else(|| format!("saarthi-{name}")),
+                    authkey_file: args.tailnet_authkey_file,
+                    ephemeral: false,
+                };
+                // Until it has joined the link retries; a tailnet that cannot be joined
+                // costs the link, not the node (ADR-0044).
+                tokio::spawn(async move {
+                    match saarthi_tailnet::Tailnet::start(opts).await {
+                        Ok(t) => link::tailnet_up(t),
+                        Err(e) => {
+                            tracing::error!(error = %format!("{e:#}"), "the hub's tailnet left out")
+                        }
+                    }
+                });
+            }
             let cfg = link::Config {
                 hub,
                 token,

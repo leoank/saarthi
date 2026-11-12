@@ -53,6 +53,17 @@ let
     "--claude"
     cfg.claude
   ]
+  ++ lib.optionals cfg.tailnet.enable (
+    [ "--tailnet" ]
+    ++ lib.optionals (cfg.tailnet.authKeyFile != null) [
+      "--tailnet-authkey-file"
+      cfg.tailnet.authKeyFile
+    ]
+    ++ lib.optionals (cfg.tailnet.hostname != null) [
+      "--tailnet-hostname"
+      cfg.tailnet.hostname
+    ]
+  )
   ++ lib.optionals (cfg.profiles != { }) [
     "--profiles"
     "${profilesFile}"
@@ -93,6 +104,28 @@ in
       type = lib.types.nullOr lib.types.str;
       default = null;
       description = "Name this node registers under. Null: the hostname.";
+    };
+    tailnet = {
+      enable = lib.mkEnableOption ''
+        reaching the hub through a tailnet identity of the node's own, embedded tsnet
+        (ADR-0048), whatever tailnet the host is on; `hub` then names the hub as on that
+        tailnet, such as `http://saarthi-hub:7700`. The state is kept in
+        `~/.local/state/saarthi/tailnet`
+      '';
+      authKeyFile = lib.mkOption {
+        type = lib.types.nullOr lib.types.str;
+        default = null;
+        example = "/run/agenix/saarthiNodeTailnetKey";
+        description = ''
+          File holding a pre-approved auth key for the first join; not read once the state
+          exists. Null: the state must exist already.
+        '';
+      };
+      hostname = lib.mkOption {
+        type = lib.types.nullOr lib.types.str;
+        default = null;
+        description = "The node's machine name on the tailnet. Null: `saarthi-<name>`.";
+      };
     };
 
     hookAddr = lib.mkOption {

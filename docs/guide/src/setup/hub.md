@@ -45,6 +45,30 @@ $ saarthi-hub --listen 100.101.102.103:7700 --db /var/lib/saarthi-hub/hub.db \
 The hub speaks plain gRPC with no TLS. Tailscale encrypts the traffic between machines;
 do not expose the port to the internet.
 
+## On several tailnets
+
+The hub can also join tailnets itself, with a machine of its own on each, so nodes on a
+tailnet the hub's host is not on can still reach it (ADR-0048). Make a **pre-approved**
+auth key in each tailnet's admin console (*Settings → Keys*; reusable or not, but not
+ephemeral) and give it to the hub once:
+
+```console
+$ saarthi-hub … --tailnet home=/run/secrets/home-tailnet-key --tailnet work=/run/secrets/work-tailnet-key
+```
+
+| Flag | What it does |
+|---|---|
+| `--tailnet <name>[=<key file>]` | Join the tailnet you call `<name>` and serve there too. Repeat for each tailnet. The key is read only for the first join; after that, `<name>` alone is enough. A tailnet that cannot be joined is left out, with an error in the log, and the hub runs on. |
+| `--tailnet-hostname` | The hub's machine name on every tailnet. Default `saarthi-hub`, so nodes there use `--hub http://saarthi-hub:7700`. |
+| `--tailnet-port` | The port it serves on each tailnet. Default 7700. |
+| `--tailnet-state` | Where each identity keeps its state, a directory per name. Default `tailnet/` beside the database. Back it up with the database: losing it costs a new key and a new machine on the tailnet. |
+
+`--listen` keeps serving the host's own network beside them, which is how the phone and
+`saarthi ctl` reach the hub for now. The log says `on the tailnet` once each has joined,
+and `node linked over a tailnet` with who the tailnet says the caller is; `saarthi ctl
+nodes` shows it too. It is recorded, not checked: the node token is still what admits a
+node.
+
 ## Claude accounts
 
 Sessions started from the app or `saarthi ctl` can run under a Claude account other than
@@ -101,6 +125,7 @@ The flake exports a NixOS module, with the token files from your secrets manager
     claudeTokensFile = "/run/agenix/saarthiClaudeTokens";   # optional
     usageProbeNode = "server";                               # optional, a node on the hub's host
     ntfy = "http://127.0.0.1:2586/saarthi";                  # optional
+    tailnets.home.authKeyFile = "/run/agenix/saarthiHubHomeTailnetKey";  # optional
   };
 }
 ```
@@ -108,7 +133,8 @@ The flake exports a NixOS module, with the token files from your secrets manager
 with `inputs.saarthi.url = "github:leoank/saarthi";` in your flake. It creates the
 `saarthi-hub` user, keeps the database in `/var/lib/saarthi-hub` (`dataDir`), and runs a
 hardened systemd service. The port stays closed in the firewall unless you set
-`openFirewall`. Every option is in
+`openFirewall`. Each entry of `tailnets` is a `--tailnet`, with its state under
+`dataDir`. Every option is in
 [`nix/hub-module.nix`](https://github.com/leoank/saarthi/blob/main/nix/hub-module.nix).
 
 ## Checking it

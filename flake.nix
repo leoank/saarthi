@@ -59,6 +59,36 @@
             targets = [ "aarch64-linux-android" ];
           };
 
+          # libtailscale as a static archive for the tailnet crate (ADR-0015, ADR-0048).
+          # `ac7ed43` marks the descriptors it hands out close-on-exec, so a spawned
+          # session never inherits a tailnet connection ([[EXP-20261112-rq8kgc]]). Bump
+          # the Go attribute with the rev when its go.mod moves.
+          libtailscale = pkgs.buildGo127Module {
+            pname = "libtailscale";
+            version = "0-unstable-2026-10-30";
+            src = pkgs.fetchFromGitHub {
+              owner = "tailscale";
+              repo = "libtailscale";
+              rev = "ac7ed43af14e19e1c1810ee9f8319872c6beb412";
+              hash = "sha256-K8QGeCyKBcYqBt9O192QpQ4EFRjgiPPE5djD+jyoM3M=";
+            };
+            vendorHash = "sha256-1Y21dNgCNMfVQvZN6k66GHvgdZo8lle5J8B5UES2Ryg=";
+            env.CGO_ENABLED = "1";
+            # A `package main` with cgo exports, built as a c-archive.
+            buildPhase = ''
+              runHook preBuild
+              go build -buildvcs=false -buildmode=c-archive -o libtailscale.a .
+              runHook postBuild
+            '';
+            installPhase = ''
+              runHook preInstall
+              install -Dm644 libtailscale.a $out/lib/libtailscale.a
+              install -Dm644 tailscale.h $out/include/tailscale.h
+              runHook postInstall
+            '';
+            doCheck = false;
+          };
+
           # The workspace source, shared by the checks and the binary packages:
           # spikes/, docs/ and android/ stay out of it.
           saarthiSrc = lib.fileset.toSource {
@@ -73,7 +103,7 @@
           # check already builds and tests everything.
           mkBin = pname: bin: pkgs.rustPlatform.buildRustPackage {
             inherit pname;
-            version = "0.3.0";
+            version = "0.4.0";
             src = saarthiSrc;
             cargoLock.lockFile = ./Cargo.lock;
             nativeBuildInputs = [ pkgs.protobuf ];
@@ -81,6 +111,7 @@
             # own copy is bundled); the macOS SDK stopped providing it in nixpkgs.
             buildInputs = [ pkgs.sqlite ];
             PROTOC = "${pkgs.protobuf}/bin/protoc";
+            LIBTAILSCALE_LIB_DIR = "${libtailscale}/lib";
             cargoBuildFlags = [ "--bin" bin ];
             doCheck = false;
             meta.mainProgram = bin;
@@ -91,6 +122,7 @@
 
           # The deployable binaries, the defaults of the hub and node modules.
           packages = rec {
+            inherit libtailscale;
             saarthi-hub = mkBin "saarthi-hub" "saarthi-hub";
             saarthi = mkBin "saarthi" "saarthi";
             # The user guide for GitHub Pages: mdBook, with the command-line reference and
@@ -118,6 +150,7 @@
               inputs.yajna.packages.${system}.yajna
             ];
             PROTOC = "${pkgs.protobuf}/bin/protoc";
+            LIBTAILSCALE_LIB_DIR = "${libtailscale}/lib";
             RUST_SRC_PATH = "${pkgs.rustPlatform.rustLibSrc}";
           };
 
@@ -173,7 +206,7 @@
           # The cargo workspace, built and tested; spikes/ and docs/ stay out of the source.
           checks.workspace = pkgs.rustPlatform.buildRustPackage {
             pname = "saarthi";
-            version = "0.3.0";
+            version = "0.4.0";
             src = lib.fileset.toSource {
               root = ./.;
               fileset = lib.fileset.unions [ ./Cargo.toml ./Cargo.lock ./crates ];
@@ -182,6 +215,7 @@
             nativeBuildInputs = [ pkgs.protobuf ];
             buildInputs = [ pkgs.sqlite ];
             PROTOC = "${pkgs.protobuf}/bin/protoc";
+            LIBTAILSCALE_LIB_DIR = "${libtailscale}/lib";
           };
         };
     };

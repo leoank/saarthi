@@ -20,18 +20,36 @@ use tokio_stream::wrappers::TcpListenerStream;
 
 use crate::node_service::{Hub, now_ms};
 
-/// Serves both services on a listener until the task is dropped. The listener is the
-/// transport boundary: the embedded tsnet listener takes its place in phase 3.
-pub async fn serve(listener: TcpListener, hub: Hub) -> Result<()> {
-    // Pings from the hub's side too: a node or phone that vanished is found within half a
-    // minute instead of when the OS gives up on the connection (phase 1.5 item 15).
+/// Both services, with HTTP/2 pings from the hub's side too: a node or phone that vanished
+/// is found within half a minute instead of when the OS gives up on the connection (phase
+/// 1.5 item 15).
+fn router(hub: Hub) -> tonic::transport::server::Router {
     tonic::transport::Server::builder()
         .http2_keepalive_interval(Some(std::time::Duration::from_secs(15)))
         .http2_keepalive_timeout(Some(std::time::Duration::from_secs(10)))
         .tcp_keepalive(Some(std::time::Duration::from_secs(30)))
         .add_service(NodeServiceServer::new(hub.clone()))
         .add_service(ControlServiceServer::new(hub))
+}
+
+/// Serves both services on a TCP listener until the task is dropped: the host's own
+/// network, and so the host's tailscaled (ADR-0004).
+pub async fn serve(listener: TcpListener, hub: Hub) -> Result<()> {
+    router(hub)
         .serve_with_incoming(TcpListenerStream::new(listener))
+        .await?;
+    Ok(())
+}
+
+/// Serves both services on `port` of an embedded tailnet identity (ADR-0048). Each
+/// request carries the caller's [`saarthi_tailnet::Remote`].
+pub async fn serve_tailnet(
+    tailnet: &std::sync::Arc<saarthi_tailnet::Tailnet>,
+    port: u16,
+    hub: Hub,
+) -> Result<()> {
+    router(hub)
+        .serve_with_incoming(tailnet.incoming(port)?)
         .await?;
     Ok(())
 }
@@ -92,8 +110,8 @@ async fn probe_due(
         .nodes()
         .await?
         .into_iter()
-        .find(|n| n.1 == node)
-        .map(|n| n.0)
+        .find(|n| n.name == node)
+        .map(|n| n.id)
     else {
         return Ok(());
     };

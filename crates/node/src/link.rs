@@ -113,8 +113,25 @@ impl Buffer {
     }
 }
 
-/// The transport boundary: today a plain TCP connection; the embedded tsnet dialer
-/// replaces this function in phase 3.
+/// Whether this node reaches the hub through a tailnet identity of its own (ADR-0048),
+/// set once at start; the identity itself arrives when it has joined.
+static VIA_TAILNET: AtomicBool = AtomicBool::new(false);
+static TAILNET: std::sync::OnceLock<Arc<saarthi_tailnet::Tailnet>> = std::sync::OnceLock::new();
+
+/// From now on every connection to the hub goes through the node's tailnet identity; until
+/// [`tailnet_up`] hands it over, connecting fails and the link retries.
+pub fn dial_via_tailnet() {
+    VIA_TAILNET.store(true, Ordering::SeqCst);
+}
+
+/// The node's tailnet identity has joined.
+pub fn tailnet_up(tailnet: Arc<saarthi_tailnet::Tailnet>) {
+    let _ = TAILNET.set(tailnet);
+}
+
+/// The transport boundary (ADR-0004): plain TCP over the host's network, or the node's own
+/// tailnet identity (ADR-0048), where the hub's name may not resolve for a moment after a
+/// start ([[EXP-20261112-rq8kgc]]) and the caller's retry covers it.
 async fn dial(hub: &str) -> Result<Channel> {
     // A machine that sleeps leaves a dead link behind; HTTP/2 pings notice within half a
     // minute so the stream ends and the outbox's buffer is resent on the next connection,
@@ -126,6 +143,15 @@ async fn dial(hub: &str) -> Result<Channel> {
         .http2_keep_alive_interval(std::time::Duration::from_secs(15))
         .keep_alive_timeout(std::time::Duration::from_secs(10))
         .keep_alive_while_idle(true);
+    if VIA_TAILNET.load(Ordering::SeqCst) {
+        let Some(tailnet) = TAILNET.get() else {
+            bail!("not on the tailnet yet");
+        };
+        return endpoint
+            .connect_with_connector(tailnet.connector())
+            .await
+            .with_context(|| format!("connecting to {hub} over tailnet {}", tailnet.name()));
+    }
     endpoint
         .connect()
         .await

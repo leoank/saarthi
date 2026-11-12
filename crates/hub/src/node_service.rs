@@ -57,9 +57,11 @@ impl NodeService for Hub {
         };
         let (tx, rx) = mpsc::channel(256);
         let hub = self.clone();
+        // Set when the link came over one of the hub's tailnets (ADR-0048).
+        let remote = request.extensions().get::<saarthi_tailnet::Remote>().cloned();
         let inbound = request.into_inner();
         tokio::spawn(async move {
-            if let Err(e) = serve_node(&hub, &name, inbound, &tx).await {
+            if let Err(e) = serve_node(&hub, &name, remote, inbound, &tx).await {
                 tracing::warn!(node = %name, error = %format!("{e:#}"), "node link ended");
                 let _ = tx
                     .send(Err(Status::internal("the hub could not record the stream")))
@@ -126,6 +128,7 @@ impl Hub {
 async fn serve_node(
     hub: &Hub,
     name: &str,
+    remote: Option<saarthi_tailnet::Remote>,
     mut inbound: Streaming<NodeMessage>,
     tx: &ToNode,
 ) -> Result<()> {
@@ -137,6 +140,15 @@ async fn serve_node(
         tracing::info!(node = %name, claimed = %register.name, "node registered under another name than its token's");
     }
     let (node_id, last_seq) = db.register_node(name, &register.version, now_ms()).await?;
+    let (tailnet, peer) = match &remote {
+        Some(r) => {
+            let peer = r.peer().await.map(|p| p.to_string()).unwrap_or_default();
+            tracing::info!(node = %name, tailnet = %r.tailnet_name(), %peer, "node linked over a tailnet");
+            (r.tailnet_name().to_string(), peer)
+        }
+        None => (String::new(), String::new()),
+    };
+    db.set_node_tailnet(&node_id, &tailnet, &peer).await?;
     for s in &register.sessions {
         db.store_session(&node_id, s).await?;
     }

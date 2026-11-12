@@ -45,6 +45,12 @@ let
     openFirewall = true;
     extraArgs = [ "--x" ];
   };
+  hubTailnet = hub {
+    tailnets = {
+      home.authKeyFile = "/run/agenix/h";
+      work = { };
+    };
+  };
   exec = c: c.systemd.services.saarthi-hub.serviceConfig.ExecStart;
 
   hubTests = {
@@ -65,6 +71,8 @@ let
           systemUser = hubBase.users.users.saarthi-hub.isSystemUser;
           rw = s.serviceConfig.ReadWritePaths;
           firewallClosed = !(builtins.elem 7700 hubBase.networking.firewall.allowedTCPPorts);
+          noTailnet = !(lib.hasInfix "--tailnet" e);
+          families = s.serviceConfig.RestrictAddressFamilies;
         };
       expected = {
         wantedBy = [ "multi-user.target" ];
@@ -77,6 +85,26 @@ let
         systemUser = true;
         rw = [ "/var/lib/saarthi-hub" ];
         firewallClosed = true;
+        noTailnet = true;
+        families = [
+          "AF_INET"
+          "AF_INET6"
+        ];
+      };
+    };
+    test-hub-tailnets = {
+      expr = {
+        flags = lib.hasSuffix "--tailnet-hostname saarthi-hub --tailnet-port 7700 --tailnet 'home=/run/agenix/h' --tailnet work" (exec hubTailnet);
+        families = hubTailnet.systemd.services.saarthi-hub.serviceConfig.RestrictAddressFamilies;
+      };
+      expected = {
+        flags = true;
+        families = [
+          "AF_INET"
+          "AF_INET6"
+          "AF_UNIX"
+          "AF_NETLINK"
+        ];
       };
     };
     test-hub-options = {
@@ -165,6 +193,10 @@ let
     ];
     claude = "/opt/claude";
     profiles.sandbox.backend = "seatbelt";
+    tailnet = {
+      enable = true;
+      authKeyFile = "/run/agenix/tk";
+    };
     extraArgs = [
       "--hold-secs"
       "60"
@@ -215,8 +247,10 @@ let
             "--spawn-root"
             "--claude "
             "--profiles"
+            "--tailnet"
           ];
           name = lib.hasInfix "--name rogue" l;
+          tailnet = lib.hasInfix "--claude /opt/claude --tailnet --tailnet-authkey-file /run/agenix/tk --profiles" l;
           ignore = lib.hasInfix "--ignore-cwd" l && lib.hasInfix "live-work-" l;
           usage = lib.hasInfix "--claude-usage --keep-awake --spawn-root /home/u/a --spawn-root /home/u/b --claude /opt/claude" l;
           profiles =
@@ -226,6 +260,7 @@ let
         expected = {
           off = false;
           name = true;
+          tailnet = true;
           ignore = true;
           usage = true;
           profiles = true;

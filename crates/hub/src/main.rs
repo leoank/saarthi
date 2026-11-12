@@ -21,9 +21,24 @@ use saarthi_hub::tokens::Tokens;
     about = "saarthi hub: records every node's sessions, events and health, and relays decisions"
 )]
 struct Cli {
-    /// Where nodes connect.
+    /// Where nodes and clients connect over the host's own network.
     #[arg(long, default_value = "127.0.0.1:7700")]
     listen: SocketAddr,
+    /// Also serve on a tailnet through an identity of the hub's own (ADR-0048):
+    /// `<name>=<auth key file>`, or `<name>` once its state exists. The key is read only
+    /// for the first join. Repeatable, one identity per tailnet.
+    #[arg(long = "tailnet", value_name = "NAME[=KEY_FILE]")]
+    tailnets: Vec<String>,
+    /// The hub's machine name on every tailnet it serves.
+    #[arg(long, default_value = "saarthi-hub")]
+    tailnet_hostname: String,
+    /// The port the hub serves on each tailnet.
+    #[arg(long, default_value_t = 7700)]
+    tailnet_port: u16,
+    /// Where each tailnet identity keeps its state, in a directory per name. Defaults to
+    /// `tailnet/` beside the database.
+    #[arg(long)]
+    tailnet_state: Option<PathBuf>,
     /// The SQLite database; created on first start.
     #[arg(long)]
     db: PathBuf,
@@ -114,11 +129,45 @@ async fn main() -> Result<()> {
             }
         }
     });
+    let state = cli.tailnet_state.clone().unwrap_or_else(|| {
+        cli.db.parent().unwrap_or(std::path::Path::new(".")).join("tailnet")
+    });
+    for spec in &cli.tailnets {
+        let (name, key) = match spec.split_once('=') {
+            Some((n, k)) => (n.to_string(), Some(PathBuf::from(k))),
+            None => (spec.clone(), None),
+        };
+        let opts = saarthi_tailnet::Options {
+            dir: state.join(&name),
+            name,
+            hostname: cli.tailnet_hostname.clone(),
+            authkey_file: key,
+            ephemeral: false,
+        };
+        // A tailnet that cannot be joined costs that tailnet, not the hub (ADR-0044).
+        tokio::spawn(serve_tailnet(opts, cli.tailnet_port, hub.clone()));
+    }
     tokio::select! {
         r = saarthi_hub::serve(listener, hub) => r,
         _ = tokio::signal::ctrl_c() => {
             tracing::info!("stopping");
             Ok(())
         }
+    }
+}
+
+/// Joins one tailnet and serves on it; failures are logged and leave the rest running.
+async fn serve_tailnet(opts: saarthi_tailnet::Options, port: u16, hub: Hub) {
+    let name = opts.name.clone();
+    let tailnet = match saarthi_tailnet::Tailnet::start(opts).await {
+        Ok(t) => t,
+        Err(e) => {
+            tracing::error!(tailnet = %name, error = %format!("{e:#}"), "tailnet left out");
+            return;
+        }
+    };
+    tracing::info!(tailnet = %name, port, "hub serving on the tailnet");
+    if let Err(e) = saarthi_hub::serve_tailnet(&tailnet, port, hub).await {
+        tracing::error!(tailnet = %name, error = %format!("{e:#}"), "serving on the tailnet stopped");
     }
 }

@@ -62,6 +62,7 @@ spawns, with the owner's answers of 2026-11-07.
 | [ADR-0045](ADR-0045-keep-awake-on-linux-holds-a-logind-inhibitor.md) | Keep-awake on Linux holds a logind inhibitor | accepted |
 | [ADR-0046](ADR-0046-a-terminal-session-follows-the-node-s-default-account.md) | A terminal session follows the node's default account | accepted |
 | [ADR-0047](ADR-0047-a-terminal-dashboard-not-a-terminal-app.md) | A terminal dashboard, not a terminal app | accepted |
+| [ADR-0048](ADR-0048-the-hub-and-the-node-embed-tsnet-beside-plain-tcp.md) | The hub and the node embed tsnet beside plain TCP | accepted |
 
 Each record:
 

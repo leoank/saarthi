@@ -267,8 +267,13 @@ pub async fn run(hub: &str, token: &str, cmd: Ctl) -> Result<()> {
                 } else {
                     format!("  default token: {}", n.default_claude_token)
                 };
+                let tailnet = if n.tailnet.is_empty() {
+                    String::new()
+                } else {
+                    format!("  tailnet {}: {}", n.tailnet, n.tailnet_peer)
+                };
                 println!(
-                    "{}  {}  {}  {state}{roots}{profiles}{token}",
+                    "{}  {}  {}  {state}{roots}{profiles}{token}{tailnet}",
                     n.id, n.name, n.version
                 );
             }

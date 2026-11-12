@@ -58,6 +58,11 @@ message Node {
   // The Claude token its spawned sessions run under when none is picked; empty for the
   // node's own login.
   string default_claude_token = 8;
+  // The tailnet the node's link last came over, by the hub's name for it; empty for plain
+  // TCP (ADR-0048).
+  string tailnet = 9;
+  // Who that tailnet said the caller was, `host (login)`. Recorded, not checked.
+  string tailnet_peer = 10;
 }
 
 message ListNodesRequest {}

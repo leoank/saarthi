@@ -2442,7 +2442,7 @@ checksum = "9774ba4a74de5f7b1c1451ed6cd5285a32eddb5cccb8cc655a4e50009e06477f"
 
 [[package]]
 name = "saarthi-core"
-version = "0.3.0"
+version = "0.4.0"
 dependencies = [
  "axum",
  "saarthi-hub",
@@ -2458,7 +2458,7 @@ dependencies = [
 
 [[package]]
 name = "saarthi-hub"
-version = "0.3.0"
+version = "0.4.0"
 dependencies = [
  "anyhow",
  "axum",
@@ -2466,6 +2466,7 @@ dependencies = [
  "reqwest",
  "saarthi-node",
  "saarthi-proto",
+ "saarthi-tailnet",
  "serde_json",
  "sha2 0.10.9",
  "sqlx",
@@ -2480,7 +2481,7 @@ dependencies = [
 
 [[package]]
 name = "saarthi-node"
-version = "0.3.0"
+version = "0.4.0"
 dependencies = [
  "anyhow",
  "axum",
@@ -2496,6 +2497,7 @@ dependencies = [
  "ratatui",
  "reqwest",
  "saarthi-proto",
+ "saarthi-tailnet",
  "serde",
  "serde_json",
  "sha2 0.10.9",
@@ -2512,7 +2514,7 @@ dependencies = [
 
 [[package]]
 name = "saarthi-proto"
-version = "0.3.0"
+version = "0.4.0"
 dependencies = [
  "prost",
  "tokio",
@@ -2520,6 +2522,22 @@ dependencies = [
  "tonic",
  "tonic-prost",
  "tonic-prost-build",
+]
+
+[[package]]
+name = "saarthi-tailnet"
+version = "0.4.0"
+dependencies = [
+ "anyhow",
+ "hyper-util",
+ "libc",
+ "serde_json",
+ "tempfile",
+ "tokio",
+ "tokio-stream",
+ "tonic",
+ "tower",
+ "tracing",
 ]
 
 [[package]]
@@ -3569,7 +3587,7 @@ dependencies = [
 
 [[package]]
 name = "uniffi-bindgen"
-version = "0.3.0"
+version = "0.4.0"
 dependencies = [
  "uniffi",
 ]

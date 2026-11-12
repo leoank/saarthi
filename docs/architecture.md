@@ -139,8 +139,9 @@ facts come from hooks and the transcript, and the PTY is only a channel for inpu
   `LAUNCH_SPAWNED`, and its permission dialogs are held as long as a wrapped one's.
 - **Sandbox runtime (phase 3).** Runs a spawned session inside a containment backend
   under a launch profile. See "Sandboxed sessions".
-- **Tailnet identity (phase 3).** Embedded tsnet, so the daemon reaches the hub on the
-  hub's tailnet whatever network the host is on.
+- **Tailnet identity.** Optionally (`--tailnet`), an embedded tsnet identity of its own,
+  so the daemon reaches the hub on the hub's tailnet whatever network the host is on;
+  every connection to the hub is dialled through it (ADR-0048).
 
 ### saarthi-hub
 
@@ -174,8 +175,10 @@ One Rust binary, tonic for gRPC, sqlx on SQLite in WAL mode.
   each phone registered, which the app shows as its own notification with Allow and Deny
   (ADR-0026), and to an optional ntfy topic (ADR-0025). Each kind can be switched off
   with `--no-notify <kind>` (ADR-0029).
-- **Tailnet identities (phase 3).** One embedded tsnet instance per tailnet the hub
-  serves.
+- **Tailnet identities.** One embedded tsnet identity per tailnet the hub serves
+  (`--tailnet`, repeatable), each serving both services beside the TCP listener. On each
+  node registration over a tailnet the hub records which tailnet and who the tailnet says
+  the caller is (ADR-0048).
 
 ### saarthi-proto
 
@@ -507,6 +510,17 @@ for clients (`--node-tokens`, `--client-tokens`), and the hub also recording eac
 tailnet identity. The hub and daemon get a transport boundary from day one, a
 listener and a dialer, so the embedded tsnet lands later without touching the services.
 
+Phase 3 lands it for the hub and the node (ADR-0048, [[EXP-20261112-rq8kgc]]). The crate
+`saarthi-tailnet` wraps one libtailscale identity: libtailscale's connections are stream
+sockets, so tonic serves those accepted on the tailnet through `serve_with_incoming` and
+dials through `connect_with_connector`, with the blocking C calls on threads of their own.
+The hub serves on every tailnet it is given and keeps its TCP listener, which the phone,
+`ctl` and the tests use; a node with `--tailnet` dials the hub only through its own
+identity. A first join takes an auth key file; the state directory carries the identity
+after. A start from saved state returns before the hub's name resolves, so the first dial
+can fail and the link's backoff retries it. Clients get their own identities with the
+phone's tsnet.
+
 The realistic libraries, checked on 2026-10-16:
 
 - **libtailscale**: full tsnet, multiple handles per process, NAT traversal, certs via
@@ -536,6 +550,7 @@ saarthi/
   Cargo.toml             workspace
   crates/
     proto/               .proto files and generated rust
+    tailnet/             embedded tsnet: libtailscale for the hub and node
     hub/
     node/
     core/                uniffi client core

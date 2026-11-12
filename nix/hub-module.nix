@@ -48,6 +48,44 @@ in
       description = "Directory of the SQLite database, `hub.db`, created on first start.";
     };
 
+    tailnets = lib.mkOption {
+      type = lib.types.attrsOf (
+        lib.types.submodule {
+          options.authKeyFile = lib.mkOption {
+            type = lib.types.nullOr lib.types.path;
+            default = null;
+            example = "/run/agenix/saarthiHubTailnetKey";
+            description = ''
+              File holding a pre-approved auth key for the first join, readable by the
+              service user; not read once the identity's state exists. Null: the state
+              must exist already.
+            '';
+          };
+        }
+      );
+      default = { };
+      example = lib.literalExpression ''{ home.authKeyFile = "/run/agenix/saarthiHubTailnetKey"; }'';
+      description = ''
+        Tailnets the hub also serves on through identities of its own, embedded tsnet
+        (ADR-0048), by a name of your choosing. Each keeps its state in
+        `<dataDir>/tailnet/<name>`; nodes and clients on that tailnet reach the hub as
+        `http://<tailnetHostname>:<tailnetPort>`. `listen` keeps serving the host's own
+        network beside them.
+      '';
+    };
+
+    tailnetHostname = lib.mkOption {
+      type = lib.types.str;
+      default = "saarthi-hub";
+      description = "The hub's machine name on every tailnet in `tailnets`.";
+    };
+
+    tailnetPort = lib.mkOption {
+      type = lib.types.port;
+      default = 7700;
+      description = "The port the hub serves on each tailnet in `tailnets`.";
+    };
+
     nodeTokensFile = lib.mkOption {
       type = lib.types.path;
       description = "File of `<node name> <token>` lines, readable by the service user.";
@@ -185,13 +223,27 @@ in
             "--no-notify"
             k
           ]) cfg.noNotify
+          ++ lib.optionals (cfg.tailnets != { }) [
+            "--tailnet-hostname"
+            cfg.tailnetHostname
+            "--tailnet-port"
+            (toString cfg.tailnetPort)
+          ]
+          ++ lib.concatLists (
+            lib.mapAttrsToList (name: t: [
+              "--tailnet"
+              (if t.authKeyFile == null then name else "${name}=${toString t.authKeyFile}")
+            ]) cfg.tailnets
+          )
           ++ cfg.extraArgs
         );
         User = cfg.user;
         Group = cfg.group;
         Restart = "on-failure";
         RestartSec = 5;
-        # The hub needs a TCP listener, its data directory and the token files.
+        # The hub needs a TCP listener, its data directory and the token files; an embedded
+        # tailnet also hands connections over unix socket pairs and watches the host's
+        # interfaces over netlink.
         NoNewPrivileges = true;
         ProtectSystem = "strict";
         ProtectHome = true;
@@ -204,6 +256,10 @@ in
         RestrictAddressFamilies = [
           "AF_INET"
           "AF_INET6"
+        ]
+        ++ lib.optionals (cfg.tailnets != { }) [
+          "AF_UNIX"
+          "AF_NETLINK"
         ];
         RestrictNamespaces = true;
         LockPersonality = true;

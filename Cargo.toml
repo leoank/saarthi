@@ -1,7 +1,7 @@
 [workspace]
 resolver = "3"
-members = ["crates/proto", "crates/node", "crates/hub", "crates/core", "crates/uniffi-bindgen"]
+members = ["crates/proto", "crates/tailnet", "crates/node", "crates/hub", "crates/core", "crates/uniffi-bindgen"]
 
 [workspace.package]
-version = "0.3.0"
+version = "0.4.0"
 edition = "2024"

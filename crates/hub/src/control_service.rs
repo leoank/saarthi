@@ -34,8 +34,16 @@ impl Hub {
 
 impl Hub {
     /// A node as clients see it: its record, and what its live link registered.
-    pub(crate) async fn node_view(&self, row: (String, String, String, i64, String)) -> Node {
-        let (id, name, version, last_seen_ms, default_claude_token) = row;
+    pub(crate) async fn node_view(&self, row: crate::db::NodeRow) -> Node {
+        let crate::db::NodeRow {
+            id,
+            name,
+            version,
+            last_seen_ms,
+            default_claude_token,
+            tailnet,
+            tailnet_peer,
+        } = row;
         let spawning = self.live.spawning(&id).await;
         let connected = spawning.is_some();
         let (spawn_roots, profiles) = spawning.unwrap_or_default();
@@ -48,6 +56,8 @@ impl Hub {
             spawn_roots,
             profiles,
             default_claude_token,
+            tailnet,
+            tailnet_peer,
         }
     }
 
