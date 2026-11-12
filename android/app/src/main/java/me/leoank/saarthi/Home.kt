@@ -16,6 +16,8 @@ import androidx.compose.foundation.lazy.LazyColumn
 import androidx.compose.foundation.lazy.items
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.filled.Add
+import androidx.compose.material.icons.filled.ChevronRight
+import androidx.compose.material.icons.filled.ExpandMore
 import androidx.compose.material.icons.filled.History
 import androidx.compose.material.icons.filled.MoreVert
 import androidx.compose.material.icons.filled.Refresh
@@ -145,8 +147,18 @@ fun HomeScreen(
                     }
                 }
                 for (node in model.nodes.sortedWith(compareByDescending<NodeInfo> { it.connected }.thenBy { it.name })) {
-                    item(key = "n" + node.id) { NodeHeader(node) { openHealth(node) } }
                     val sessions = model.sessions.filter { it.nodeId == node.id }.sortedByDescending { it.startedMs }
+                    val folded = node.id in model.collapsed
+                    item(key = "n" + node.id) {
+                        NodeHeader(
+                            node,
+                            sessions.size,
+                            sessions.count { s -> model.pendingFor(s).isNotEmpty() },
+                            folded,
+                            toggle = { model.toggleCollapsed(node.id) },
+                        ) { openHealth(node) }
+                    }
+                    if (folded) continue
                     if (sessions.isEmpty()) {
                         item(key = "e" + node.id) {
                             Caption(if (node.connected) "No live sessions" else "Offline, last seen ${relative(node.lastSeenMs)}")
@@ -168,14 +180,33 @@ fun HomeScreen(
 }
 
 @Composable
-private fun NodeHeader(node: NodeInfo, onHealth: () -> Unit) {
-    Row(verticalAlignment = Alignment.CenterVertically, modifier = Modifier.fillMaxWidth().padding(top = 12.dp)) {
+private fun NodeHeader(node: NodeInfo, count: Int, waiting: Int, folded: Boolean, toggle: () -> Unit, onHealth: () -> Unit) {
+    Row(
+        verticalAlignment = Alignment.CenterVertically,
+        modifier = Modifier.fillMaxWidth().padding(top = 12.dp).clickable(onClick = toggle),
+    ) {
+        Icon(
+            if (folded) Icons.Filled.ChevronRight else Icons.Filled.ExpandMore,
+            if (folded) "Show ${node.name}'s sessions" else "Hide ${node.name}'s sessions",
+            tint = MaterialTheme.colorScheme.onSurfaceVariant,
+            modifier = Modifier.size(20.dp),
+        )
+        Spacer(Modifier.width(6.dp))
         StatusDot(node.connected)
         Spacer(Modifier.width(10.dp))
         Column(Modifier.weight(1f)) {
             Text(node.name, style = MaterialTheme.typography.titleMedium)
             Text(
-                if (node.connected) "online · v${node.version}" else "offline · v${node.version}",
+                listOfNotNull(
+                    if (node.connected) "online" else "offline",
+                    "v${node.version}",
+                    when (count) {
+                        0 -> null
+                        1 -> "1 session"
+                        else -> "$count sessions"
+                    },
+                    if (waiting > 0) "$waiting waiting" else null,
+                ).joinToString(" · "),
                 style = MaterialTheme.typography.bodySmall,
                 color = MaterialTheme.colorScheme.onSurfaceVariant,
             )

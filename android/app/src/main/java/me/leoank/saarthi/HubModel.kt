@@ -121,6 +121,16 @@ class HubModel(app: Application) : AndroidViewModel(app) {
         wrap = !wrap
         prefs.edit().putBoolean("wrap", wrap).apply()
     }
+
+    /** Nodes whose live sessions are folded away on the home screen, by node id, remembered
+     *  across launches. */
+    var collapsed by mutableStateOf(prefs.getStringSet("collapsed", emptySet())!!.toSet())
+        private set
+
+    fun toggleCollapsed(nodeId: String) {
+        collapsed = if (nodeId in collapsed) collapsed - nodeId else collapsed + nodeId
+        prefs.edit().putStringSet("collapsed", collapsed).apply()
+    }
     var link by mutableStateOf(Link.Disconnected)
         private set
     /** Why the last connection attempt failed, for the connect screen. */
