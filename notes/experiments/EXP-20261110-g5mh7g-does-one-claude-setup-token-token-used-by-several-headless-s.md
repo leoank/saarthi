@@ -49,8 +49,8 @@ auth error, and ADR-0039 falls back to one token per session or to leases.
 One line per run after its link, what was tried and what it showed; `yajna validate`
 rejects a bare link here. Metric runs also land in results.tsv.
 - [[RUN-20261111-q7np8h]] rogue's half: three Haiku sessions on one token, a turn each
-  every ten minutes for four hours, then a resume; running (the second machine's half
-  waits for one)
+  every ten minutes for four hours, then a resume: 72 turns, none failed, every resume
+  worked, no credential file written (the second machine's half waits for one)
 
 ## Conclusion
 Written once, by a human, when status becomes `concluded`.
