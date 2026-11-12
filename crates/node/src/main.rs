@@ -148,7 +148,8 @@ struct Serve {
     #[arg(long, hide = true)]
     claude_usage_service: Option<String>,
     /// Keep the machine from idle-sleeping while a session is busy (`caffeinate -i` on
-    /// macOS), reported as the health metric `node.keep_awake` (ADR-0031). The state at
+    /// macOS, a `systemd-inhibit` lock on Linux where polkit allows it), reported as the
+    /// health metric `node.keep_awake` (ADR-0031, ADR-0045). The state at
     /// start; a client can switch it.
     #[arg(long)]
     keep_awake: bool,
@@ -386,12 +387,19 @@ async fn serve(args: Serve) -> Result<()> {
     }
 
     let held: awake::Held = Arc::new(std::sync::atomic::AtomicBool::new(false));
-    tokio::spawn(awake::keep(
-        sessions.clone(),
-        keep_awake.clone(),
-        held.clone(),
-        Duration::from_secs(args.registry_secs.max(1)),
-    ));
+    let can_hold = match awake::Hold::detect().await {
+        Some(hold) => {
+            tokio::spawn(awake::keep(
+                hold,
+                sessions.clone(),
+                keep_awake.clone(),
+                held.clone(),
+                Duration::from_secs(args.registry_secs.max(1)),
+            ));
+            true
+        }
+        None => false,
+    };
 
     let health_outbox = outbox.clone();
     tokio::spawn(async move {
@@ -408,9 +416,9 @@ async fn serve(args: Serve) -> Result<()> {
             let flag = |b: &std::sync::atomic::AtomicBool| {
                 if b.load(std::sync::atomic::Ordering::Relaxed) { 1.0 } else { 0.0 }
             };
-            // Only where the hold works (macOS): a client shows the switch when the
-            // metric is there, so a Linux node offers none.
-            if cfg!(target_os = "macos") {
+            // Only where the machine can be held up: a client shows the switch when the
+            // metric is there, so a node that cannot hold offers none.
+            if can_hold {
                 sample.metrics.push(saarthi_proto::event::v1::Metric {
                     name: "node.keep_awake".into(),
                     value: flag(&held),

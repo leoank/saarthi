@@ -63,5 +63,7 @@ set one.
 
 ## The machine sleeps in the middle of a turn
 
-Run the node with `--keep-awake` (macOS). It keeps the machine from idle sleep while any
-session is busy. Closing the lid still sleeps it.
+Run the node with `--keep-awake`, or turn on the switch on its health screen. It keeps the
+machine from idle sleep while any session is busy. Closing the lid still sleeps it. On
+Linux it needs a polkit rule; with none the node logs `keep-awake unavailable` and the app
+shows no switch (see [Keep-awake on Linux](../setup/node.md#keep-awake-on-linux)).

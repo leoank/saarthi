@@ -30,7 +30,7 @@ Useful flags (all of them are in the [command line reference](../reference/cli.m
 | Flag | What it does |
 |---|---|
 | `--claude-usage` | Report your Claude rate-limit usage as health, polled every five minutes. See [Rate limits](../using/health.md#rate-limits). Off by default. |
-| `--keep-awake` | Keep the machine from idle-sleeping while any session is busy (macOS, `caffeinate -i`), so a turn finishes when the screen turns off. Lid-close sleep still happens. Off at start by default; the switch on the node's health screen turns it on and off while the daemon runs. |
+| `--keep-awake` | Keep the machine from idle-sleeping while any session is busy (`caffeinate -i` on macOS, a `systemd-inhibit` lock on Linux where polkit allows it; see [Keep-awake on Linux](#keep-awake-on-linux)), so a turn finishes when the screen turns off. Lid-close sleep still happens. Off at start by default; the switch on the node's health screen turns it on and off while the daemon runs. |
 | `--spawn-root <dir>` | Allow the app to start sessions in this directory or below it. Repeatable; without it, nobody can start sessions on this node. A missing directory is created at start; one that cannot be is left out, with an error in the log. See [Starting sessions from the app](#starting-sessions-from-the-app). |
 | `--claude <path>` | The `claude` that started sessions run. Default `claude`, found on your login shell's PATH. |
 | `--profiles <file>` | Launch profiles a started session may run under, such as a sandbox. A file that does not parse is left out, with an error in the log, and sessions run on the host. See [Sandboxed sessions](#sandboxed-sessions). |
@@ -118,6 +118,30 @@ WantedBy=default.target
 $ systemctl --user enable --now saarthi-node
 $ loginctl enable-linger $USER     # keep it running when you are logged out
 ```
+
+#### Keep-awake on Linux
+
+Keep-awake takes a blocking `idle:sleep` lock from logind with `systemd-inhibit`. logind
+asks polkit, and polkit's default refuses the lock to a user service, which runs outside
+your login session. The node checks at start: when the lock is refused it logs
+`keep-awake unavailable` and the app shows no switch. To allow it, add a polkit rule; on
+NixOS:
+
+```nix
+security.polkit.enable = true;
+security.polkit.extraConfig = ''
+  polkit.addRule(function(action, subject) {
+    if ((action.id == "org.freedesktop.login1.inhibit-block-sleep" ||
+         action.id == "org.freedesktop.login1.inhibit-block-idle") &&
+        subject.user == "me") {
+      return polkit.Result.YES;
+    }
+  });
+'';
+```
+
+Replace `me` with your user, and restart the node after the switch. Closing the lid
+still suspends the laptop.
 
 ### With home-manager
 

@@ -126,7 +126,8 @@ in
       default = false;
       description = ''
         Keep the machine out of idle sleep while a session is busy (`caffeinate -i` on
-        Darwin), so a turn finishes and the hub link holds when the screen turns off
+        Darwin, a `systemd-inhibit` lock on Linux, which needs a polkit rule for the user;
+        ADR-0045), so a turn finishes and the hub link holds when the screen turns off
         (ADR-0031).
       '';
     };

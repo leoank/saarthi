@@ -77,8 +77,11 @@ facts come from hooks and the transcript, and the PTY is only a channel for inpu
   under the same names with its age, which only `/usage` refreshes. [[EXP-20261025-25f6vm]]
   checked the read on the real credential, across Claude Code's own refresh.
 - **Keep awake.** While switched on (ADR-0031; `--keep-awake` at start, `SetKeepAwake`
-  from a client, ADR-0034) the daemon holds `caffeinate -i` while any session is busy and
-  reports `node.keep_awake` and `node.keep_awake_enabled` as health.
+  from a client, ADR-0034) the daemon holds `caffeinate -i` (macOS) or a blocking `idle:sleep` lock from
+  `systemd-inhibit` (Linux, ADR-0045) while any session is busy and reports
+  `node.keep_awake` and `node.keep_awake_enabled` as health. A Linux node checks the lock
+  once at start; where logind refuses it (no polkit rule for the user) it reports neither
+  metric, and clients offer no switch.
 - **Ignored directories.** `--ignore-cwd <glob>`, repeatable: a session whose working
   directory matches is not tracked from the registry or from hooks, so the live checks'
   throwaway sessions under `target/live-work-*` never reach the live hub (ADR-0028).

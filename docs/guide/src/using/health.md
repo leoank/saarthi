@@ -19,7 +19,7 @@ The subtitle under the node's name says whether it is online and, when keep-awak
 whether it is *keeping the machine awake* (a session is busy) or *letting it sleep*.
 
 The **Keep awake** switch at the top turns that hold on and off while the node runs
-(macOS only, so a Linux node shows no switch; `--keep-awake` sets it at start). On, the node keeps the machine out of idle
+(on macOS, and on Linux where polkit allows the lock: a node that cannot hold the machine shows no switch; `--keep-awake` sets it at start). On, the node keeps the machine out of idle
 sleep while any session is busy, so a turn started from the phone finishes when the
 screen turns off; lid-close sleep still happens. The switch shows the state the node
 last reported, which arrives with its next health sample.
