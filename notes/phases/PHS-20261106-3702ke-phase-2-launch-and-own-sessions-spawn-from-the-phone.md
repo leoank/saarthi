@@ -64,8 +64,9 @@ done ones. The project page's *Progress* lists this phase on one line.
       [[RUN-20261111-q60gf1]], [[RUN-20261111-q6afjv]]); and a token in the environment
       wins over the keychain login on the host ([[EXP-20261111-q6sgt8]]) (2026-11-11;
       [[AGS-20261111-q5z55t]])
-    - [ ] 3.1.2 One token shared by several sessions for hours: rogue's half running
-      ([[RUN-20261111-q7np8h]]); a second machine's half to come
+    - [ ] 3.1.2 One token shared by several sessions for hours: rogue's half done, 72
+      turns over four hours, none failed, resumes worked ([[RUN-20261111-q7np8h]]); a
+      second machine's half to come
     - [ ] 3.1.3 Revoking one token alone: needs the owner to revoke a throwaway token
   - [x] 3.2 The hub reads `--claude-tokens` and keeps each name's fingerprint and dates;
     a default token per node; a spawn or resume names a token or takes the default, and
@@ -79,14 +80,25 @@ done ones. The project page's *Progress* lists this phase on one line.
   - [x] 3.3 Expiry: a year after first seen or set by hand from the app or `ctl`; a
     reminder a month before, notification kind `token` (2026-11-11;
     [[AGS-20261111-q5z55t]])
-  - [ ] 3.4 neusis: the hub module provides the token file as an agenix secret. The
-    module's `claudeTokensFile` option is in this repo (ADR-0041); the secret and its
-    wiring in neusis are the owner's
+  - [x] 3.4 neusis: the hub module provides the token file as an agenix secret. The
+    module's `claudeTokensFile` option is in this repo (ADR-0041); the secret
+    `saarthiClaudeTokens` and its wiring are in neusis, with usage probes on ghost001
+    (neusis a785fcc, 2026-11-12)
   - [x] 3.6 Usage probes: a throwaway Haiku turn under each token about every half hour
     on a named node, so every account's usage stays fresh (ADR-0043); tested end to end
     and live (2026-11-11; [[AGS-20261111-s2hq0a]])
+  - [x] 3.7 A session started at a node's terminal (`saarthi run`) runs under the node's
+    default account, one named with `--claude-token`, or the own login with
+    `--own-login`; the node asks the hub, and the session is recorded under the account
+    (ADR-0046). End-to-end and wrapper tests; checked live against a scratch hub
+    (2026-11-12; [[AGS-20261112-2bwr8j]])
   - [ ] 3.5 The egress proxy that adds the token, so a sandbox holds a dummy (phase 3
     with the sandbox's network policy; [[EXP-20261110-g5mh89]] decides its transport)
+- [x] 4. `saarthi tui`, a terminal dashboard on the control service: nodes with their
+  live sessions, the held requests and the accounts' usage, with keys to allow, deny,
+  answer, prompt, interrupt, end and start sessions (ADR-0047). Unit tests on the state and
+  a test backend; run live in a pseudo-terminal against a scratch hub (2026-11-12;
+  [[AGS-20261112-2bwr8j]])
 
 ## Notes
 Migrated from PRJ-0001's Progress by `yajna phase migrate`.
