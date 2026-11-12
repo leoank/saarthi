@@ -38,9 +38,6 @@ import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.OutlinedTextField
 import androidx.compose.material3.OutlinedTextFieldDefaults
 import androidx.compose.material3.Scaffold
-import androidx.compose.material3.SegmentedButton
-import androidx.compose.material3.SegmentedButtonDefaults
-import androidx.compose.material3.SingleChoiceSegmentedButtonRow
 import androidx.compose.material3.SuggestionChip
 import androidx.compose.material3.SuggestionChipDefaults
 import androidx.compose.material3.Text
@@ -157,22 +154,10 @@ fun NewSessionDialog(
                 )
 
                 Heading("Where")
-                if (nodes.size > 1) {
-                    if (nodes.size <= 3) {
-                        SingleChoiceSegmentedButtonRow(Modifier.fillMaxWidth().padding(bottom = 12.dp)) {
-                            nodes.forEachIndexed { i, n ->
-                                SegmentedButton(
-                                    selected = n.id == nodeId,
-                                    onClick = { nodeId = n.id },
-                                    shape = SegmentedButtonDefaults.itemShape(i, nodes.size),
-                                ) { Text(n.name, maxLines = 1, overflow = TextOverflow.Ellipsis) }
-                            }
-                        }
-                    } else {
-                        Group(Modifier.padding(bottom = 12.dp)) {
-                            Choice("Node", node.name, nodes.map { it.name to it.id }, nodeId) { nodeId = it }
-                        }
-                    }
+                // A menu rather than buttons: there will be many nodes. Shown with one too,
+                // so the sheet says where the session runs.
+                Group(Modifier.padding(bottom = 12.dp)) {
+                    Choice("Node", node.name, nodes.sortedBy { it.name }.map { it.name to it.id }, nodeId) { nodeId = it }
                 }
                 OutlinedTextField(
                     value = cwd,
