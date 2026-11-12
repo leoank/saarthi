@@ -154,7 +154,9 @@ One Rust binary, tonic for gRPC, sqlx on SQLite in WAL mode.
   protobuf packages from the start since the client sees the hub's view, not a node's.
   Clients present their own pre-shared tokens (ADR-0021); `saarthi ctl` is a command-line
   client, which reads the hub and its token file from `~/.config/saarthi/ctl.toml` unless
-  given as flags or in the environment.
+  given as flags or in the environment. `saarthi tui` is a dashboard on the same client and config:
+  nodes with their live sessions, the held requests and the accounts' usage, from `Watch`,
+  with keys to decide, prompt, interrupt, end and start sessions (ADR-0047).
 - **Live state.** Which nodes are linked now, and the commands waiting for a node's
   answer. Sessions and pending requests are tables, so a hub restart loses neither; a node
   that reconnects re-sends the requests it still holds.

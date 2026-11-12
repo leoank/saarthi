@@ -20,6 +20,7 @@
 - [Permissions and questions](using/requests.md)
 - [Node health and rate limits](using/health.md)
 - [saarthi ctl](using/ctl.md)
+- [The terminal dashboard](using/tui.md)
 - [Troubleshooting](using/troubleshooting.md)
 
 # Reference

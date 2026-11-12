@@ -20,6 +20,7 @@ use saarthi_node::{health, hooks, link, registry, sink};
 
 mod awake;
 mod ctl;
+mod tui;
 mod usage;
 
 /// Seconds Claude Code waits for a hook of the node's before giving up on it.
@@ -44,6 +45,20 @@ enum Command {
     Ctl(CtlArgs),
     /// Run Claude Code under a PTY the node daemon can interrupt and kill.
     Run(RunArgs),
+    /// A dashboard of the hub in the terminal: sessions by node, what waits for you, the
+    /// Claude accounts; allow, deny, answer, prompt, interrupt, end and start sessions.
+    Tui(TuiArgs),
+}
+
+#[derive(Args)]
+struct TuiArgs {
+    /// The hub, `http://host:port`. Defaults to `hub` in `~/.config/saarthi/ctl.toml`.
+    #[arg(long, env = "SAARTHI_HUB")]
+    hub: Option<String>,
+    /// A file holding this client's hub token. Defaults to `token_file` in
+    /// `~/.config/saarthi/ctl.toml`.
+    #[arg(long, env = "SAARTHI_TOKEN_FILE")]
+    token_file: Option<PathBuf>,
 }
 
 #[derive(Args)]
@@ -208,6 +223,13 @@ async fn main() -> Result<()> {
             };
             let code = tokio::task::spawn_blocking(move || saarthi_node::run::run(opts)).await??;
             std::process::exit(code)
+        }
+        Command::Tui(args) => {
+            let path = ctl::config_path().context("HOME is not set")?;
+            let (hub, token_file) = ctl::Config::load(&path)?.resolve(args.hub, args.token_file, &path)?;
+            let token = std::fs::read_to_string(&token_file)
+                .with_context(|| format!("reading {}", token_file.display()))?;
+            tui::run(&hub, token.trim()).await
         }
         Command::Ctl(args) => {
             let path = ctl::config_path().context("HOME is not set")?;

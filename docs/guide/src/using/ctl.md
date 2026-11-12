@@ -99,4 +99,4 @@ The path is the node's, and `~` there is the node's home. See
 [Starting a session](sessions.md#starting-a-session). `keep-awake on` or `off` switches the
 node's keep-awake hold, as the switch on its health screen does.
 
-Every command and flag is in the [command line reference](../reference/cli.md).
+For a live overview with keys to act on it, see [the terminal dashboard](tui.md). Every command and flag is in the [command line reference](../reference/cli.md).

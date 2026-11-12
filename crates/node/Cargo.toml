@@ -29,6 +29,7 @@ tonic = "0.14.6"
 tracing = "0.1.44"
 tracing-subscriber = "0.3.23"
 uuid = { version = "1.28.0", features = ["v4"] }
+ratatui = { version = "0.30.2", default-features = false, features = ["crossterm", "layout-cache"] }
 
 [target.'cfg(target_os = "macos")'.dependencies]
 core-foundation = "0.10.1"

@@ -153,13 +153,29 @@ fn date(ms: i64) -> String {
         .unwrap_or_else(|_| ms.to_string())
 }
 
-struct Client {
-    inner: ControlServiceClient<Channel>,
+pub(crate) struct Client {
+    pub(crate) inner: ControlServiceClient<Channel>,
     bearer: tonic::metadata::MetadataValue<tonic::metadata::Ascii>,
 }
 
 impl Client {
-    fn request<T>(&self, body: T) -> Request<T> {
+    /// A client of the hub's control service at `hub`, authenticated with `token`.
+    pub(crate) async fn connect(hub: &str, token: &str) -> Result<Self> {
+        let channel = tonic::transport::Endpoint::from_shared(hub.to_string())
+            .context("hub address")?
+            .connect_timeout(std::time::Duration::from_secs(6))
+            .connect()
+            .await
+            .with_context(|| format!("connecting to {hub}"))?;
+        Ok(Self {
+            inner: ControlServiceClient::new(channel),
+            bearer: format!("Bearer {token}")
+                .parse()
+                .context("token is not valid in a header")?,
+        })
+    }
+
+    pub(crate) fn request<T>(&self, body: T) -> Request<T> {
         let mut r = Request::new(body);
         r.metadata_mut()
             .insert("authorization", self.bearer.clone());
@@ -229,17 +245,7 @@ impl Config {
 }
 
 pub async fn run(hub: &str, token: &str, cmd: Ctl) -> Result<()> {
-    let channel = tonic::transport::Endpoint::from_shared(hub.to_string())
-        .context("hub address")?
-        .connect()
-        .await
-        .with_context(|| format!("connecting to {hub}"))?;
-    let mut c = Client {
-        inner: ControlServiceClient::new(channel),
-        bearer: format!("Bearer {token}")
-            .parse()
-            .context("token is not valid in a header")?,
-    };
+    let mut c = Client::connect(hub, token).await?;
     match cmd {
         Ctl::Nodes => {
             let r = c.inner.list_nodes(c.request(ListNodesRequest {})).await?;
