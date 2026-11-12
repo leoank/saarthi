@@ -155,9 +155,12 @@ impl Db {
                harness = excluded.harness, cwd = excluded.cwd, transcript_path = excluded.transcript_path,
                launch = excluded.launch, pid = excluded.pid, account_label = excluded.account_label,
                status = excluded.status, started_ms = excluded.started_ms, ended_ms = excluded.ended_ms,
-               profile = excluded.profile",
-            // claude_token is the hub's: set by `set_session_claude_token` when it starts or
-            // resumes the session, and kept when a restarted node reports it without one.
+               profile = excluded.profile,
+               claude_token = CASE WHEN excluded.claude_token <> '' THEN excluded.claude_token
+                                   ELSE claude_token END",
+            // claude_token is set by `set_session_claude_token` when the hub starts or resumes
+            // the session, or reported by the node for one started at its terminal under a
+            // token (ADR-0046); kept when a restarted node reports the session without one.
         )
         .bind(node_id)
         .bind(&s.id)
@@ -320,6 +323,14 @@ impl Db {
 
     /// The Claude token a node's spawned sessions run under when none is picked; empty for
     /// its own login.
+    /// The id of the node registered under `name`, if it ever registered.
+    pub async fn node_id(&self, name: &str) -> Result<Option<String>> {
+        Ok(sqlx::query_scalar("SELECT id FROM nodes WHERE name = ?1")
+            .bind(name)
+            .fetch_optional(&self.pool)
+            .await?)
+    }
+
     pub async fn default_claude_token(&self, node_id: &str) -> Result<Option<String>> {
         Ok(
             sqlx::query_scalar("SELECT default_claude_token FROM nodes WHERE id = ?1")
@@ -728,6 +739,32 @@ mod tests {
         let opening = db.opening(&node, "s1", 8, 150).await.unwrap();
         let seqs: Vec<u64> = opening.iter().map(|e| e.seq).collect();
         assert_eq!(seqs, [4, 5], "only the typed prompts that fit");
+    }
+
+    #[tokio::test]
+    async fn a_session_keeps_its_claude_token_when_reported_without_one() {
+        let dir = tempfile::tempdir().unwrap();
+        let db = Db::open(&dir.path().join("hub.db")).await.unwrap();
+        let (node, _) = db.register_node("mac", "0.1.0", 1).await.unwrap();
+        let s = Session {
+            id: "s1".into(),
+            cwd: "/w".into(),
+            claude_token: "work".into(),
+            ..Default::default()
+        };
+        db.store_session(&node, &s).await.unwrap();
+        let without = Session {
+            claude_token: String::new(),
+            ..s.clone()
+        };
+        db.store_session(&node, &without).await.unwrap();
+        assert_eq!(db.session(&node, "s1").await.unwrap().unwrap().claude_token, "work");
+        let other = Session {
+            claude_token: "personal".into(),
+            ..s
+        };
+        db.store_session(&node, &other).await.unwrap();
+        assert_eq!(db.session(&node, "s1").await.unwrap().unwrap().claude_token, "personal");
     }
 
     #[tokio::test]

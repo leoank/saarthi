@@ -14,7 +14,7 @@ use std::time::{Duration, Instant};
 use anyhow::{Context, Result};
 use portable_pty::{CommandBuilder, PtySize, native_pty_system};
 
-use crate::wrapper::{FromWrapper, ToWrapper};
+use crate::wrapper::{FromWrapper, ToWrapper, TokenReply};
 
 /// The interrupt sequence that EXP-0003 found to work: Escape stops the turn, Claude Code
 /// then refills the input box with the interrupted prompt, Ctrl-U empties it, and a
@@ -35,6 +35,58 @@ pub struct Options {
     pub args: Vec<String>,
     /// The daemon's wrapper socket.
     pub socket: PathBuf,
+    /// Which Claude account the program runs under (ADR-0046).
+    pub account: Account,
+}
+
+/// The Claude account a wrapped program runs under.
+#[derive(Clone, Debug, PartialEq)]
+pub enum Account {
+    /// The node's default, as the hub holds it; the machine's own login when it has none
+    /// or the node cannot be asked.
+    NodeDefault,
+    /// One of the hub's named tokens; the wrapper refuses to start without it.
+    Named(String),
+    /// The machine's own login.
+    OwnLogin,
+}
+
+/// How long the daemon gets to fetch a token from the hub.
+const TOKEN_WAIT: Duration = Duration::from_secs(15);
+
+/// The token and its name for `account`, asked of the daemon, which asks the hub. Ok(None)
+/// is the machine's own login. A named token that cannot be had is an error; the default
+/// falls back to the own login, saying why when something failed rather than there being
+/// no default.
+pub fn account_token(socket: &std::path::Path, account: &Account) -> Result<Option<(String, String)>> {
+    let name = match account {
+        Account::OwnLogin => return Ok(None),
+        Account::NodeDefault => None,
+        Account::Named(name) => Some(name.clone()),
+    };
+    let asked = (|| -> Result<TokenReply> {
+        let mut s = UnixStream::connect(socket)
+            .with_context(|| format!("no node daemon at {}", socket.display()))?;
+        s.set_read_timeout(Some(TOKEN_WAIT))?;
+        send(&mut s, &FromWrapper::ClaudeToken { name: name.clone() })?;
+        let mut line = String::new();
+        BufReader::new(s).read_line(&mut line).context("the node daemon did not answer")?;
+        serde_json::from_str(&line).context("the node daemon's answer")
+    })();
+    let failed = match asked {
+        Ok(TokenReply { name, token: Some(token), error: None }) => return Ok(Some((name, token))),
+        Ok(TokenReply { error: None, .. }) if name.is_none() => return Ok(None),
+        Ok(TokenReply { error: Some(e), .. }) => e,
+        Ok(_) => "the hub sent no token".to_string(),
+        Err(e) => format!("{e:#}"),
+    };
+    match name {
+        Some(name) => anyhow::bail!("no Claude token {name}: {failed}"),
+        None => {
+            eprintln!("saarthi run: the node's default Claude account could not be had ({failed}); running under this machine's own login");
+            Ok(None)
+        }
+    }
 }
 
 type Writer = Arc<Mutex<Box<dyn Write + Send>>>;
@@ -43,6 +95,7 @@ type Link = Arc<Mutex<Option<UnixStream>>>;
 
 /// Runs the command under a PTY until it exits; returns its exit code.
 pub fn run(opts: Options) -> Result<i32> {
+    let account = account_token(&opts.socket, &opts.account)?;
     let pty = native_pty_system()
         .openpty(terminal_size())
         .context("opening a PTY")?;
@@ -56,6 +109,16 @@ pub fn run(opts: Options) -> Result<i32> {
             cmd.env_remove(name.as_ref());
         }
     }
+    // A setup-token in the environment wins over the login in the keychain
+    // (EXP-20261111-q6sgt8).
+    let token_name = match &account {
+        Some((name, token)) => {
+            cmd.env("CLAUDE_CODE_OAUTH_TOKEN", token);
+            eprintln!("saarthi run: Claude account {name}\r");
+            name.clone()
+        }
+        None => String::new(),
+    };
     let mut child = pty
         .slave
         .spawn_command(cmd)
@@ -80,7 +143,7 @@ pub fn run(opts: Options) -> Result<i32> {
     let link: Link = Arc::new(Mutex::new(None));
     {
         let (socket, writer, link) = (opts.socket.clone(), writer.clone(), link.clone());
-        std::thread::spawn(move || follow_daemon(&socket, pid, &writer, &link));
+        std::thread::spawn(move || follow_daemon(&socket, pid, &token_name, &writer, &link));
     }
 
     // Our terminal's input goes to the PTY; a person typing is reported to the daemon.
@@ -135,11 +198,17 @@ pub fn run(opts: Options) -> Result<i32> {
 /// when the daemon goes away (a restart, an upgrade) the wrapper says hello again to the
 /// next one, which otherwise would take the session for one started by hand. Without a
 /// daemon the session runs anyway, unreachable until one appears.
-fn follow_daemon(socket: &std::path::Path, pid: u32, writer: &Writer, link: &Link) {
+fn follow_daemon(socket: &std::path::Path, pid: u32, claude_token: &str, writer: &Writer, link: &Link) {
     let mut warned = false;
     loop {
         let attempt = UnixStream::connect(socket).and_then(|mut s| {
-            send(&mut s, &FromWrapper::Hello { pid })?;
+            send(
+                &mut s,
+                &FromWrapper::Hello {
+                    pid,
+                    claude_token: claude_token.to_string(),
+                },
+            )?;
             Ok((s.try_clone()?, s))
         });
         match attempt {

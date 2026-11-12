@@ -65,7 +65,9 @@ memory. Adding, replacing or removing one is an edit to the file and a restart. 
 
 - each node gets a **default account**, set from its health screen in the app or with
   `saarthi ctl default-token <node> <name>`; sessions started on it run under that token
-  unless another account, or the node's own login, is picked on *New session*;
+  unless another account, or the node's own login, is picked on *New session*, and so do
+  sessions started at the machine's terminal through `saarthi run` (see
+  [The wrapper](node.md#5-the-wrapper));
 - the hub dates each token from when it first read it and **reminds you a month before**
   it expires, a year later; set another date from *Claude accounts* in the app's menu or
   with `saarthi ctl token-expiry`. A new token under the same name starts a new year;

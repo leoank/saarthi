@@ -185,6 +185,20 @@ the daemon is not running, the session still works and the wrapper says it canno
 reached remotely. It tries again every two seconds, so a session started before the
 daemon, or running while the daemon restarts, becomes reachable as soon as it is back.
 
+When the hub holds [Claude accounts](hub.md#claude-accounts), a wrapped session runs under
+the node's **default account**, the one set on the node's health screen in the app, and
+the wrapper prints which before Claude Code starts. A change in the app applies to the next
+session you start. To pick another account, or the machine's own login:
+
+```console
+$ saarthi run --claude-token personal
+$ saarthi run --own-login
+```
+
+A name the hub does not hold stops the wrapper before Claude Code starts. If the default
+cannot be had (the hub is down), the session starts under the machine's own login and the
+wrapper says why.
+
 Two things the wrapper needs: the working directory must already be trusted in Claude
 Code (the trust dialog cannot be answered remotely), and Claude Code's own `CLAUDE*`
 environment variables are cleared before it starts, so a session started from inside

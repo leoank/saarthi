@@ -106,6 +106,10 @@ facts come from hooks and the transcript, and the PTY is only a channel for inpu
   (ADR-0023). A session started without the wrapper is observed, gated and promptable
   (prompts use the messaging socket, ADR-0014) and killed by SIGTERM, but cannot be
   interrupted.
+  Before it starts its program the wrapper asks the daemon for a Claude token, the node's
+  default or one named with `--claude-token`; the daemon asks the hub (`ClaudeToken` on the
+  node service), and the wrapper runs the program with the token in its environment and
+  names the account in its hello, so the session is recorded under it (ADR-0046).
 - **Health collector.** CPU, memory, disk, network, GPU when present, running claude
   processes, and account usage state. One sample every 30 seconds, sent to the hub. GPU on
   macOS comes from IOKit `IOAccelerator` `PerformanceStatistics` (device utilisation, memory

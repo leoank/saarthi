@@ -8,6 +8,17 @@ import "saarthi/event/v1/event.proto";
 
 service NodeService {
   rpc Link(stream NodeMessage) returns (stream HubMessage);
+  // The Claude token a session started at the node's terminal runs under (ADR-0046): the
+  // named one, or without a name the node's default; none for the node's own login.
+  rpc ClaudeToken(ClaudeTokenRequest) returns (ClaudeTokenReply);
+}
+
+message ClaudeTokenRequest {
+  optional string name = 1;  // unset: the node's default
+}
+
+message ClaudeTokenReply {
+  ClaudeToken claude_token = 1;  // unset: the node's own login
 }
 
 message NodeMessage {

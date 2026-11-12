@@ -26,8 +26,17 @@ use crate::sessions::Sessions;
 #[derive(Debug, Serialize, Deserialize, PartialEq)]
 #[serde(tag = "type", rename_all = "snake_case")]
 pub enum FromWrapper {
-    /// First message: the pid of the process the wrapper runs under its PTY.
-    Hello { pid: u32 },
+    /// First message: the pid of the process the wrapper runs under its PTY, and the named
+    /// Claude token it started that process under, if any (ADR-0046).
+    Hello {
+        pid: u32,
+        #[serde(default, skip_serializing_if = "String::is_empty")]
+        claude_token: String,
+    },
+    /// First and only message on a connection of its own, before the wrapper starts its
+    /// program: which Claude token to start it under, `name` or the node's default without
+    /// one (ADR-0046). The daemon answers with one [`TokenReply`] and closes.
+    ClaudeToken { name: Option<String> },
     /// A person typed at the wrapper's terminal.
     Keystroke,
 }
@@ -40,6 +49,18 @@ pub enum ToWrapper {
     /// Typed into the terminal, text then Enter, as if the person had (ADR-0027).
     Prompt { text: String },
     Kill,
+}
+
+/// The daemon's answer to [`FromWrapper::ClaudeToken`]: a token and its name, or neither for
+/// the node's own login; `error` when the hub could not be asked or refused.
+#[derive(Debug, Serialize, Deserialize, PartialEq, Default)]
+pub struct TokenReply {
+    #[serde(default)]
+    pub name: String,
+    #[serde(default)]
+    pub token: Option<String>,
+    #[serde(default)]
+    pub error: Option<String>,
 }
 
 /// Where the daemon listens for wrappers unless told otherwise: a directory only this user
@@ -57,6 +78,9 @@ pub struct Wrappers {
     pending: Arc<Pending>,
     outbox: Outbox,
     by_pid: Mutex<HashMap<u32, mpsc::Sender<ToWrapper>>>,
+    /// The hub's address and this node's token, once the node links to a hub: where a
+    /// wrapper's Claude token comes from.
+    hub: std::sync::OnceLock<(String, String)>,
 }
 
 impl Wrappers {
@@ -66,7 +90,37 @@ impl Wrappers {
             pending,
             outbox,
             by_pid: Mutex::new(HashMap::new()),
+            hub: std::sync::OnceLock::new(),
         })
+    }
+
+    /// Where to ask for a wrapper's Claude token: the hub this node links to.
+    pub fn set_hub(&self, hub: String, token: String) {
+        let _ = self.hub.set((hub, token));
+    }
+
+    async fn claude_token(&self, name: Option<String>) -> TokenReply {
+        let Some((hub, token)) = self.hub.get() else {
+            return match name {
+                None => TokenReply::default(),
+                Some(name) => TokenReply {
+                    error: Some(format!("this node has no hub to ask for the {name} token")),
+                    ..Default::default()
+                },
+            };
+        };
+        match crate::link::claude_token(hub, token, name).await {
+            Ok(Some(t)) => TokenReply {
+                name: t.name,
+                token: Some(t.token),
+                error: None,
+            },
+            Ok(None) => TokenReply::default(),
+            Err(e) => TokenReply {
+                error: Some(e),
+                ..Default::default()
+            },
+        }
     }
 
     /// Binds the socket (replacing a stale one) in a directory only this user can enter.
@@ -108,13 +162,24 @@ impl Wrappers {
         let Some(first) = lines.next_line().await? else {
             return Ok(());
         };
-        let FromWrapper::Hello { pid } = serde_json::from_str(&first)? else {
-            anyhow::bail!("a wrapper must say hello first");
+        let (pid, claude_token) = match serde_json::from_str(&first)? {
+            FromWrapper::Hello { pid, claude_token } => (pid, claude_token),
+            FromWrapper::ClaudeToken { name } => {
+                let reply = self.claude_token(name).await;
+                if let Some(e) = &reply.error {
+                    tracing::warn!(error = %e, "no Claude token for a wrapper");
+                }
+                let mut line = serde_json::to_string(&reply)?;
+                line.push('\n');
+                write.write_all(line.as_bytes()).await?;
+                return Ok(());
+            }
+            FromWrapper::Keystroke => anyhow::bail!("a wrapper must say hello first"),
         };
         let (tx, mut rx) = mpsc::channel::<ToWrapper>(8);
         self.by_pid.lock().await.insert(pid, tx);
-        self.sessions.set_wrapped(pid, true).await;
-        tracing::info!(pid, "wrapper connected");
+        self.sessions.set_wrapped(pid, true, &claude_token).await;
+        tracing::info!(pid, claude_token = %claude_token, "wrapper connected");
 
         let outcome = async {
             loop {
@@ -138,7 +203,7 @@ impl Wrappers {
         }
         .await;
         self.by_pid.lock().await.remove(&pid);
-        self.sessions.set_wrapped(pid, false).await;
+        self.sessions.set_wrapped(pid, false, "").await;
         tracing::info!(pid, "wrapper disconnected");
         outcome
     }
@@ -186,8 +251,22 @@ mod tests {
 
     #[test]
     fn wire_messages_are_tagged_json_lines() {
-        let hello = serde_json::to_string(&FromWrapper::Hello { pid: 7 }).unwrap();
+        let hello = serde_json::to_string(&FromWrapper::Hello {
+            pid: 7,
+            claude_token: String::new(),
+        })
+        .unwrap();
         assert_eq!(hello, r#"{"type":"hello","pid":7}"#);
+        let named = FromWrapper::Hello {
+            pid: 7,
+            claude_token: "work".into(),
+        };
+        assert_eq!(
+            serde_json::to_string(&named).unwrap(),
+            r#"{"type":"hello","pid":7,"claude_token":"work"}"#
+        );
+        let ask = serde_json::to_string(&FromWrapper::ClaudeToken { name: None }).unwrap();
+        assert_eq!(ask, r#"{"type":"claude_token","name":null}"#);
         let interrupt = ToWrapper::Interrupt {
             then_prompt: Some("go on".into()),
         };

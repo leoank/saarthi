@@ -368,3 +368,81 @@ async fn a_node_without_spawn_roots_takes_no_probes() {
     assert!(tokens(&mut c).await.iter().all(|t| t.usage_ms == 0));
     hub.stop();
 }
+
+/// A session started at the node's terminal (ADR-0046): `saarthi run` asks the node over its
+/// wrapper socket, the node asks the hub, and the program runs under the node's default
+/// account, one named, or the machine's own login; a name the hub does not hold stops it.
+#[tokio::test(flavor = "multi_thread")]
+async fn a_terminal_session_runs_under_the_node_default_or_a_named_account() {
+    use saarthi_node::run::{Account, account_token};
+    let dir = tempfile::tempdir().unwrap();
+    let (hub, addr) = HubProc::start_full(&dir.path().join("hub.db"), "127.0.0.1:0", None, TOKENS);
+    let node = common::start_node(&addr, "t-node", &dir.path().join(".claude"), HOLD).await;
+    let mut c = ControlServiceClient::connect(format!("http://{addr}")).await.unwrap();
+    let id = connected(&mut c).await.id;
+
+    // The node's daemon, as `saarthi node serve --hub` runs it.
+    let wrappers = saarthi_node::wrapper::Wrappers::new(
+        node.sessions.clone(),
+        node.pending.clone(),
+        node.outbox.clone(),
+    );
+    let socket = dir.path().join("w/node.sock");
+    tokio::spawn(wrappers.clone().serve(saarthi_node::wrapper::Wrappers::bind(&socket).unwrap()));
+    let ask = |account: Account| {
+        let socket = socket.clone();
+        async move { tokio::task::spawn_blocking(move || account_token(&socket, &account)).await.unwrap() }
+    };
+
+    // Without a hub the node has nothing to give: the own login, and a name is refused.
+    assert_eq!(ask(Account::NodeDefault).await.unwrap(), None);
+    assert!(ask(Account::Named("work".into())).await.is_err());
+
+    wrappers.set_hub(format!("http://{addr}"), "t-node".into());
+    // No default yet: the own login.
+    assert_eq!(ask(Account::NodeDefault).await.unwrap(), None);
+    c.set_default_claude_token(req(SetDefaultClaudeTokenRequest {
+        node_id: id.clone(),
+        name: "work".into(),
+    }))
+    .await
+    .unwrap();
+    assert_eq!(
+        ask(Account::NodeDefault).await.unwrap(),
+        Some(("work".into(), "tok-work".into()))
+    );
+    assert_eq!(
+        ask(Account::Named("personal".into())).await.unwrap(),
+        Some(("personal".into(), "tok-personal".into()))
+    );
+    assert_eq!(ask(Account::OwnLogin).await.unwrap(), None);
+    let unknown = ask(Account::Named("nope".into())).await.unwrap_err();
+    assert!(format!("{unknown:#}").contains("no Claude token named nope"), "{unknown:#}");
+
+    // A wrong node token gets nothing.
+    let refused = saarthi_node::link::claude_token(&format!("http://{addr}"), "t-wrong", None)
+        .await
+        .unwrap_err();
+    assert!(refused.contains("unknown node token"), "{refused}");
+
+    // The session the wrapper starts is recorded under its account, and keeps it when the
+    // node reports it again without one (a restarted node that has not heard from it yet).
+    node.sessions.set_wrapped(4242, true, "personal").await;
+    let record = saarthi_node::registry::Record {
+        pid: 4242,
+        session_id: "s-term".into(),
+        cwd: "/w".into(),
+        started_at: 1,
+        status: "idle".into(),
+        messaging_socket_path: String::new(),
+        claude_dir: None,
+        profile: String::new(),
+    };
+    node.sessions.apply_registry(std::slice::from_ref(&record)).await;
+    assert_eq!(session(&mut c, "s-term", false).await.claude_token, "personal");
+    node.sessions.set_wrapped(4242, false, "").await;
+    node.sessions.apply_registry(&[record]).await;
+    tokio::time::sleep(Duration::from_millis(300)).await;
+    assert_eq!(session(&mut c, "s-term", false).await.claude_token, "personal");
+    hub.stop();
+}

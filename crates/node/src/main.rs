@@ -54,6 +54,14 @@ struct RunArgs {
     /// The node daemon's wrapper socket; the daemon's default when omitted.
     #[arg(long)]
     wrapper_socket: Option<PathBuf>,
+    /// Run under this one of the hub's Claude tokens (ADR-0046). Without it the program
+    /// runs under the node's default account, as set from the app, or the machine's own
+    /// login when the node has none.
+    #[arg(long, conflicts_with = "own_login")]
+    claude_token: Option<String>,
+    /// Run under the machine's own Claude login, whatever the node's default.
+    #[arg(long)]
+    own_login: bool,
     /// Arguments for the program, after `--`.
     #[arg(last = true)]
     args: Vec<String>,
@@ -192,6 +200,11 @@ async fn main() -> Result<()> {
                 command: args.command,
                 args: args.args,
                 socket: args.wrapper_socket.unwrap_or_else(wrapper::default_socket),
+                account: match (args.own_login, args.claude_token) {
+                    (true, _) => saarthi_node::run::Account::OwnLogin,
+                    (false, Some(name)) => saarthi_node::run::Account::Named(name),
+                    (false, None) => saarthi_node::run::Account::NodeDefault,
+                },
             };
             let code = tokio::task::spawn_blocking(move || saarthi_node::run::run(opts)).await??;
             std::process::exit(code)
@@ -284,6 +297,7 @@ async fn serve(args: Serve) -> Result<()> {
                 .with_context(|| format!("reading {}", token_file.display()))?
                 .trim()
                 .to_string();
+            wrappers.set_hub(hub.clone(), token.clone());
             let name = args
                 .name
                 .or_else(sysinfo::System::host_name)

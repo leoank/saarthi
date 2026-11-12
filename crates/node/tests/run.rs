@@ -126,8 +126,9 @@ async fn a_wrapper_says_hello_again_to_a_restarted_daemon() {
     let first = std::os::unix::net::UnixListener::bind(&socket).unwrap();
     let pid_file = dir.path().join("pid");
     let script = format!("echo $$ > {}; exec sleep 60", pid_file.display());
+    // The machine's own login, so the first message is the hello.
     let mut wrapper = Command::new(env!("CARGO_BIN_EXE_saarthi"))
-        .args(["run", "--command", "sh", "--wrapper-socket"])
+        .args(["run", "--own-login", "--command", "sh", "--wrapper-socket"])
         .arg(&socket)
         .args(["--", "-c", &script])
         .stdin(Stdio::piped())
@@ -184,4 +185,69 @@ async fn a_wrapper_says_hello_again_to_a_restarted_daemon() {
         );
         tokio::time::sleep(Duration::from_millis(50)).await;
     }
+}
+
+/// `saarthi run` asks the daemon for the node's default Claude account before it starts the
+/// program (ADR-0046), runs the program with that token in its environment, and names the
+/// account in its hello; a named account the daemon cannot give stops it before it starts.
+#[test]
+fn the_wrapper_runs_its_program_under_the_account_the_daemon_gives() {
+    let dir = tempfile::tempdir().unwrap();
+    let socket = dir.path().join("w/node.sock");
+    std::fs::create_dir_all(socket.parent().unwrap()).unwrap();
+    let daemon = std::os::unix::net::UnixListener::bind(&socket).unwrap();
+    let got = dir.path().join("got");
+    let script = format!("printf %s \"$CLAUDE_CODE_OAUTH_TOKEN\" > {}; exec sleep 60", got.display());
+    let mut wrapper = Command::new(env!("CARGO_BIN_EXE_saarthi"))
+        .args(["run", "--command", "sh", "--wrapper-socket"])
+        .arg(&socket)
+        .args(["--", "-c", &script])
+        .stdin(Stdio::piped())
+        .stdout(Stdio::null())
+        .stderr(Stdio::null())
+        .spawn()
+        .unwrap();
+
+    let (asked, _) = daemon.accept().unwrap();
+    let mut line = String::new();
+    std::io::BufReader::new(&asked).read_line(&mut line).unwrap();
+    assert_eq!(line.trim(), r#"{"type":"claude_token","name":null}"#);
+    (&asked)
+        .write_all(b"{\"name\":\"work\",\"token\":\"tok-work\"}\n")
+        .unwrap();
+    drop(asked);
+
+    let (hello, _) = daemon.accept().unwrap();
+    let mut line = String::new();
+    std::io::BufReader::new(&hello).read_line(&mut line).unwrap();
+    assert!(line.contains(r#""claude_token":"work""#), "{line}");
+    let start = Instant::now();
+    while std::fs::read_to_string(&got).unwrap_or_default() != "tok-work" {
+        assert!(start.elapsed() < Duration::from_secs(10), "the program never saw the token");
+        std::thread::sleep(Duration::from_millis(20));
+    }
+    let _ = wrapper.kill();
+    let _ = wrapper.wait();
+
+    // A named account the daemon refuses: the wrapper exits without starting the program.
+    let refused = std::thread::spawn(move || {
+        let (asked, _) = daemon.accept().unwrap();
+        let mut line = String::new();
+        std::io::BufReader::new(&asked).read_line(&mut line).unwrap();
+        assert!(line.contains(r#""name":"nope""#), "{line}");
+        (&asked)
+            .write_all(b"{\"error\":\"the hub holds no Claude token named nope\"}\n")
+            .unwrap();
+    });
+    let out = Command::new(env!("CARGO_BIN_EXE_saarthi"))
+        .args(["run", "--claude-token", "nope", "--command", "sh", "--wrapper-socket"])
+        .arg(&socket)
+        .args(["--", "-c", "echo started"])
+        .stdin(Stdio::null())
+        .output()
+        .unwrap();
+    refused.join().unwrap();
+    assert!(!out.status.success());
+    assert!(String::from_utf8_lossy(&out.stderr).contains("no Claude token nope"));
+    assert!(!String::from_utf8_lossy(&out.stdout).contains("started"));
 }

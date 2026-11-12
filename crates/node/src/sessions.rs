@@ -26,6 +26,8 @@ pub struct Sessions {
     entries: Mutex<HashMap<String, Entry>>,
     /// Pids running under an `saarthi run` wrapper.
     wrapped: Mutex<HashSet<u32>>,
+    /// The named Claude token each wrapped pid runs under (ADR-0046); absent for its own login.
+    wrapped_tokens: Mutex<HashMap<u32, String>>,
 }
 
 struct Entry {
@@ -64,6 +66,7 @@ impl Sessions {
             poll,
             entries: Mutex::new(HashMap::new()),
             wrapped: Mutex::new(HashSet::new()),
+            wrapped_tokens: Mutex::new(HashMap::new()),
         }
     }
 
@@ -82,14 +85,20 @@ impl Sessions {
             .collect()
     }
 
-    /// Marks a pid as running under a wrapper, or no longer, and updates its session.
-    pub async fn set_wrapped(&self, pid: u32, wrapped: bool) {
+    /// Marks a pid as running under a wrapper, or no longer, and updates its session; a
+    /// wrapper that started it under a named Claude token says which (ADR-0046).
+    pub async fn set_wrapped(&self, pid: u32, wrapped: bool, claude_token: &str) {
         {
             let mut set = self.wrapped.lock().await;
+            let mut tokens = self.wrapped_tokens.lock().await;
             if wrapped {
                 set.insert(pid);
+                if !claude_token.is_empty() {
+                    tokens.insert(pid, claude_token.to_string());
+                }
             } else {
                 set.remove(&pid);
+                tokens.remove(&pid);
             }
         }
         let mut entries = self.entries.lock().await;
@@ -99,7 +108,11 @@ impl Sessions {
             } else {
                 Launch::Bare
             };
-            if entry.session.launch() != launch {
+            let token_changed = wrapped && !claude_token.is_empty() && entry.session.claude_token != claude_token;
+            if token_changed {
+                entry.session.claude_token = claude_token.to_string();
+            }
+            if entry.session.launch() != launch || token_changed {
                 entry.session.launch = launch.into();
                 self.outbox.session(entry.session.clone()).await;
             }
@@ -289,6 +302,9 @@ impl Sessions {
             s.pid = record.pid;
             if wrapped {
                 s.launch = Launch::Wrapper.into();
+                if let Some(name) = self.wrapped_tokens.lock().await.get(&record.pid) {
+                    s.claude_token = name.clone();
+                }
             }
             if !entry.spawned {
                 s.status = status(&record.status).into();

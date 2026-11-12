@@ -20,6 +20,13 @@ struct Hub;
 impl NodeService for Hub {
     type LinkStream = Pin<Box<dyn Stream<Item = Result<HubMessage, Status>> + Send>>;
 
+    async fn claude_token(
+        &self,
+        _: Request<saarthi_proto::node::v1::ClaudeTokenRequest>,
+    ) -> Result<Response<saarthi_proto::node::v1::ClaudeTokenReply>, Status> {
+        Err(Status::unimplemented("not part of this test"))
+    }
+
     async fn link(
         &self,
         request: Request<Streaming<NodeMessage>>,

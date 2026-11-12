@@ -12,7 +12,8 @@ use saarthi_proto::control::v1::{PendingClosedOnNode, PendingOnNode, Update, upd
 use saarthi_proto::event::v1::{EventSource, PendingClosed, ReleaseReason, Session};
 use saarthi_proto::node::v1::node_service_server::NodeService;
 use saarthi_proto::node::v1::{
-    Ack, HubMessage, NodeMessage, Registered, hub_message, node_message::Body,
+    Ack, ClaudeToken, ClaudeTokenReply, ClaudeTokenRequest, HubMessage, NodeMessage, Registered,
+    hub_message, node_message::Body,
 };
 use tokio::sync::mpsc;
 use tokio_stream::wrappers::ReceiverStream;
@@ -66,6 +67,53 @@ impl NodeService for Hub {
             }
         });
         Ok(Response::new(Box::pin(ReceiverStream::new(rx))))
+    }
+
+    /// For a session started at the node's own terminal (ADR-0046): the token named, or the
+    /// node's default without a name; none for its own login. The node already receives
+    /// any of these with a spawn, so this hands it nothing it could not get otherwise.
+    async fn claude_token(
+        &self,
+        request: Request<ClaudeTokenRequest>,
+    ) -> Result<Response<ClaudeTokenReply>, Status> {
+        let auth = request
+            .metadata()
+            .get("authorization")
+            .and_then(|v| v.to_str().ok())
+            .unwrap_or_default();
+        let Some(node) = self.tokens_name(auth) else {
+            return Err(Status::unauthenticated("unknown node token"));
+        };
+        let name = match request.into_inner().name {
+            Some(name) => name,
+            None => {
+                let internal = |e: anyhow::Error| Status::internal(format!("{e:#}"));
+                match self.db.node_id(&node).await.map_err(internal)? {
+                    Some(id) => self
+                        .db
+                        .default_claude_token(&id)
+                        .await
+                        .map_err(internal)?
+                        .unwrap_or_default(),
+                    None => String::new(),
+                }
+            }
+        };
+        if name.is_empty() {
+            return Ok(Response::new(ClaudeTokenReply { claude_token: None }));
+        }
+        let Some(token) = self.claude_tokens.get(&name) else {
+            return Err(Status::not_found(format!(
+                "the hub holds no Claude token named {name}"
+            )));
+        };
+        tracing::info!(%node, claude_token = %name, "handed a Claude token for a terminal session");
+        Ok(Response::new(ClaudeTokenReply {
+            claude_token: Some(ClaudeToken {
+                name,
+                token: token.to_string(),
+            }),
+        }))
     }
 }
 

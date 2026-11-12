@@ -132,6 +132,27 @@ async fn dial(hub: &str) -> Result<Channel> {
         .with_context(|| format!("connecting to {hub}"))
 }
 
+/// Asks the hub for the Claude token a session started at this machine's terminal runs
+/// under (ADR-0046): `name`, or the node's default without one. None is the node's own
+/// login. The error is the hub's or the network's, for the person at the terminal.
+pub async fn claude_token(
+    hub: &str,
+    token: &str,
+    name: Option<String>,
+) -> Result<Option<saarthi_proto::node::v1::ClaudeToken>, String> {
+    let channel = dial(hub).await.map_err(|e| format!("{e:#}"))?;
+    let mut client = NodeServiceClient::new(channel);
+    let mut request = Request::new(saarthi_proto::node::v1::ClaudeTokenRequest { name });
+    let bearer = format!("Bearer {token}")
+        .parse()
+        .map_err(|_| "the node token is not valid in a header".to_string())?;
+    request.metadata_mut().insert("authorization", bearer);
+    match client.claude_token(request).await {
+        Ok(reply) => Ok(reply.into_inner().claude_token),
+        Err(status) => Err(status.message().to_string()),
+    }
+}
+
 /// One connection: register, resend what the hub lacks, then stream live until it breaks.
 /// Ok means the outbox closed.
 async fn stream(
