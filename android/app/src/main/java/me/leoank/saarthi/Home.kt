@@ -65,6 +65,7 @@ fun HomeScreen(
     spawned: (nodeId: String, sessionId: String) -> Unit,
     openHistory: () -> Unit,
     openTokens: () -> Unit,
+    openSettings: () -> Unit,
 ) {
     var menu by remember { mutableStateOf(false) }
     var newSession by remember { mutableStateOf(false) }
@@ -84,10 +85,17 @@ fun HomeScreen(
                     Column {
                         Text("Sessions")
                         Text(
-                            if (model.link == Link.Reconnecting) "Reconnecting to ${model.hubName}…" else model.hubName,
+                            when (model.link) {
+                                Link.Connected -> model.hubName
+                                Link.Connecting -> "Connecting to ${model.hubName}…"
+                                Link.Reconnecting -> "Reconnecting to ${model.hubName}…"
+                                Link.Disconnected -> "Not connected to ${model.hubName}"
+                            },
                             style = MaterialTheme.typography.bodySmall,
-                            color = if (model.link == Link.Reconnecting) MaterialTheme.colorScheme.error
-                            else MaterialTheme.colorScheme.onSurfaceVariant,
+                            color = if (model.link == Link.Connected || model.link == Link.Connecting)
+                                MaterialTheme.colorScheme.onSurfaceVariant
+                            else MaterialTheme.colorScheme.error,
+                            modifier = Modifier.clickable(enabled = model.link == Link.Disconnected, onClick = openSettings),
                         )
                     }
                 },
@@ -104,8 +112,8 @@ fun HomeScreen(
                                 )
                             }
                             DropdownMenuItem(
-                                text = { Text("Change hub or token") },
-                                onClick = { menu = false; model.disconnect() },
+                                text = { Text("Settings") },
+                                onClick = { menu = false; openSettings() },
                             )
                         }
                     }

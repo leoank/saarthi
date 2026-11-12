@@ -211,8 +211,13 @@ a boxed line, Claude's text as rendered markdown, a tool call as one line with i
 folded to a count of lines (or the error's first line) until tapped, thinking folded,
 notices as captions.
 
-The Android app (`android/`) has five screens: connect (address and token, kept on the
-phone, connected again at launch), home (requests waiting on the person first, then each
+The Android app (`android/`) starts on a boot log: on black, in the manner of a Linux
+boot, one line per real step of the start (the app, phone and core versions, the settings,
+the network, the push distributor, the hub and each node), then the home screen, or on
+failure Retry and Settings. Settings holds the hubs (name, address and client token each,
+one of them active, kept on the phone; the active one's address and token also under the
+keys the notification actions read), the display toggle and the versions; a first run
+with no hub goes there. The other screens: home (requests waiting on the person first, then each
 node with its live sessions), a session (its waiting requests, the conversation live, a
 prompt box, interrupt when the session runs under the wrapper or was spawned, and kill)
 and a node's health as charts over a chosen span, network traffic as a rate between

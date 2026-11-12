@@ -280,7 +280,7 @@ fun NewSessionDialog(
 }
 
 @Composable
-private fun Heading(text: String) {
+internal fun Heading(text: String) {
     Text(
         text,
         style = MaterialTheme.typography.titleSmall,
@@ -291,7 +291,7 @@ private fun Heading(text: String) {
 
 /** Rows on one rounded surface, like a settings group. */
 @Composable
-private fun Group(modifier: Modifier = Modifier, content: @Composable () -> Unit) {
+internal fun Group(modifier: Modifier = Modifier, content: @Composable () -> Unit) {
     Column(
         modifier
             .fillMaxWidth()
@@ -301,7 +301,7 @@ private fun Group(modifier: Modifier = Modifier, content: @Composable () -> Unit
 }
 
 @Composable
-private fun Divider() {
+internal fun Divider() {
     HorizontalDivider(Modifier.padding(horizontal = 16.dp), color = MaterialTheme.colorScheme.outlineVariant)
 }
 

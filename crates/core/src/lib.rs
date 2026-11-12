@@ -178,6 +178,12 @@ pub enum Change {
     },
 }
 
+/// This library's version, the workspace's: the app shows it at start.
+#[uniffi::export]
+pub fn core_version() -> String {
+    env!("CARGO_PKG_VERSION").to_string()
+}
+
 /// Receives the hub's changes to nodes, sessions and pending requests.
 #[uniffi::export(with_foreign)]
 pub trait WatchListener: Send + Sync {

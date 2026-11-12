@@ -51,6 +51,7 @@ sealed interface Screen {
     data object History : Screen
     data object Tokens : Screen
     data class Health(val nodeId: String, val from: Screen) : Screen
+    data object Settings : Screen
 }
 
 @Composable
@@ -63,13 +64,37 @@ fun App(requested: Pair<String, String>?, consumed: () -> Unit, model: HubModel 
         onPauseOrDispose { }
     }
 
-    if (model.link == Link.Disconnected || model.link == Link.Connecting) {
-        ConnectScreen(model)
+    // A cold start shows the boot log until the hub answers; with no hub set up, or when
+    // the person leaves a failed start for Settings, the app goes on to Settings.
+    var booted by remember { mutableStateOf(false) }
+    // A first run goes from the boot log to Settings; once its first hub connects, Home.
+    var firstRun by remember { mutableStateOf(false) }
+    LaunchedEffect(firstRun, model.link) {
+        if (firstRun && model.link == Link.Connected) {
+            screen = Screen.Home
+            firstRun = false
+        }
+    }
+    if (!booted) {
+        BootScreen(
+            model.bootLog,
+            retry = { model.retryBoot() },
+            settings = { screen = Screen.Settings; booted = true },
+            finished = {
+                if (model.bootLog.state == BootLog.State.NoHub) {
+                    screen = Screen.Settings
+                    firstRun = true
+                }
+                booted = true
+            },
+        )
         return
     }
-    // Once connected: register for notifications with the phone's distributor.
+    // Once connected, and again with each hub switched to: register for notifications
+    // with the phone's distributor.
     val activity = LocalActivity.current
-    LaunchedEffect(Unit) { activity?.let { Push.start(it) } }
+    val connected = model.link == Link.Connected
+    LaunchedEffect(connected, model.activeId) { if (connected) activity?.let { Push.start(it) } }
 
     // A notification tap lands on its session once the lists are in; a usage alert, which
     // has none, on the node's health.
@@ -96,7 +121,8 @@ fun App(requested: Pair<String, String>?, consumed: () -> Unit, model: HubModel 
         spawned = null
     }
 
-    BackHandler(enabled = screen != Screen.Home) {
+    // From Settings with no hub there is nowhere to go back to: back leaves the app.
+    BackHandler(enabled = screen != Screen.Home && !(screen == Screen.Settings && model.hubs.isEmpty())) {
         screen = when (val s = screen) {
             is Screen.Health -> s.from
             is Screen.Session -> { model.close(); s.from }
@@ -114,6 +140,7 @@ fun App(requested: Pair<String, String>?, consumed: () -> Unit, model: HubModel 
             spawned = { node, id -> spawned = node to id },
             openHistory = { screen = Screen.History },
             openTokens = { screen = Screen.Tokens },
+            openSettings = { screen = Screen.Settings },
         )
         Screen.History -> HistoryScreen(
             model, snackbar,
@@ -130,5 +157,9 @@ fun App(requested: Pair<String, String>?, consumed: () -> Unit, model: HubModel 
         )
         is Screen.Health -> HealthScreen(model, snackbar, s.nodeId, back = { screen = s.from })
         Screen.Tokens -> TokensScreen(model, snackbar, back = { screen = Screen.Home })
+        Screen.Settings -> SettingsScreen(
+            model, snackbar,
+            back = if (model.hubs.isEmpty()) null else ({ screen = Screen.Home }),
+        )
     }
 }

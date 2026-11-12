@@ -111,8 +111,17 @@ enum class Link { Disconnected, Connecting, Connected, Reconnecting }
 class HubModel(app: Application) : AndroidViewModel(app) {
     private val prefs = app.getSharedPreferences("saarthi", 0)
 
-    var address by mutableStateOf(prefs.getString("address", null) ?: "http://ghost001:7700")
-    var token by mutableStateOf(prefs.getString("token", null) ?: "")
+    private val store = HubStore(prefs)
+    /** The hubs set up on this phone, and the one the app connects to. */
+    val hubs = mutableStateListOf<HubProfile>().apply { addAll(store.load()) }
+    var activeId by mutableStateOf(store.active(hubs))
+        private set
+    val active: HubProfile?
+        get() = hubs.firstOrNull { it.id == activeId }
+    private val address: String
+        get() = active?.address?.trim().orEmpty()
+    private val token: String
+        get() = active?.token?.trim().orEmpty()
     /** Monospace text wraps instead of scrolling sideways. */
     var wrap by mutableStateOf(prefs.getBoolean("wrap", false))
         private set
@@ -133,7 +142,7 @@ class HubModel(app: Application) : AndroidViewModel(app) {
     }
     var link by mutableStateOf(Link.Disconnected)
         private set
-    /** Why the last connection attempt failed, for the connect screen. */
+    /** Why the last connection attempt failed, for the settings screen. */
     var connectError by mutableStateOf<String?>(null)
         private set
 
@@ -184,16 +193,41 @@ class HubModel(app: Application) : AndroidViewModel(app) {
     private var stream: Subscription? = null
     private var reconnect: Job? = null
 
+    /** The boot log shown while the app starts (see Boot.kt). */
+    val bootLog = BootLog()
+
     init {
-        if (token.isNotBlank()) connect()
+        viewModelScope.launch { bootLog.boot(this@HubModel, app) }
     }
 
-    /** The hub's host, for titles. */
+    /** The active hub's name, for titles. */
     val hubName: String
-        get() = address.trim().removePrefix("http://").removePrefix("https://").substringBefore('/')
+        get() = active?.title ?: "no hub"
+
+    /** Adds or replaces a hub. The first one becomes active; a change to the active one
+     *  reconnects with it. */
+    fun saveHub(h: HubProfile) {
+        val at = hubs.indexOfFirst { it.id == h.id }
+        if (at >= 0) hubs[at] = h else hubs.add(h)
+        if (activeId == null || activeId == h.id) activate(h.id) else store.save(hubs, activeId)
+    }
+
+    fun removeHub(id: String) {
+        hubs.removeAll { it.id == id }
+        if (activeId == id) activate(hubs.firstOrNull()?.id) else store.save(hubs, activeId)
+    }
+
+    /** Makes a hub the one the app connects to, and connects to it. */
+    fun activate(id: String?) {
+        activeId = id
+        store.save(hubs, id)
+        disconnect()
+        connectError = null
+        if (id != null) connect()
+    }
 
     fun connect() {
-        prefs.edit().putString("address", address.trim()).putString("token", token.trim()).apply()
+        if (active == null) return
         reconnect?.cancel()
         viewModelScope.launch {
             link = Link.Connecting
@@ -202,6 +236,27 @@ class HubModel(app: Application) : AndroidViewModel(app) {
                 establish()
             } catch (e: Exception) {
                 connectError = describe(e)
+                link = Link.Disconnected
+            }
+        }
+    }
+
+    /** After a failed start, the boot log's Retry. */
+    fun retryBoot() {
+        viewModelScope.launch { bootLog.retry(this@HubModel) }
+    }
+
+    /** [connect], awaited: null once connected, else why not. For the boot log. */
+    internal suspend fun connectNow(): String? {
+        reconnect?.cancel()
+        link = Link.Connecting
+        connectError = null
+        return try {
+            establish()
+            null
+        } catch (e: Exception) {
+            describe(e).also {
+                connectError = it
                 link = Link.Disconnected
             }
         }
@@ -221,7 +276,7 @@ class HubModel(app: Application) : AndroidViewModel(app) {
     /** Opens the connection, lists everything, and starts the watch and any open stream.
      *  The old hub object goes first: a command or refresh while the new connection is
      *  being made must see "not connected", not a destroyed object. */
-    private suspend fun establish() {
+    internal suspend fun establish() {
         watch?.cancel()
         stream?.cancel()
         hub?.let { old -> hub = null; old.close() }

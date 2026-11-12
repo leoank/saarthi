@@ -26,20 +26,42 @@ then Developer options, *USB debugging*), connect it, and from the same shell:
 $ adb install -r app/build/outputs/apk/debug/app-debug.apk
 ```
 
-`-r` keeps the app's data, so upgrading the same way keeps your hub address and token.
+`-r` keeps the app's data, so upgrading the same way keeps your hubs.
 
 ## Connect
 
 The phone has to reach the hub, so install the [Tailscale](https://tailscale.com/download)
-app and join the hub's tailnet. Then open saarthi and enter:
+app and join the hub's tailnet. Then open saarthi.
 
-- **Hub address**: `http://<hub's tailnet name or address>:7700`, for example
-  `http://hub:7700`.
+Every start shows a boot log on black while the app connects: the app, the phone and the
+core, the settings, the network, the push distributor, the hub and each of its nodes, one
+line per step as it happens. When the hub answers, the app goes on to its sessions. When
+it does not, the log ends in a `[FAILED]` line with the reason, and *Retry* or *Settings*.
+
+The first time there is no hub yet, so the app goes on to *Settings* with **Add a hub**
+open:
+
+- **Address**: `http://<hub's tailnet name or address>:7700`, for example
+  `http://hub:7700`; `http://` is added if you leave it out.
 - **Client token**: the token from one of the hub's client-token lines (just the token,
   not the name).
+- **Name**, optional: what the app calls the hub; its host name without one.
 
-Both stay on the phone, and the app connects again by itself at launch. To change them,
-use *Change hub or token* in the home screen's menu.
+*Save and connect* connects and opens the sessions. Everything stays on the phone.
+
+## Settings
+
+*Settings*, in the home screen's menu, is where the app's settings live:
+
+- **Hubs**: every hub you have added, the one the app connects to selected, with how its
+  connection stands. Tap another to switch to it; the pencil edits one, and *Remove this
+  hub* forgets its address and token. *Add a hub* adds another, for example a second hub
+  or the same hub at another address.
+- **Display**: whether code, diffs and tool output wrap instead of scrolling sideways.
+- **About**: the app's and the core's versions and the phone.
+
+The app reaches every hub through the phone's own network for now. A tailnet identity of
+the app's own, per hub with its own auth key, comes with the phone's embedded tsnet.
 
 ## Notifications
 
