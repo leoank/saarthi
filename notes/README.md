@@ -121,3 +121,4 @@ touching the code:
 - [[EXP-20261110-g5mh2z]] Can one claude setup-token token be revoked on its own, where, and how fast does a running session holding it stop; planned, for ADR-0039
 - [[EXP-20261110-g5mh89]] Can a seatbelt-sandboxed claude reach an egress proxy on the node that adds a setup-token as its credential, with a dummy token inside and no TLS interception; planned, for ADR-0039
 - [[EXP-20261111-q6sgt8]] Does CLAUDE_CODE_OAUTH_TOKEN take precedence over the owner's keychain login for a session in the default config directory?
+- [[EXP-20261112-rq8kgc]] does tonic gRPC run over libtailscale on a real tailnet, two identities in one process, peers named, no descriptors leaked; positive on darwin and linux, a keyless restart needs a dial retry

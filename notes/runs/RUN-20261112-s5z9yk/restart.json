@@ -1,0 +1,61 @@
+{
+  "child_inherited": [],
+  "cloexec": [
+    {
+      "cloexec": true,
+      "fd": 36,
+      "kind": "listener"
+    },
+    {
+      "cloexec": true,
+      "fd": 29,
+      "kind": "accepted"
+    },
+    {
+      "cloexec": true,
+      "fd": 34,
+      "kind": "dialled"
+    }
+  ],
+  "conn_is_socket": true,
+  "connect_ms": 4357,
+  "dials": 2,
+  "hub": {
+    "host": "saarthi-spike-linux-hub",
+    "id": "nwaKcnp2HR11CNTRL"
+  },
+  "idle": {
+    "ms": 0,
+    "ok": null,
+    "secs": 0
+  },
+  "node": {
+    "host": "saarthi-spike-linux-node",
+    "id": "njhhf3FoH521CNTRL"
+  },
+  "say": {
+    "ms": 2,
+    "ok": true,
+    "seen": {
+      "peer": {
+        "host": "saarthi-spike-linux-node",
+        "id": "njhhf3FoH521CNTRL",
+        "login": "leoank@github",
+        "tags": null
+      },
+      "remote": "(tailnet address)"
+    }
+  },
+  "stream": {
+    "in_order": true,
+    "ms": 0,
+    "n": 1000,
+    "want": 1000
+  },
+  "target": "aarch64-linux",
+  "up_ms": {
+    "hub": 45,
+    "node": 45
+  },
+  "with_key": false
+}

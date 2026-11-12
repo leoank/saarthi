@@ -1,0 +1,3 @@
+both up: hub 1091 ms, node 1071 ms
+both up: hub 45 ms, node 45 ms
+dial try 1: tailscale_dial: lookup saarthi-spike-linux-hub: no such host (rc -1)

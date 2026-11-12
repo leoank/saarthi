@@ -1,0 +1,11 @@
+syntax = "proto3";
+package spike.v1;
+
+service Echo {
+  rpc Say(Msg) returns (Msg);
+  // `n` messages, then (when `idle_secs` > 0) one more after that many seconds of silence.
+  rpc Count(CountRequest) returns (stream Msg);
+}
+
+message Msg { string text = 1; uint64 n = 2; }
+message CountRequest { uint64 n = 1; uint64 idle_secs = 2; }
