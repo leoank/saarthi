@@ -15,8 +15,8 @@ limits without a Claude login) is simply absent.
 | `gpu.util_pct` | % | GPU device utilisation (macOS) |
 | `gpu.mem_used_bytes` | bytes | GPU memory in use (macOS) |
 | `claude.processes` | | Running Claude Code processes |
-| `node.keep_awake` | 0 or 1 | Whether the daemon is holding the machine awake |
-| `node.keep_awake_enabled` | 0 or 1 | Whether keep-awake is switched on (`--keep-awake`, or the app's switch) |
+| `node.keep_awake` | 0 or 1 | Whether the daemon is holding the machine awake (macOS) |
+| `node.keep_awake_enabled` | 0 or 1 | Whether keep-awake is switched on (`--keep-awake`, or the app's switch) (macOS) |
 | `usage.five_hour_pct` | % | Claude 5-hour window used |
 | `usage.seven_day_pct` | % | Claude 7-day window used |
 | `usage.seven_day_fable_pct` | % | Claude 7-day Fable window used |

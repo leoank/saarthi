@@ -408,14 +408,18 @@ async fn serve(args: Serve) -> Result<()> {
             let flag = |b: &std::sync::atomic::AtomicBool| {
                 if b.load(std::sync::atomic::Ordering::Relaxed) { 1.0 } else { 0.0 }
             };
-            sample.metrics.push(saarthi_proto::event::v1::Metric {
-                name: "node.keep_awake".into(),
-                value: flag(&held),
-            });
-            sample.metrics.push(saarthi_proto::event::v1::Metric {
-                name: "node.keep_awake_enabled".into(),
-                value: flag(&keep_awake),
-            });
+            // Only where the hold works (macOS): a client shows the switch when the
+            // metric is there, so a Linux node offers none.
+            if cfg!(target_os = "macos") {
+                sample.metrics.push(saarthi_proto::event::v1::Metric {
+                    name: "node.keep_awake".into(),
+                    value: flag(&held),
+                });
+                sample.metrics.push(saarthi_proto::event::v1::Metric {
+                    name: "node.keep_awake_enabled".into(),
+                    value: flag(&keep_awake),
+                });
+            }
             health_outbox.health(sample).await;
         }
     });
