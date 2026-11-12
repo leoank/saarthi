@@ -38,6 +38,19 @@ done ones. The project page's *Progress* lists this phase on one line.
     shown on the session; `Session.profile` stored by the hub; `ctl nodes` lists them
     ([[AGS-20261107-7mpyze]])
   - [ ] 1.5 neusis: the profiles option and the token as an agenix secret
+- [ ] 2. Embedded tsnet in the hub and the node, then the sandbox egress proxy (the owner's
+  order and choices of 2026-11-12, [[AGS-20261112-rpj0rk]]): a first join by an auth key
+  file, plain TCP kept, several tailnets on the hub, the peer's tailnet identity recorded
+  - [x] 2.1 tonic over libtailscale on a real tailnet, two identities in one process,
+    peers named, no descriptors leaked, a keyless restart ([[EXP-20261112-rq8kgc]])
+  - [x] 2.2 `saarthi-tailnet`; the hub's `--tailnet` (repeatable) beside `--listen`; the
+    node's `--tailnet`; the caller's tailnet and peer recorded and shown by `ctl nodes`;
+    libtailscale `ac7ed43` in the flake; the modules' options; a live test gated on
+    `SAARTHI_TAILNET_AUTHKEY_FILE`; checked live with the real binaries (ADR-0048)
+  - [ ] 2.3 neusis: the hub's tailnets and a node's tailnet, with their auth keys as
+    agenix secrets
+  - [ ] 2.4 The egress proxy that adds the Claude token, so a sandbox holds a dummy
+    ([[EXP-20261110-g5mh89]])
 
 ## Notes
 Migrated from PRJ-0001's Progress by `yajna phase migrate`.
