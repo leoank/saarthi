@@ -479,15 +479,20 @@ impl Db {
         Ok(rows.iter().map(session_from).collect())
     }
 
-    /// Sessions started before `before_ms`, newest first, at most `limit`.
+    /// Sessions started before `before_ms`, newest first, at most `limit`: only those with a
+    /// transcript line, since one without (a tool's throwaway run that kept none) has no
+    /// conversation to show or resume.
     pub async fn history(&self, node_id: &str, before_ms: i64, limit: i64) -> Result<Vec<Session>> {
         let rows = sqlx::query(
-            "SELECT * FROM sessions WHERE (?1 = '' OR node_id = ?1) AND started_ms < ?2
+            "SELECT * FROM sessions s WHERE (?1 = '' OR node_id = ?1) AND started_ms < ?2
+               AND EXISTS (SELECT 1 FROM events e WHERE e.node_id = s.node_id
+                           AND e.session_id = s.id AND e.source = ?4)
              ORDER BY started_ms DESC LIMIT ?3",
         )
         .bind(node_id)
         .bind(before_ms)
         .bind(limit)
+        .bind(EventSource::Transcript.as_str_name())
         .fetch_all(&self.pool)
         .await?;
         Ok(rows.iter().map(session_from).collect())
@@ -723,6 +728,50 @@ mod tests {
         let opening = db.opening(&node, "s1", 8, 150).await.unwrap();
         let seqs: Vec<u64> = opening.iter().map(|e| e.seq).collect();
         assert_eq!(seqs, [4, 5], "only the typed prompts that fit");
+    }
+
+    #[tokio::test]
+    async fn history_leaves_out_a_session_that_kept_no_transcript() {
+        let dir = tempfile::tempdir().unwrap();
+        let db = Db::open(&dir.path().join("hub.db")).await.unwrap();
+        let (node, _) = db.register_node("mac", "0.1.0", 1).await.unwrap();
+        for (id, started_ms) in [("talked", 1), ("throwaway", 2)] {
+            let s = Session {
+                id: id.into(),
+                cwd: format!("/tmp/{id}"),
+                started_ms,
+                ended_ms: Some(9),
+                ..Default::default()
+            };
+            db.store_session(&node, &s).await.unwrap();
+        }
+        // Both have a hook event; only one has a transcript line.
+        for (seq, (id, source)) in [
+            ("talked", EventSource::Hook),
+            ("talked", EventSource::Transcript),
+            ("throwaway", EventSource::Hook),
+        ]
+        .into_iter()
+        .enumerate()
+        {
+            let e = Event {
+                seq: seq as u64 + 1,
+                session_id: id.into(),
+                source: source.into(),
+                kind: "user".into(),
+                payload_json: "{}".into(),
+                ..Default::default()
+            };
+            db.store_event(&node, &e).await.unwrap();
+        }
+        let ids: Vec<String> = db
+            .history("", i64::MAX, 50)
+            .await
+            .unwrap()
+            .into_iter()
+            .map(|s| s.id)
+            .collect();
+        assert_eq!(ids, ["talked"]);
     }
 
     #[tokio::test]
