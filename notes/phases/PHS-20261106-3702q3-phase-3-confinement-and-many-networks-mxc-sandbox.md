@@ -49,8 +49,11 @@ done ones. The project page's *Progress* lists this phase on one line.
     `SAARTHI_TAILNET_AUTHKEY_FILE`; checked live with the real binaries (ADR-0048)
   - [ ] 2.3 neusis: the hub's tailnets and a node's tailnet, with their auth keys as
     agenix secrets
-  - [ ] 2.4 The egress proxy that adds the Claude token, so a sandbox holds a dummy
-    ([[EXP-20261110-g5mh89]])
+  - [x] 2.4 The egress proxy that adds the Claude token, so a sandbox holds a dummy
+    ([[EXP-20261110-g5mh89]]): the owner's choices of 2026-11-13 ([[AGS-20261113-28sfr0]]),
+    egress kept open and only sandboxed sessions proxied; a proxy per sandboxed session on
+    a unix socket in the profile's state directory, claude inside reaching it through
+    `ANTHROPIC_UNIX_SOCKET` as plain HTTP, `/v1/` only (ADR-0050)
   - [x] 2.5 The phone's own identity per hub, ahead of 2.4 (the owner's order and choices
     of 2026-11-13, [[AGS-20261113-1h4tz8]]): one identity per hub, its auth key kept
     encrypted under the Android Keystore, a hub without a key on the phone's network,
