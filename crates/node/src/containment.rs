@@ -5,9 +5,11 @@
 //!
 //! - its own state directory: Claude's config directory (`claude/`, which receives the
 //!   registry entry and transcripts), a scratch directory and a home, all read-write;
-//! - the long-lived token of `claude setup-token` as `CLAUDE_CODE_OAUTH_TOKEN`: the named
-//!   token the hub sent with the command (ADR-0039), else the profile's `token_file` read at
-//!   each start; never written anywhere (EXP-20261107-413q6m);
+//! - the long-lived token of `claude setup-token`: the named token the hub sent with the
+//!   command (ADR-0039), else the profile's `token_file` read at each start; never written
+//!   anywhere (EXP-20261107-413q6m), and never inside: claude there holds a dummy and sends
+//!   its API requests over a unix socket to the node's proxy, which adds the token
+//!   (ADR-0050, `claude_api`);
 //! - the working directory read-write, `/nix/store` and the profile's paths read-only,
 //!   the rest of the home directory unreadable;
 //! - outbound network, no inbound and no loopback TCP: hooks come back over the node's unix
@@ -185,10 +187,9 @@ impl Profile {
         Ok(())
     }
 
-    /// The environment inside: the node's own variables first, then the profile's. The
-    /// Claude token is the one the hub sent, else the profile's token file.
-    fn env(&self, user: &str, claude_token: Option<&str>) -> Result<Vec<(String, String)>, String> {
-        let state = self.state_dir.as_ref().expect("checked at load");
+    /// The Claude token a session runs under: the one the hub sent, else the profile's
+    /// token file.
+    fn token(&self, claude_token: Option<&str>) -> Result<String, String> {
         let token = match (claude_token, &self.token_file) {
             (Some(t), _) => t.to_string(),
             (None, Some(f)) => std::fs::read_to_string(f)
@@ -200,6 +201,25 @@ impl Profile {
                 ));
             }
         };
+        let token = token.trim().to_string();
+        if token.is_empty() || axum::http::HeaderValue::from_str(&format!("Bearer {token}")).is_err() {
+            return Err(format!("the {} sandbox's Claude token is empty or not valid in a header", self.name));
+        }
+        Ok(token)
+    }
+
+    /// Where a session's Claude API proxy listens: in the state directory, which the
+    /// sandbox may use. One socket per session, since sessions may run under different
+    /// tokens.
+    fn api_socket(&self) -> PathBuf {
+        let id = uuid::Uuid::new_v4().simple().to_string();
+        self.state_dir.as_ref().expect("checked at load").join("tmp").join(format!("claude-api-{}.sock", &id[..8]))
+    }
+
+    /// The environment inside: the node's own variables first, then the profile's. Claude
+    /// gets a dummy token and sends its API requests to the proxy on `api_socket`.
+    fn env(&self, user: &str, api_socket: &Path) -> Vec<(String, String)> {
+        let state = self.state_dir.as_ref().expect("checked at load");
         let path: Vec<&str> = self.path.iter().map(String::as_str).chain(SYSTEM_PATH).collect();
         let s = |p: &Path| p.to_string_lossy().into_owned();
         let mut env: BTreeMap<String, String> = BTreeMap::from([
@@ -213,10 +233,13 @@ impl Profile {
             ("CLAUDE_CODE_TMPDIR".into(), s(&state.join("tmp"))),
             ("TMPDIR".into(), s(&state.join("tmp"))),
             ("XDG_CACHE_HOME".into(), s(&state.join("home/.cache"))),
-            ("CLAUDE_CODE_OAUTH_TOKEN".into(), token.trim().to_string()),
+            ("CLAUDE_CODE_OAUTH_TOKEN".into(), crate::claude_api::DUMMY_TOKEN.into()),
+            ("ANTHROPIC_UNIX_SOCKET".into(), s(api_socket)),
+            // Plain HTTP over the socket: the proxy outside does the TLS.
+            ("ANTHROPIC_BASE_URL".into(), "http://api.anthropic.com".into()),
         ]);
         env.extend(self.env.clone());
-        Ok(env.into_iter().collect())
+        env.into_iter().collect()
     }
 
     /// The filesystem grants: (read-only, read-write, denied).
@@ -256,7 +279,8 @@ pub struct Child {
 pub enum Proc {
     Host(tokio::process::Child),
     #[cfg(target_os = "macos")]
-    Seatbelt(mxc_sdk::v1::MxcProcess),
+    /// The sandboxed process and its Claude API proxy, which stops when this is dropped.
+    Seatbelt(mxc_sdk::v1::MxcProcess, crate::claude_api::Proxy),
 }
 
 impl Proc {
@@ -265,7 +289,7 @@ impl Proc {
         match self {
             Proc::Host(c) => format!("{:?}", c.wait().await),
             #[cfg(target_os = "macos")]
-            Proc::Seatbelt(p) => loop {
+            Proc::Seatbelt(p, _) => loop {
                 // mxc's wait blocks; polling keeps the handle free for a kill.
                 match p.try_wait() {
                     Ok(Some(code)) => break format!("exited {code}"),
@@ -285,7 +309,7 @@ impl Proc {
                 let _ = c.start_kill();
             }
             #[cfg(target_os = "macos")]
-            Proc::Seatbelt(p) => {
+            Proc::Seatbelt(p, _) => {
                 let _ = p.kill();
             }
         }
@@ -349,7 +373,10 @@ pub fn spawn_seatbelt(
         .prepare(user_claude)
         .map_err(|e| format!("preparing the profile's state directory: {e}"))?;
     let user = std::env::var("USER").unwrap_or_default();
-    let env = profile.env(&user, claude_token)?;
+    let token = profile.token(claude_token)?;
+    let proxy = crate::claude_api::Proxy::start(&profile.api_socket(), &token, crate::claude_api::UPSTREAM)
+        .map_err(|e| format!("starting the Claude API proxy: {e}"))?;
+    let env = profile.env(&user, proxy.path());
     let (readonly, readwrite, denied) = profile.grants(cwd, user_claude, deny);
     let mut seatbelt = SeatbeltConfig::default();
     // getpwuid, which ssh and git need, goes through opendirectoryd (EXP-20261016-rq1407).
@@ -406,7 +433,7 @@ pub fn spawn_seatbelt(
         stdin,
         stdout: reader(stdout)?,
         stderr: reader(stderr)?,
-        proc: Proc::Seatbelt(proc),
+        proc: Proc::Seatbelt(proc, proxy),
     })
 }
 
@@ -483,11 +510,12 @@ backend = "host"
             .unwrap();
             let x = tokenless.get("x").unwrap().unwrap();
             assert!(
-                x.env("me", None)
+                x.token(None)
                     .unwrap_err()
                     .contains("needs a Claude token")
             );
-            assert!(x.env("me", Some("t")).is_ok());
+            assert!(x.token(Some("t")).is_ok());
+            assert!(x.token(Some("a\nb")).unwrap_err().contains("not valid"));
             let two = "[profiles.a]\nbackend = \"seatbelt\"\nstate_dir = \"/s\"\ntoken_file = \"/t\"\n\
                        [profiles.b]\nbackend = \"seatbelt\"\nstate_dir = \"/s\"\ntoken_file = \"/t\"\n";
             assert!(bad(two).contains("same state_dir"));
@@ -510,11 +538,17 @@ backend = "host"
         );
         let p = Profiles::parse(&text, dir.path()).unwrap();
         let s = p.get("s").unwrap().unwrap();
-        let env: BTreeMap<_, _> = s.env("me", None).unwrap().into_iter().collect();
-        assert_eq!(env["CLAUDE_CODE_OAUTH_TOKEN"], "tok-123");
+        assert_eq!(s.token(None).unwrap(), "tok-123");
         // A token from the hub wins over the file.
-        let env: BTreeMap<_, _> = s.env("me", Some("from-hub")).unwrap().into_iter().collect();
-        assert_eq!(env["CLAUDE_CODE_OAUTH_TOKEN"], "from-hub");
+        assert_eq!(s.token(Some("from-hub")).unwrap(), "from-hub");
+        let socket = s.api_socket();
+        assert!(socket.starts_with(dir.path().join("state/tmp")), "{}", socket.display());
+        let env: BTreeMap<_, _> = s.env("me", &socket).into_iter().collect();
+        // The token never goes inside: a dummy, and the proxy's socket.
+        assert_eq!(env["CLAUDE_CODE_OAUTH_TOKEN"], crate::claude_api::DUMMY_TOKEN);
+        assert_eq!(env["ANTHROPIC_UNIX_SOCKET"], socket.to_string_lossy());
+        assert_eq!(env["ANTHROPIC_BASE_URL"], "http://api.anthropic.com");
+        assert!(!env.values().any(|v| v.contains("tok-123")));
         assert_eq!(env["PATH"], "/p/bin:/usr/bin:/bin:/usr/sbin:/sbin");
         assert_eq!(env["CLAUDE_CONFIG_DIR"], dir.path().join("state/claude").to_string_lossy());
         assert_eq!(env["TMPDIR"], dir.path().join("state/tmp").to_string_lossy());

@@ -64,6 +64,7 @@ spawns, with the owner's answers of 2026-11-07.
 | [ADR-0047](ADR-0047-a-terminal-dashboard-not-a-terminal-app.md) | A terminal dashboard, not a terminal app | accepted |
 | [ADR-0048](ADR-0048-the-hub-and-the-node-embed-tsnet-beside-plain-tcp.md) | The hub and the node embed tsnet beside plain TCP | accepted |
 | [ADR-0049](ADR-0049-the-phone-holds-a-tailnet-identity-per-hub.md) | The phone holds a tailnet identity per hub | accepted |
+| [ADR-0050](ADR-0050-a-sandbox-reaches-the-claude-api-through-the-node-holding-a-dummy.md) | A sandbox reaches the Claude API through the node, holding a dummy token | accepted |
 
 Each record:
 

@@ -249,7 +249,10 @@ session then sees only its working directory, the Nix store and the paths the pr
 lists; the rest of your home directory, your SSH keys and other sessions are out of reach.
 It has the network, but no inbound connections. It never sees your own Claude login: it
 runs under a Claude token, the account picked when it starts or the node's default, from
-the [hub's Claude accounts](hub.md#claude-accounts). A profile can also name a token file
+the [hub's Claude accounts](hub.md#claude-accounts). It never sees that token either: Claude
+inside holds a dummy and sends its API requests over a socket in the profile's state
+directory to the node, which adds the token and passes them on to Anthropic (ADR-0050).
+Its other traffic goes out directly. A profile can also name a token file
 of its own, used when the hub sends none (no account picked and no default):
 
 ```console
@@ -274,7 +277,9 @@ env = { GIT_CONFIG_GLOBAL = "~/.config/git/config", SSH_AUTH_SOCK = "~/.bitwarde
 
 - `state_dir` holds the profile's own Claude config directory, where its sessions'
   transcripts live; History and resume find them there, and a resumed session runs under
-  the same profile.
+  the same profile. Each session's API socket is made in its `tmp/`, so keep the path short:
+  a unix socket path may be at most about 100 characters, and a spawn under a longer one
+  is refused.
 - `path` and `readonly` bring in your tools; the profile directories are links into the
   Nix store, which is always readable.
 - `claude_files` links those entries of `~/.claude` into the profile, so a sandboxed

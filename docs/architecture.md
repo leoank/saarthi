@@ -258,7 +258,8 @@ the hub catalogs, chosen at spawn time. A profile says:
   unless the profile says otherwise.
 - **network**: none, loopback only, allowlisted hosts, or everything, optionally through
   an egress proxy the daemon runs. Per-host allowlists exist only on backends that support
-  them; seatbelt offers all or nothing plus a cooperative proxy.
+  them; seatbelt offers all or nothing plus a cooperative proxy. The Claude API is reached
+  through the node either way (ADR-0050).
 - **secrets**: which Claude token the session runs under, and whether the agent sees
   the real token or the egress proxy injects it so the sandbox never holds it (ADR-0039);
   the token is chosen per session, not per profile.
@@ -302,8 +303,12 @@ As built (ADR-0038, phase 3): profiles are a TOML file the node is given
 `PATH`, read-only, read-write and denied paths, Claude files linked from `~/.claude`, and
 extra environment; a spawn names one, and the empty name is the host. Until the hub's
 hub's named tokens exist (ADR-0039) a sandbox's credential is a long-lived token from
-`claude setup-token` in the profile's token file, given as `CLAUDE_CODE_OAUTH_TOKEN`
-([[EXP-20261107-413q6m]]). Egress is open; no inbound, no
+`claude setup-token` in the profile's token file ([[EXP-20261107-413q6m]]). The token
+never goes inside (ADR-0050, [[EXP-20261110-g5mh89]]): claude there holds a dummy
+`CLAUDE_CODE_OAUTH_TOKEN` and sends its API requests as plain HTTP over a unix socket
+(`ANTHROPIC_UNIX_SOCKET`, `ANTHROPIC_BASE_URL=http://api.anthropic.com`) to a proxy the
+node runs per session in `<state>/tmp`, which puts the token in the `Authorization`
+header and forwards `/v1/` over TLS. Egress is open; no inbound, no
 loopback TCP. Hooks come back as command hooks over `--hook-socket`
 (`~/.local/state/saarthi/hook.sock`); `/private/tmp/cc-socks` and the wrappers' socket are
 denied. Each profile has one config directory, `<state>/claude`, whose registry the node
@@ -363,9 +368,10 @@ each token about every half hour, in an empty config directory nothing lists, sk
 account a session reported on lately, so idle accounts stay fresh too (ADR-0043).
 
 Still to check against the real thing: that one token stays good used from several
-machines at once ([[EXP-20261110-g5mh7g]]), that one token can be revoked on its own
-([[EXP-20261110-g5mh2z]]), and how a sandboxed session reaches the proxy without TLS
-interception ([[EXP-20261110-g5mh89]]).
+machines at once ([[EXP-20261110-g5mh7g]]) and that one token can be revoked on its own
+([[EXP-20261110-g5mh2z]]). How a sandboxed session reaches the proxy without TLS
+interception is settled: over a unix socket, as plain HTTP ([[EXP-20261110-g5mh89]],
+ADR-0050).
 
 Why not the person's own login ([[RUN-20261017-dssg3d]]): an ordinary OAuth login is a
 *grant* whose refresh rotates both tokens and revokes the previous pair at once, so two

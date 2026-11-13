@@ -878,7 +878,9 @@ echo closed >> LOG
     #[cfg(target_os = "macos")]
     const FAKE_INSIDE: &str = r#"#!/bin/sh
 { echo "$@"; echo "token=$CLAUDE_CODE_OAUTH_TOKEN config=$CLAUDE_CONFIG_DIR home=$HOME";
-  cat SECRET 2>&1 || true; } > LOG
+  cat SECRET 2>&1 || true
+  echo "socket=$ANTHROPIC_UNIX_SOCKET base=$ANTHROPIC_BASE_URL"
+  /usr/bin/curl -s -o /dev/null -w 'proxy=%{http_code}\n' --unix-socket "$ANTHROPIC_UNIX_SOCKET" http://x/api/elsewhere; } > LOG
 while IFS= read -r line; do
   echo "$line" >> LOG
   case "$line" in
@@ -956,11 +958,19 @@ echo closed >> LOG
         let args = lines.next().unwrap();
         assert!(args.contains(r#"--settings {"hooks":"socket"}"#), "the socket hooks, not the TCP ones: {args}");
         let env = lines.next().unwrap();
-        assert!(env.contains("token=tok-abc"), "{env}");
+        // Inside, a dummy; the token stays with the node's proxy (ADR-0050).
+        assert!(env.contains(&format!("token={}", crate::claude_api::DUMMY_TOKEN)), "{env}");
+        assert!(!text.contains("tok-abc"), "the token reached the sandbox: {text}");
         assert!(env.contains(&format!("config={}/state/claude", base.display())), "{env}");
         assert!(env.contains(&format!("home={}/state/home", base.display())), "{env}");
         let read = lines.next().unwrap();
         assert!(read.contains("Operation not permitted"), "the sandbox read the secret: {read}");
+        let api = lines.next().unwrap();
+        let socket = api.split_whitespace().next().unwrap().trim_start_matches("socket=").to_string();
+        assert!(socket.starts_with(&*base.join("state/tmp").to_string_lossy()), "{api}");
+        assert!(api.ends_with("base=http://api.anthropic.com"), "{api}");
+        // The sandbox reaches the proxy, which forwards only the API's /v1/.
+        assert_eq!(lines.next().unwrap(), "proxy=403", "{text}");
         let s = f.sessions.snapshot().await;
         let s = s.iter().find(|s| s.id == id).unwrap();
         assert!(s.transcript_path.starts_with(&*base.join("state/claude/projects").to_string_lossy()));
@@ -972,6 +982,13 @@ echo closed >> LOG
             }
             tokio::time::sleep(Duration::from_millis(20)).await;
         }
+        for _ in 0..100 {
+            if !Path::new(&socket).exists() {
+                break;
+            }
+            tokio::time::sleep(Duration::from_millis(20)).await;
+        }
+        assert!(!Path::new(&socket).exists(), "the proxy outlived its session");
 
         // Its transcript is in the profile's config directory, so the resume runs there too.
         let transcript = crate::sessions::transcript_path(&base.join("state/claude"), &cwd, &id);
@@ -981,7 +998,7 @@ echo closed >> LOG
         spawner.resume(&id, &cwd, "go on", "", None).await.unwrap();
         let text = log_has(&log, "go on").await;
         assert!(text.contains(&format!("--resume {id}")), "{text}");
-        assert!(text.contains("token=tok-abc"), "resumed inside the sandbox: {text}");
+        assert!(text.contains("proxy=403"), "resumed inside the sandbox, with its proxy: {text}");
         spawner.kill(&id).await.unwrap();
     }
 
