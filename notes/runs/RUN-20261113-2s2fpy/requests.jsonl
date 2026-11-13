@@ -1,0 +1,18 @@
+{"via": "direct", "method": "CONNECT", "target": "api.anthropic.com:443", "t": 1794537154.535}
+{"via": "direct", "method": "CONNECT", "target": "api.anthropic.com:443", "t": 1794537154.535}
+{"via": "direct", "method": "CONNECT", "target": "api.anthropic.com:443", "t": 1794537154.918}
+{"via": "direct", "method": "CONNECT", "target": "api.anthropic.com:443", "t": 1794537157.981}
+{"via": "direct", "method": "CONNECT", "target": "api.anthropic.com:443", "t": 1794537158.04}
+{"via": "direct", "method": "CONNECT", "target": "api.anthropic.com:443", "t": 1794537158.092}
+{"via": "direct", "method": "CONNECT", "target": "api.anthropic.com:443", "t": 1794537158.136}
+{"via": "socket", "method": "POST", "path": "/v1/messages?beta=true", "auth_in": "dummy", "status": "HTTP/1.1 200 OK", "t": 1794537159.916}
+{"via": "direct", "method": "CONNECT", "target": "api.anthropic.com:443", "t": 1794537160.516}
+{"via": "direct", "method": "CONNECT", "target": "api.anthropic.com:443", "t": 1794537161.148}
+{"via": "direct", "method": "CONNECT", "target": "api.anthropic.com:443", "t": 1794537161.148}
+{"via": "direct", "method": "CONNECT", "target": "api.anthropic.com:443", "t": 1794537161.297}
+{"via": "direct", "method": "CONNECT", "target": "api.anthropic.com:443", "t": 1794537164.34}
+{"via": "direct", "method": "CONNECT", "target": "api.anthropic.com:443", "t": 1794537164.409}
+{"via": "direct", "method": "CONNECT", "target": "api.anthropic.com:443", "t": 1794537164.454}
+{"via": "direct", "method": "CONNECT", "target": "api.anthropic.com:443", "t": 1794537164.498}
+{"via": "socket", "method": "POST", "path": "/v1/messages?beta=true", "auth_in": "dummy", "status": "HTTP/1.1 200 OK", "t": 1794537165.877}
+{"via": "direct", "method": "CONNECT", "target": "api.anthropic.com:443", "t": 1794537165.973}

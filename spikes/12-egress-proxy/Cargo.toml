@@ -1,0 +1,13 @@
+# EXP-20261110-g5mh89 step 2: claude in mxc's seatbelt sandbox, under the node's network
+# policy, reaching proxy.py over a unix socket with only a dummy token. Throwaway spike;
+# run from the project's dev shell (see sandbox-run.sh).
+[package]
+name = "egress-proxy-spike"
+version = "0.0.0"
+edition = "2024"
+publish = false
+
+[workspace]
+
+[dependencies]
+mxc-sdk = "1.0.1"

@@ -119,7 +119,7 @@ touching the code:
 - [[EXP-20261110-g5mh7g]] Does one claude setup-token token, used by several headless sessions at once on two machines, keep working through hours of turns, with no session or the owner's login disturbed; planned, for ADR-0039
 - [[EXP-20261110-g5mht5]] Does GET /api/oauth/usage, the endpoint behind --claude-usage, accept a claude setup-token token, and if not what other source gives an idle account's usage; planned, for ADR-0039
 - [[EXP-20261110-g5mh2z]] Can one claude setup-token token be revoked on its own, where, and how fast does a running session holding it stop; planned, for ADR-0039
-- [[EXP-20261110-g5mh89]] Can a seatbelt-sandboxed claude reach an egress proxy on the node that adds a setup-token as its credential, with a dummy token inside and no TLS interception; planned, for ADR-0039
+- [[EXP-20261110-g5mh89]] can a seatbelt-sandboxed claude reach a proxy on the node that adds its token, with a dummy inside and no TLS interception; positive, over ANTHROPIC_UNIX_SOCKET as plain HTTP (ADR-0050)
 - [[EXP-20261111-q6sgt8]] Does CLAUDE_CODE_OAUTH_TOKEN take precedence over the owner's keychain login for a session in the default config directory?
 - [[EXP-20261112-rq8kgc]] does tonic gRPC run over libtailscale on a real tailnet, two identities in one process, peers named, no descriptors leaked; positive on darwin and linux, a keyless restart needs a dial retry
 - [[EXP-20261113-1h4ztf]] can libtailscale be cross-built for arm64 Android, linked into the core, and reach the hub from inside the app; positive on the emulator once netmon got interfaces from getifaddrs and tsnet a log directory

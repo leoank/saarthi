@@ -1,0 +1,5 @@
+loopback: 000refused
+token file: unreadable
+token env: dummy-token
+internet: 200
+===RESULT=== {"checks": {"loopback": "000refused", "token file": "unreadable", "token env": "dummy-token", "internet": "200"}, "turn1": {"subtype": "success", "is_error": false, "result": "pong"}, "turn2": {"subtype": "success", "is_error": false, "result": "Pong."}, "requests": [{"auth_in": "dummy", "method": "POST", "path": "/v1/messages?beta=true", "status": "HTTP/1.1 200 OK", "via": "socket", "n": 2}]}
