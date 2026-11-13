@@ -68,7 +68,8 @@ emulator ([[RUN-20261113-1v2rh6]]).
 - A cold start joins from saved state in about 160 ms and connects within a second.
 - On Android netmon only polls every ten minutes and expects the app to report network
   changes; nothing does yet. How the link behaves across a switch between Wi-Fi and
-  mobile data is open, for the phone.
+  mobile data was open; on the owner's phone at 0.5.0 the app connected through its own
+  identity and held across such a switch, so no hook is needed for now.
 - Unplanned: a hub whose identity the tailnet had logged out never came back, because its
   key file was read only on the first join (ADR-0048); now it is read on every start.
 

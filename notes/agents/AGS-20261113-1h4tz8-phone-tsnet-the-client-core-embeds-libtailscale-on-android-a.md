@@ -6,10 +6,10 @@ title: "Phone tsnet: the client core embeds libtailscale on Android (ADR-0016), 
 model: claude-opus-5-5
 harness: claude-code
 started: 2026-11-13T01:23+00:00
-finished: null
+finished: 2026-11-13T02:02+00:00
 created_entities: [EXP-20261113-1h4ztf, RUN-20261113-1v2rh6]
 edited_entities: [PHS-20261106-3702q3]
-outcome: pending          # done | failed | aborted | pending
+outcome: done             # done | failed | aborted | pending
 created: 2026-11-13
 author: agent:claude
 ---
@@ -43,5 +43,6 @@ own network, persistent devices.
   file is now read on every start while it exists; the flags, the modules' option
   descriptions and the guide say so.
 - Versions to 0.5.0 (app versionCode 5): the hub and the node change too.
-- Not done: the owner's phone (only an APK install is mine to do there), a switch between
-  Wi-Fi and mobile data.
+- Committed and pushed (eb06295, 4e07fcc, 579dd41); 0.5.0 installed on the owner's phone.
+  The owner checked it there: connected through the app's own identity and held across a
+  switch between Wi-Fi and mobile data.

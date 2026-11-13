@@ -51,7 +51,7 @@ done ones. The project page's *Progress* lists this phase on one line.
     agenix secrets
   - [ ] 2.4 The egress proxy that adds the Claude token, so a sandbox holds a dummy
     ([[EXP-20261110-g5mh89]])
-  - [ ] 2.5 The phone's own identity per hub, ahead of 2.4 (the owner's order and choices
+  - [x] 2.5 The phone's own identity per hub, ahead of 2.4 (the owner's order and choices
     of 2026-11-13, [[AGS-20261113-1h4tz8]]): one identity per hub, its auth key kept
     encrypted under the Android Keystore, a hub without a key on the phone's network,
     persistent devices
@@ -59,8 +59,8 @@ done ones. The project page's *Progress* lists this phase on one line.
       interfaces from `getifaddrs`, a log directory for tsnet; `Hub.connectViaTailnet`;
       the hub editor's key and device name; the boot log's join; checked on the emulator
       with no Tailscale app (ADR-0049, [[EXP-20261113-1h4ztf]])
-    - [ ] 2.5.2 Checked on the owner's phone, including a switch between Wi-Fi and mobile
-      data
+    - [x] 2.5.2 Checked on the owner's phone, including a switch between Wi-Fi and mobile
+      data (the owner, 2026-11-13)
 
 ## Notes
 Migrated from PRJ-0001's Progress by `yajna phase migrate`.
