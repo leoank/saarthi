@@ -30,8 +30,10 @@ $ adb install -r app/build/outputs/apk/debug/app-debug.apk
 
 ## Connect
 
-The phone has to reach the hub, so install the [Tailscale](https://tailscale.com/download)
-app and join the hub's tailnet. Then open saarthi.
+The phone has to reach the hub. Either install the
+[Tailscale](https://tailscale.com/download) app and join the hub's tailnet, or give the
+hub a tailnet auth key in saarthi and let the app join that tailnet itself (see
+[On the hub's tailnet](#on-the-hubs-tailnet)). Then open saarthi.
 
 Every start shows a boot log on black while the app connects: the app, the phone and the
 core, the settings, the network, the push distributor, the hub and each of its nodes, one
@@ -46,6 +48,8 @@ open:
 - **Client token**: the token from one of the hub's client-token lines (just the token,
   not the name).
 - **Name**, optional: what the app calls the hub; its host name without one.
+- **Auth key**, optional: a tailnet auth key, for the app to reach the hub through a
+  tailnet device of its own.
 
 *Save and connect* connects and opens the sessions. Everything stays on the phone.
 
@@ -60,8 +64,26 @@ open:
 - **Display**: whether code, diffs and tool output wrap instead of scrolling sideways.
 - **About**: the app's and the core's versions and the phone.
 
-The app reaches every hub through the phone's own network for now. A tailnet identity of
-the app's own, per hub with its own auth key, comes with the phone's embedded tsnet.
+## On the hub's tailnet
+
+The Tailscale app holds one tailnet at a time. To reach a hub on another one, or without
+the Tailscale app at all, give the hub an auth key: the app then joins the hub's tailnet
+itself, as a device of its own for that hub (ADR-0049).
+
+1. In the hub's tailnet admin console, *Settings → Keys*, make a **pre-approved** auth
+   key, not ephemeral. Reusable or not: the app keeps it to log in again if the tailnet
+   ever logs the device out, so a one-off key then needs replacing.
+2. In saarthi, edit the hub (or add it) and paste the key under **Auth key**. The address
+   is the hub as its tailnet names it, for example `http://saarthi-hub:7700` for a hub
+   serving with `--tailnet` ([On several tailnets](hub.md#on-several-tailnets)).
+3. **Device name**, optional: the phone's machine name there, `saarthi-<phone model>`
+   by default.
+
+The boot log then shows `Joined tailnet as <device name>` before connecting. The key is
+stored on the phone encrypted with a key held by the Android Keystore. Removing the hub
+forgets the key and the identity; the device stays in the tailnet until you remove it in
+the admin console. A hub without a key is reached through the phone's own network as
+before.
 
 ## Notifications
 

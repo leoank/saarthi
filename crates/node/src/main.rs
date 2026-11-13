@@ -139,7 +139,8 @@ struct Serve {
     /// `http://saarthi-hub:7700`.
     #[arg(long, requires = "hub")]
     tailnet: bool,
-    /// The auth key for the first join; not read once the state exists.
+    /// The auth key for the first join, and again if the tailnet logs the node out; it
+    /// may be deleted between.
     #[arg(long, requires = "tailnet")]
     tailnet_authkey_file: Option<PathBuf>,
     /// The node's machine name on the tailnet. Defaults to `saarthi-<name>`.
@@ -348,7 +349,7 @@ async fn serve(args: Serve) -> Result<()> {
                     hostname: args
                         .tailnet_hostname
                         .unwrap_or_else(|| format!("saarthi-{name}")),
-                    authkey_file: args.tailnet_authkey_file,
+                    authkey: args.tailnet_authkey_file.map(saarthi_tailnet::AuthKey::File),
                     ephemeral: false,
                 };
                 // Until it has joined the link retries; a tailnet that cannot be joined

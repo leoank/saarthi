@@ -192,7 +192,7 @@ The client logic in Rust, exposed to Kotlin through UniFFI: connect to the hub, 
 node and session list current, stream a session's events, submit commands, and persist
 the hub address and token. The Android app is a Compose UI over this core; iOS and the
 custom integrations reuse the core later. The embedded tsnet for the phone lives here
-too, once it is available for Android.
+too: an identity of the app's own per hub that has a tailnet auth key (ADR-0049).
 
 The core turns a session's events into a conversation a person reads: the user's turns,
 Claude's text and thinking, each tool call as its short name, the one input that matters
@@ -523,8 +523,15 @@ The hub serves on every tailnet it is given and keeps its TCP listener, which th
 `ctl` and the tests use; a node with `--tailnet` dials the hub only through its own
 identity. A first join takes an auth key file; the state directory carries the identity
 after. A start from saved state returns before the hub's name resolves, so the first dial
-can fail and the link's backoff retries it. Clients get their own identities with the
-phone's tsnet.
+can fail and the link's backoff retries it.
+
+The phone follows (ADR-0049, [[EXP-20261113-1h4ztf]]): libtailscale cross-built for arm64
+Android as a shared library beside the core, with a Go file of ours that gives netmon the
+interfaces from `getifaddrs` (the app sandbox denies netlink) and tsnet a directory for
+its log state. A hub in the app's settings with an auth key is reached only through an
+identity of the app's own on that hub's tailnet, one per hub, started on the first
+connect and kept for the life of the process; the key is kept encrypted under the
+Android Keystore. `saarthi ctl` and `saarthi tui` still use TCP over the host's tailnet.
 
 The realistic libraries, checked on 2026-10-16:
 
@@ -535,8 +542,8 @@ The realistic libraries, checked on 2026-10-16:
   links `static=tailscale` plus the CoreFoundation and Security frameworks on Apple
   targets. The published `libtailscale-sys` crate is not used, since its build script runs
   `go build` and downloads modules. Built and run on aarch64-darwin and, through the remote
-  builder, x86_64-linux; archive about 27 MB. No Android target; a cross-build with the NDK
-  is possible but ours to own.
+  builder, x86_64-linux; archive about 27 MB. For Android it builds only as a shared
+  library, cross-built with the NDK (ADR-0049).
 - **tailscale-rs**, Tailscale's pure Rust tsnet: clean build, but an experimental
   preview with no TLS certs, weaker NAT traversal, and no Android support yet.
 
@@ -664,7 +671,6 @@ resume and history, then named setup-tokens chosen at spawn (ADR-0039).
   secrets so the sandbox never holds them.
 - Triggers: inbound messages and scheduled scrape jobs that start background sessions,
   always under a sandbox profile.
-- Embedded tsnet on the phone.
 - Web and iOS clients over the same core.
 - Integrations into other apps through the control service.
 

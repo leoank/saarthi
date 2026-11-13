@@ -58,7 +58,9 @@ $ saarthi node serve --hub http://saarthi-hub:7700 --token-file ~/.config/saarth
 
 Every connection to the hub then goes through that machine, named `saarthi-<name>`
 (`--tailnet-hostname` to change it), with its state in `~/.local/state/saarthi/tailnet`
-(`--tailnet-state`). The key is read only for the first join; you can delete it after.
+(`--tailnet-state`). The key is needed for the first join; you can delete it after, but
+if the tailnet ever logs the machine out, the node waits for a login until you give it a
+key again.
 The log says `on the tailnet` once it has joined; until then, and for a moment after a
 restart, the link reports `not on the tailnet yet` or a name it cannot resolve, and
 retries.

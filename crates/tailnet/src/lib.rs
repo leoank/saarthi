@@ -30,10 +30,29 @@ pub struct Options {
     pub dir: PathBuf,
     /// The machine name on the tailnet, and so its MagicDNS name.
     pub hostname: String,
-    /// Read only when `dir` holds no state yet: the first join.
-    pub authkey_file: Option<PathBuf>,
+    /// The auth key, if any.
+    pub authkey: Option<AuthKey>,
     /// The tailnet removes the machine soon after it goes offline: for tests.
     pub ephemeral: bool,
+}
+
+/// Where an identity's auth key comes from.
+#[derive(Clone)]
+pub enum AuthKey {
+    /// A file, read on each start while it exists; it is needed only until the first
+    /// join of a hub or a node, and again if the tailnet logs the identity out.
+    File(PathBuf),
+    /// The key itself, as the phone keeps it (ADR-0016).
+    Value(String),
+}
+
+impl std::fmt::Debug for AuthKey {
+    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        match self {
+            AuthKey::File(p) => f.debug_tuple("File").field(p).finish(),
+            AuthKey::Value(_) => f.write_str("Value(..)"),
+        }
+    }
 }
 
 /// One tailnet identity. Dropping the last handle leaves the tailnet.
@@ -93,18 +112,21 @@ impl Tailnet {
     pub async fn start(opts: Options) -> Result<Arc<Tailnet>> {
         std::fs::create_dir_all(&opts.dir).with_context(|| format!("creating {}", opts.dir.display()))?;
         restrict(&opts.dir)?;
-        let authkey = if joined(&opts.dir) {
-            None
-        } else {
-            let Some(file) = &opts.authkey_file else {
-                bail!(
-                    "tailnet {}: {} holds no state and no auth key file was given",
-                    opts.name,
-                    opts.dir.display()
-                );
-            };
-            let key = std::fs::read_to_string(file).with_context(|| format!("reading {}", file.display()))?;
-            Some(key.trim().to_string())
+        // tsnet uses the key only when the identity has to log in: the first join, or
+        // after the tailnet logged it out. A file may be gone after the first join.
+        let authkey = match &opts.authkey {
+            Some(AuthKey::Value(key)) => Some(key.trim().to_string()),
+            Some(AuthKey::File(file)) => match std::fs::read_to_string(file) {
+                Ok(key) => Some(key.trim().to_string()),
+                Err(_) if joined(&opts.dir) => None,
+                Err(e) => return Err(e).with_context(|| format!("reading {}", file.display())),
+            },
+            None if joined(&opts.dir) => None,
+            None => bail!(
+                "tailnet {}: {} holds no state and no auth key was given",
+                opts.name,
+                opts.dir.display()
+            ),
         };
         // tsnet logs a lot; it goes to a file beside its state, not to ours.
         let log = std::fs::OpenOptions::new()
@@ -113,6 +135,12 @@ impl Tailnet {
             .open(opts.dir.join("tsnet.log"))
             .context("opening the tsnet log")?;
         let dir = opts.dir.to_str().context("the tailnet state path is not UTF-8")?;
+        // Android gives tsnet no default place for its log state; the identities share
+        // the directory above their own.
+        #[cfg(target_os = "android")]
+        if let Some(parent) = opts.dir.parent().and_then(|p| p.to_str()) {
+            ffi::set_logs_dir(parent)?;
+        }
         let sd = ffi::Server::new(
             dir,
             &opts.hostname,
@@ -132,6 +160,11 @@ impl Tailnet {
 
     pub fn name(&self) -> &str {
         &self.name
+    }
+
+    /// The identity's tailnet addresses, comma-separated.
+    pub fn ips(&self) -> String {
+        self.sd.ips().unwrap_or_default()
     }
 
     /// Connections accepted on `port`, for tonic's `serve_with_incoming`. The stream ends
@@ -320,11 +353,11 @@ mod tests {
             name: "home".into(),
             dir: dir.path().join("home"),
             hostname: "saarthi-test".into(),
-            authkey_file: None,
+            authkey: None,
             ephemeral: true,
         })
         .await
         .unwrap_err();
-        assert!(format!("{err:#}").contains("no auth key file"), "{err:#}");
+        assert!(format!("{err:#}").contains("no auth key"), "{err:#}");
     }
 }

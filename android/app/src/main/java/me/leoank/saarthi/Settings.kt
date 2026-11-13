@@ -100,8 +100,8 @@ fun SettingsScreen(model: HubModel, snackbar: SnackbarHostState, back: (() -> Un
                 }
             }
             Text(
-                "The app connects to the selected hub. It reaches hubs through the phone's own " +
-                    "network, such as the Tailscale app; a tailnet of the app's own for each hub comes later.",
+                "The app connects to the selected hub: through a tailnet device of its own when the hub " +
+                    "has an auth key, otherwise through the phone's own network, such as the Tailscale app.",
                 style = MaterialTheme.typography.bodySmall,
                 color = MaterialTheme.colorScheme.onSurfaceVariant,
                 modifier = Modifier.padding(start = 4.dp, end = 4.dp, top = 8.dp),
@@ -224,8 +224,14 @@ private fun HubEditor(
     var address by remember { mutableStateOf(initial?.address ?: "") }
     var token by remember { mutableStateOf(initial?.token ?: "") }
     var showToken by remember { mutableStateOf(false) }
+    var tailnetKey by remember { mutableStateOf(initial?.tailnetKey ?: "") }
+    var tailnetHost by remember { mutableStateOf(initial?.tailnetHost ?: "") }
+    var showKey by remember { mutableStateOf(false) }
     var confirmDelete by remember { mutableStateOf(false) }
-    val draft = HubProfile(id = initial?.id ?: java.util.UUID.randomUUID().toString(), name = name.trim(), address = address.trim(), token = token.trim())
+    val draft = HubProfile(
+        id = initial?.id ?: java.util.UUID.randomUUID().toString(), name = name.trim(), address = address.trim(), token = token.trim(),
+        tailnetKey = tailnetKey.trim(), tailnetHost = tailnetHost.trim(),
+    )
 
     Dialog(
         onDismissRequest = dismiss,
@@ -302,6 +308,40 @@ private fun HubEditor(
                     singleLine = true,
                     modifier = Modifier.fillMaxWidth(),
                 )
+                Heading("Tailnet")
+                OutlinedTextField(
+                    tailnetKey, { tailnetKey = it },
+                    label = { Text("Auth key (optional)") },
+                    supportingText = {
+                        Text(
+                            "With a key the app joins the hub's tailnet as a device of its own, whatever " +
+                                "network the Tailscale app is on; without one it uses the phone's network. " +
+                                "Kept on this phone, encrypted."
+                        )
+                    },
+                    singleLine = true,
+                    visualTransformation = if (showKey) VisualTransformation.None else PasswordVisualTransformation(),
+                    keyboardOptions = KeyboardOptions(keyboardType = KeyboardType.Password),
+                    trailingIcon = {
+                        IconButton(onClick = { showKey = !showKey }) {
+                            Icon(
+                                if (showKey) Icons.Filled.VisibilityOff else Icons.Filled.Visibility,
+                                if (showKey) "Hide key" else "Show key",
+                            )
+                        }
+                    },
+                    modifier = Modifier.fillMaxWidth(),
+                )
+                if (tailnetKey.isNotBlank()) {
+                    OutlinedTextField(
+                        tailnetHost, { tailnetHost = it },
+                        label = { Text("Device name (optional)") },
+                        placeholder = { Text(HubProfile.defaultTailnetHost()) },
+                        supportingText = { Text("This phone's machine name on the hub's tailnet") },
+                        singleLine = true,
+                        modifier = Modifier.fillMaxWidth(),
+                    )
+                }
                 if (delete != null) {
                     TextButton(onClick = { confirmDelete = true }) {
                         Text("Remove this hub", color = MaterialTheme.colorScheme.error)
@@ -315,7 +355,12 @@ private fun HubEditor(
         AlertDialog(
             onDismissRequest = { confirmDelete = false },
             title = { Text("Remove ${initial?.title}?") },
-            text = { Text("Its address and token are forgotten on this phone. The hub itself is not touched.") },
+            text = {
+                Text(
+                    "Its address, token and tailnet identity are forgotten on this phone. The hub itself is " +
+                        "not touched; a tailnet device stays in the tailnet until you remove it there."
+                )
+            },
             confirmButton = {
                 TextButton(onClick = { confirmDelete = false; delete() }) {
                     Text("Remove", color = MaterialTheme.colorScheme.error)

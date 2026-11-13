@@ -24,6 +24,22 @@ unsafe extern "C" {
     fn tailscale_errmsg(sd: c_int, buf: *mut c_char, buflen: usize) -> c_int;
 }
 
+// Added to the phone's build of libtailscale by nix/libtailscale-android.go.
+#[cfg(target_os = "android")]
+unsafe extern "C" {
+    fn tailscale_android_set_logs_dir(dir: *const c_char) -> c_int;
+}
+
+/// Where tsnet keeps its log state on Android, which offers it no default: set before
+/// the first start.
+#[cfg(target_os = "android")]
+pub fn set_logs_dir(dir: &str) -> Result<()> {
+    if unsafe { tailscale_android_set_logs_dir(c(dir)?.as_ptr()) } != 0 {
+        bail!("setting the tsnet log directory");
+    }
+    Ok(())
+}
+
 fn c(s: &str) -> Result<CString> {
     Ok(CString::new(s)?)
 }

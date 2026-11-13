@@ -56,9 +56,9 @@ in
             default = null;
             example = "/run/agenix/saarthiHubTailnetKey";
             description = ''
-              File holding a pre-approved auth key for the first join, readable by the
-              service user; not read once the identity's state exists. Null: the state
-              must exist already.
+              File holding a pre-approved auth key, readable by the service user; used
+              for the first join and when the tailnet has logged the identity out.
+              Null: the state must exist already.
             '';
           };
         }

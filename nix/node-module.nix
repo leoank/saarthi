@@ -117,8 +117,8 @@ in
         default = null;
         example = "/run/agenix/saarthiNodeTailnetKey";
         description = ''
-          File holding a pre-approved auth key for the first join; not read once the state
-          exists. Null: the state must exist already.
+          File holding a pre-approved auth key, used for the first join and when the
+          tailnet has logged the identity out. Null: the state must exist already.
         '';
       };
       hostname = lib.mkOption {

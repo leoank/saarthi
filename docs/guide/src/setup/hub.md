@@ -58,7 +58,7 @@ $ saarthi-hub … --tailnet home=/run/secrets/home-tailnet-key --tailnet work=/r
 
 | Flag | What it does |
 |---|---|
-| `--tailnet <name>[=<key file>]` | Join the tailnet you call `<name>` and serve there too. Repeat for each tailnet. The key is read only for the first join; after that, `<name>` alone is enough. A tailnet that cannot be joined is left out, with an error in the log, and the hub runs on. |
+| `--tailnet <name>[=<key file>]` | Join the tailnet you call `<name>` and serve there too. Repeat for each tailnet. The key is needed for the first join; after that, `<name>` alone is enough, until the tailnet logs the hub out (a key expiry, a machine removed), when the key is needed again. A tailnet that cannot be joined is left out, with an error in the log, and the hub runs on. |
 | `--tailnet-hostname` | The hub's machine name on every tailnet. Default `saarthi-hub`, so nodes there use `--hub http://saarthi-hub:7700`. |
 | `--tailnet-port` | The port it serves on each tailnet. Default 7700. |
 | `--tailnet-state` | Where each identity keeps its state, a directory per name. Default `tailnet/` beside the database. Back it up with the database: losing it costs a new key and a new machine on the tailnet. |

@@ -4,6 +4,7 @@
 //! streams typed, and turns events into a conversation.
 
 pub mod conversation;
+mod tailnet;
 
 use std::collections::HashMap;
 use std::sync::Arc;
@@ -17,6 +18,7 @@ use tokio::sync::watch;
 use tonic::transport::Channel;
 
 pub use conversation::{Conversation, Item, ModelTotals, Role};
+pub use tailnet::TailnetLogin;
 
 uniffi::setup_scaffolding!();
 
@@ -48,6 +50,18 @@ impl From<tonic::Status> for CoreError {
             },
         }
     }
+}
+
+/// An error with its causes, which a transport error keeps out of its own message.
+fn error_chain(e: &dyn std::error::Error) -> String {
+    let mut out = e.to_string();
+    let mut cause = e.source();
+    while let Some(c) = cause {
+        out.push_str(": ");
+        out.push_str(&c.to_string());
+        cause = c.source();
+    }
+    out
 }
 
 #[derive(Debug, Clone, PartialEq, uniffi::Record)]
@@ -227,11 +241,12 @@ pub struct Hub {
     bearer: tonic::metadata::MetadataValue<tonic::metadata::Ascii>,
 }
 
-#[uniffi::export(async_runtime = "tokio")]
 impl Hub {
-    /// Connects to the hub's control service, `http://host:port`, with a client token.
-    #[uniffi::constructor]
-    pub async fn connect(address: String, token: String) -> Result<Arc<Self>, CoreError> {
+    async fn open(
+        address: String,
+        token: String,
+        tailnet: Option<Arc<saarthi_tailnet::Tailnet>>,
+    ) -> Result<Arc<Self>, CoreError> {
         // Trim whitespace a paste or an on-screen keyboard may add: a trailing
         // newline or stray space in the token otherwise fails to parse as a
         // header value, and in the address breaks the endpoint URL.
@@ -245,7 +260,7 @@ impl Hub {
         // moving): HTTP/2 pings notice within half a minute and the streams end with an
         // error the app reconnects on, and a connect attempt gives up in seconds rather
         // than hanging until the OS does.
-        let channel = tonic::transport::Endpoint::from_shared(address.clone())
+        let endpoint = tonic::transport::Endpoint::from_shared(address.clone())
             .map_err(|e| CoreError::Connection {
                 reason: format!("{address}: {e}"),
             })?
@@ -253,12 +268,14 @@ impl Hub {
             .tcp_keepalive(Some(std::time::Duration::from_secs(30)))
             .http2_keep_alive_interval(std::time::Duration::from_secs(15))
             .keep_alive_timeout(std::time::Duration::from_secs(10))
-            .keep_alive_while_idle(true)
-            .connect()
-            .await
-            .map_err(|e| CoreError::Connection {
-                reason: format!("{address}: {e}"),
-            })?;
+            .keep_alive_while_idle(true);
+        let channel = match tailnet {
+            None => endpoint.connect().await,
+            Some(t) => tailnet::connect(&endpoint, &t).await,
+        }
+        .map_err(|e| CoreError::Connection {
+            reason: format!("{address}: {}", error_chain(&e)),
+        })?;
         let hub = Self {
             client: ControlServiceClient::new(channel),
             bearer,
@@ -266,6 +283,28 @@ impl Hub {
         // Fail now on a wrong token rather than at the first screen.
         hub.nodes().await?;
         Ok(Arc::new(hub))
+    }
+}
+
+#[uniffi::export(async_runtime = "tokio")]
+impl Hub {
+    /// Connects to the hub's control service, `http://host:port`, with a client token,
+    /// over the phone's own network.
+    #[uniffi::constructor]
+    pub async fn connect(address: String, token: String) -> Result<Arc<Self>, CoreError> {
+        Self::open(address, token, None).await
+    }
+
+    /// Connects as [`Hub::connect`] does, through the app's own identity on the hub's
+    /// tailnet (ADR-0016), started on the first call and kept for the life of the process.
+    #[uniffi::constructor]
+    pub async fn connect_via_tailnet(
+        address: String,
+        token: String,
+        tailnet: TailnetLogin,
+    ) -> Result<Arc<Self>, CoreError> {
+        let tailnet = tailnet::identity(tailnet).await?;
+        Self::open(address, token, Some(tailnet)).await
     }
 
     pub async fn nodes(&self) -> Result<Vec<NodeInfo>, CoreError> {

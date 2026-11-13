@@ -25,8 +25,9 @@ struct Cli {
     #[arg(long, default_value = "127.0.0.1:7700")]
     listen: SocketAddr,
     /// Also serve on a tailnet through an identity of the hub's own (ADR-0048):
-    /// `<name>=<auth key file>`, or `<name>` once its state exists. The key is read only
-    /// for the first join. Repeatable, one identity per tailnet.
+    /// `<name>=<auth key file>`, or `<name>` once its state exists. The key is needed for
+    /// the first join, and again if the tailnet logs the hub out; it may be deleted
+    /// between. Repeatable, one identity per tailnet.
     #[arg(long = "tailnet", value_name = "NAME[=KEY_FILE]")]
     tailnets: Vec<String>,
     /// The hub's machine name on every tailnet it serves.
@@ -141,7 +142,7 @@ async fn main() -> Result<()> {
             dir: state.join(&name),
             name,
             hostname: cli.tailnet_hostname.clone(),
-            authkey_file: key,
+            authkey: key.map(saarthi_tailnet::AuthKey::File),
             ephemeral: false,
         };
         // A tailnet that cannot be joined costs that tailnet, not the hub (ADR-0044).

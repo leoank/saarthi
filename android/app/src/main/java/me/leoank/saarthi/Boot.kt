@@ -49,6 +49,7 @@ import kotlinx.coroutines.withContext
 import kotlinx.coroutines.withTimeout
 import org.unifiedpush.android.connector.UnifiedPush
 import uniffi.saarthi_core.coreVersion
+import uniffi.saarthi_core.joinTailnet
 import java.net.InetAddress
 
 /** What the app does at a cold start, written out as it happens, in the manner of a Linux
@@ -142,8 +143,24 @@ class BootLog {
     private suspend fun connect(model: HubModel) {
         val hub = model.active ?: return
         val host = hub.host
-        // A name is looked up the way the core will; an address needs no lookup.
-        if (!host.matches(Regex("[0-9.]+")) && ':' !in host) {
+        if (hub.viaTailnet) {
+            // The app's own identity on the hub's tailnet (ADR-0016); the hub's name is
+            // looked up there, not by the phone.
+            val joining = add(Kind.Job, "A start job is running for tailnet identity ${hub.tailnetName}")
+            val started = SystemClock.elapsedRealtime()
+            val joined = withContext(Dispatchers.IO) { runCatching { joinTailnet(hub.tailnetLogin(model.getApplication())) } }
+            val took = SystemClock.elapsedRealtime() - started
+            joined.fold(
+                { finish(joining, Kind.Ok, "Joined tailnet as ${hub.tailnetName} ($it, $took ms)") },
+                {
+                    finish(joining, Kind.Failed, "Failed to join tailnet as ${hub.tailnetName}: ${it.message ?: it.javaClass.simpleName}")
+                    add(Kind.Info, "Check the hub's tailnet auth key in Settings, or retry")
+                    state = State.Failed
+                    return
+                },
+            )
+        } else if (!host.matches(Regex("[0-9.]+")) && ':' !in host) {
+            // A name is looked up the way the core will; an address needs no lookup.
             val resolving = add(Kind.Job, "Resolving $host")
             val started = SystemClock.elapsedRealtime()
             val ips = withContext(Dispatchers.IO) {

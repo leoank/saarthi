@@ -30,7 +30,7 @@ async fn a_node_links_over_the_tailnet_and_the_hub_records_who_it_is() {
             name: name.to_string(),
             dir: dir.path().join(name),
             hostname: host.to_string(),
-            authkey_file: Some(key.clone().into()),
+            authkey: Some(saarthi_tailnet::AuthKey::File(key.clone().into())),
             ephemeral: true,
         })
     };

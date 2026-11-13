@@ -89,6 +89,39 @@
             doCheck = false;
           };
 
+          # The same library for the phone's client core (ADR-0016): cgo through the NDK's
+          # clang for arm64 Android at the app's minSdk. Go builds no c-archive for
+          # Android, so it is a shared library the app ships beside the core
+          # ([[EXP-20261113-1h4ztf]]).
+          libtailscale-android = libtailscale.overrideAttrs (old: {
+            pname = "libtailscale-android";
+            # The app sandbox denies netlink, so the interfaces come from getifaddrs.
+            postPatch = (old.postPatch or "") + ''
+              cp ${./nix/libtailscale-android.go} android_interfaces.go
+            '';
+            env = old.env // {
+              GOOS = "android";
+              GOARCH = "arm64";
+            };
+            buildPhase = ''
+              runHook preBuild
+              # The stdenv sets CC to its own compiler and points compilers at the macOS
+              # SDK; cgo needs the NDK's clang, which brings its own sysroot.
+              unset SDKROOT DEVELOPER_DIR CPATH C_INCLUDE_PATH LIBRARY_PATH NIX_CFLAGS_COMPILE NIX_LDFLAGS
+              export CC=${sdk}/ndk/${android.ndk-bundle.version}/toolchains/llvm/prebuilt/${if pkgs.stdenv.buildPlatform.isDarwin then "darwin" else "linux"}-x86_64/bin/aarch64-linux-android26-clang
+              go build -buildvcs=false -buildmode=c-shared -ldflags='-s -w -extldflags=-Wl,-soname,libtailscale.so' -o libtailscale.so .
+              runHook postBuild
+            '';
+            installPhase = ''
+              runHook preInstall
+              install -Dm644 libtailscale.so $out/lib/libtailscale.so
+              install -Dm644 tailscale.h $out/include/tailscale.h
+              runHook postInstall
+            '';
+            # An Android ELF: the host's strip and patchelf have no business with it.
+            dontFixup = true;
+          });
+
           # The workspace source, shared by the checks and the binary packages:
           # spikes/, docs/ and android/ stay out of it.
           saarthiSrc = lib.fileset.toSource {
@@ -103,7 +136,7 @@
           # check already builds and tests everything.
           mkBin = pname: bin: pkgs.rustPlatform.buildRustPackage {
             inherit pname;
-            version = "0.4.0";
+            version = "0.5.0";
             src = saarthiSrc;
             cargoLock.lockFile = ./Cargo.lock;
             nativeBuildInputs = [ pkgs.protobuf ];
@@ -122,7 +155,7 @@
 
           # The deployable binaries, the defaults of the hub and node modules.
           packages = rec {
-            inherit libtailscale;
+            inherit libtailscale libtailscale-android;
             saarthi-hub = mkBin "saarthi-hub" "saarthi-hub";
             saarthi = mkBin "saarthi" "saarthi";
             # The user guide for GitHub Pages: mdBook, with the command-line reference and
@@ -169,6 +202,10 @@
               pkgs.ntfy-sh
             ];
             PROTOC = "${pkgs.protobuf}/bin/protoc";
+            # The core links libtailscale for the phone; build-core.sh copies it into the
+            # app's jniLibs. The host's archive is for the bindings generator's host build.
+            LIBTAILSCALE_ANDROID_LIB_DIR = "${libtailscale-android}/lib";
+            LIBTAILSCALE_LIB_DIR = "${libtailscale}/lib";
             ANDROID_HOME = sdk;
             ANDROID_SDK_ROOT = sdk;
             ANDROID_NDK_HOME = "${sdk}/ndk/${android.ndk-bundle.version}";
@@ -206,7 +243,7 @@
           # The cargo workspace, built and tested; spikes/ and docs/ stay out of the source.
           checks.workspace = pkgs.rustPlatform.buildRustPackage {
             pname = "saarthi";
-            version = "0.4.0";
+            version = "0.5.0";
             src = lib.fileset.toSource {
               root = ./.;
               fileset = lib.fileset.unions [ ./Cargo.toml ./Cargo.lock ./crates ];

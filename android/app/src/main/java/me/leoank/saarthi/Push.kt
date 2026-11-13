@@ -44,10 +44,10 @@ object Push {
         }
     }
 
-    /** Opens a hub connection with the saved address and token, for work outside the UI. */
+    /** Opens a connection to the active hub, for work outside the UI. */
     suspend fun hub(context: Context): Hub {
-        val prefs = context.getSharedPreferences("saarthi", 0)
-        return Hub.connect(prefs.getString("address", "")!!, prefs.getString("token", "")!!)
+        val hub = HubStore(context.getSharedPreferences("saarthi", 0)).current() ?: error("no hub is set up")
+        return hub.connect(context)
     }
 
     fun launch(block: suspend () -> Unit) = scope.launch {

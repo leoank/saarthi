@@ -118,10 +118,6 @@ class HubModel(app: Application) : AndroidViewModel(app) {
         private set
     val active: HubProfile?
         get() = hubs.firstOrNull { it.id == activeId }
-    private val address: String
-        get() = active?.address?.trim().orEmpty()
-    private val token: String
-        get() = active?.token?.trim().orEmpty()
     /** Monospace text wraps instead of scrolling sideways. */
     var wrap by mutableStateOf(prefs.getBoolean("wrap", false))
         private set
@@ -213,6 +209,7 @@ class HubModel(app: Application) : AndroidViewModel(app) {
     }
 
     fun removeHub(id: String) {
+        hubs.firstOrNull { it.id == id }?.tailnetDir(getApplication())?.deleteRecursively()
         hubs.removeAll { it.id == id }
         if (activeId == id) activate(hubs.firstOrNull()?.id) else store.save(hubs, activeId)
     }
@@ -280,7 +277,7 @@ class HubModel(app: Application) : AndroidViewModel(app) {
         watch?.cancel()
         stream?.cancel()
         hub?.let { old -> hub = null; old.close() }
-        val h = Hub.connect(address.trim(), token.trim())
+        val h = active!!.connect(getApplication())
         hub = h
         reload(h)
         watch = h.watch(object : WatchListener {
