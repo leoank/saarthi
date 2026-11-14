@@ -30,6 +30,7 @@ landed and links the pages with the detail.
 - [ ] [[PHS-20261106-3702ke]] Phase 2: launch and own sessions
 - [ ] [[PHS-20261106-3702q3]] Phase 3: confinement and many networks
 - [ ] [[PHS-20261106-37024q]] Phase 4: autonomous starts and more clients
+- [ ] [[PHS-20261114-rbv2fs]] Notebooks, a terminal and voice: yajna through a service relay, a node terminal, push to talk
 
 ## Open questions
 - Idle sessions were reported as missing from the app until the owner typed in them
@@ -124,3 +125,7 @@ touching the code:
 - [[EXP-20261112-rq8kgc]] does tonic gRPC run over libtailscale on a real tailnet, two identities in one process, peers named, no descriptors leaked; positive on darwin and linux, a keyless restart needs a dial retry
 - [[EXP-20261113-1h4ztf]] can libtailscale be cross-built for arm64 Android, linked into the core, and reach the hub from inside the app; positive on the emulator once netmon got interfaces from getifaddrs and tsnet a log directory
 - [[EXP-20261114-d82rcz]] can every hub-token session reach the Claude API through the hub, which adds the token; positive: the interactive TUI works with a dummy (starts in manual mode, warns about remote settings), a hub back within about two minutes costs one retried request, a request is the whole context, 0.6 MB median
+- [[EXP-20261114-raqjjy]] Does a streamed HTTP request from the app reach a unix-socket service on a node through the hub and back, server-sent events and range reads included, inside an Android WebView; planned, for ADR-0052
+- [[EXP-20261114-raqjf0]] Does libghostty-vt build for Android arm64 under Nix and render a node's shell on the phone at a usable speed; planned, for ADR-0054
+- [[EXP-20261114-raqk9b]] Which speech recognition transcribes short coding and lab commands well enough, on the phone or on the node, in a quiet room and at the bench; planned, for ADR-0055
+- [[EXP-20261114-raqkym]] Do the app's bench timers fire on time with the screen off for hours, and do checklist ticks made out of reach arrive once each when back in reach; planned, for ADR-0053

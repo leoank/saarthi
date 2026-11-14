@@ -605,6 +605,17 @@ in nixpkgs. The Android SDK needs an unfree licence accepted in the nixpkgs conf
 nix modules live here and are their source of truth (ADR-0041): neusis imports them and
 keeps only what is its own, the secrets, the data volume and ntfy.
 
+## Notebooks, a terminal and voice
+
+The app is also the owner's lab notebook client (`docs/notebooks.md`). A node lists local
+HTTP services, each on a unix socket, starting one on demand, and the hub relays a
+client's requests to them over the node's link, the node dialling back a stream per
+request (ADR-0052); yajna's per-user `yajna serve` is the first. The app shows notebooks
+in a web view over that relay, with native screens for new projects, reviews and bench
+work (ADR-0053). A node started with `--terminal` opens a login shell under a PTY for a
+client's terminal stream (ADR-0054). Push to talk and spoken replies work in every
+session (ADR-0055).
+
 ## Phases
 
 The project page's *Progress* checklist tracks how far each phase has got.
@@ -692,6 +703,12 @@ resume and history, then named setup-tokens chosen at spawn (ADR-0039).
   always under a sandbox profile.
 - Web and iOS clients over the same core.
 - Integrations into other apps through the control service.
+
+### Notebooks, a terminal and voice
+
+Beside the numbered phases, in the order of `docs/notebooks.md`: the service relay and
+yajna's notebooks in a web view, new projects, the terminal, voice, then bench work on
+yajna's run sheets.
 
 ## Open questions
 None left from phase 0. New ones go here as they come up.

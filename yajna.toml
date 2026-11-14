@@ -7,4 +7,5 @@ timezone = "Europe/London"
 bibliography = "notes/references/library.bib"
 
 [repos]             # namespaces this repo links to, e.g. saarthi = "github:leoank/saarthi"
+yajna = { url = "github:leoank/yajna", path = "../../../chaos/yajna/main" }
 manthan = { url = "github:leoank/manthan", path = "../../../chaos/manthan/rc2s2-a-remote-command-and-control-session-server/main" }

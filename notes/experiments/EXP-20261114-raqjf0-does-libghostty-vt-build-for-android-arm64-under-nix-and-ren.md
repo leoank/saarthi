@@ -1,0 +1,51 @@
+---
+id: EXP-20261114-raqjf0
+type: experiment
+schema_version: 1
+title: Does libghostty-vt build for Android arm64 under Nix and render a node's shell on the phone at a usable speed
+project: PRJ-0001
+status: planned           # planned | active | paused | concluded | abandoned
+outcome: null             # null | positive | negative | inconclusive | infra
+influenced_by: []
+created: 2026-11-14
+author: agent:claude
+protocols: []
+materials: []
+tags: [terminal, app, android]
+review: pending
+---
+
+## Question
+ADR-0054 renders a node's shell on the phone with libghostty-vt, Ghostty's terminal state
+library, drawing the cells itself. Does it build for Android (arm64-v8a) with the NDK
+under Nix, link into the app beside the Rust core, and keep up with a busy shell at a
+usable frame rate?
+
+## Hypothesis and predictions
+H1: libghostty-vt's C API cross-compiles with Zig for `aarch64-linux-android` against the
+NDK's sysroot, and a Compose canvas drawing its cells keeps 60 frames a second while
+`yes`, `htop` and a long build's output run. If the build fails or the frame rate drops
+below 30, the fallback is an existing Android terminal emulator library (the one Termux
+uses) behind the same byte stream; the node side does not change.
+
+## Plan
+1. Build libghostty-vt for `aarch64-linux-android` in a Nix derivation from a pinned
+   Ghostty commit; record the Zig version and what had to be patched.
+2. A throwaway Android app in `spikes/15-libghostty-android/`: JNI to feed bytes and read
+   the cell grid, a Compose canvas drawing it, keys from the soft keyboard, plus Esc, Ctrl
+   and arrows on a row above it.
+3. Feed it a local PTY's output (`/system/bin/sh`), then recorded output from a node:
+   `htop`, `vim`, a colourful `nix build` log, `yes` for ten seconds. Measure frames a second
+   and input latency.
+4. Repeat 3 with the Termux emulator library for comparison.
+
+## Success criteria
+- It builds reproducibly under Nix, or the step that fails is named.
+- The frame rate and look under the four loads, against the fallback; one is chosen.
+
+## Runs
+One line per run after its link, what was tried and what it showed; `yajna validate`
+rejects a bare link here. Metric runs also land in results.tsv.
+
+## Conclusion
+Written once, by a human, when status becomes `concluded`.

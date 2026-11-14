@@ -66,6 +66,10 @@ spawns, with the owner's answers of 2026-11-07.
 | [ADR-0049](ADR-0049-the-phone-holds-a-tailnet-identity-per-hub.md) | The phone holds a tailnet identity per hub | accepted |
 | [ADR-0050](ADR-0050-a-sandbox-reaches-the-claude-api-through-the-node-holding-a-dummy.md) | A sandbox reaches the Claude API through the node, holding a dummy token | accepted |
 | [ADR-0051](ADR-0051-the-hub-adds-its-claude-tokens-and-never-hands-them-out.md) | The hub adds its Claude tokens and never hands them out | accepted |
+| [ADR-0052](ADR-0052-the-hub-relays-a-client-s-requests-to-a-node-s-local-services.md) | The hub relays a client's requests to a node's local services | accepted |
+| [ADR-0053](ADR-0053-notebooks-in-the-saarthi-app.md) | Notebooks in the saarthi app | accepted |
+| [ADR-0054](ADR-0054-a-terminal-on-a-node-through-the-node.md) | A terminal on a node through the node | accepted |
+| [ADR-0055](ADR-0055-push-to-talk-and-spoken-replies-in-the-app.md) | Push to talk and spoken replies in the app | accepted |
 
 Each record:
 
