@@ -89,6 +89,7 @@ let
         families = [
           "AF_INET"
           "AF_INET6"
+          "AF_UNIX"
         ];
       };
     };

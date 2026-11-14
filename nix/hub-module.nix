@@ -241,9 +241,10 @@ in
         Group = cfg.group;
         Restart = "on-failure";
         RestartSec = 5;
-        # The hub needs a TCP listener, its data directory and the token files; an embedded
-        # tailnet also hands connections over unix socket pairs and watches the host's
-        # interfaces over netlink.
+        # The hub needs a TCP listener, its data directory and the token files, and resolves
+        # api.anthropic.com for the Claude API requests it relays (ADR-0051), through nscd's
+        # unix socket on NixOS; an embedded tailnet also hands connections over unix socket
+        # pairs and watches the host's interfaces over netlink.
         NoNewPrivileges = true;
         ProtectSystem = "strict";
         ProtectHome = true;
@@ -256,11 +257,9 @@ in
         RestrictAddressFamilies = [
           "AF_INET"
           "AF_INET6"
-        ]
-        ++ lib.optionals (cfg.tailnets != { }) [
           "AF_UNIX"
-          "AF_NETLINK"
-        ];
+        ]
+        ++ lib.optionals (cfg.tailnets != { }) [ "AF_NETLINK" ];
         RestrictNamespaces = true;
         LockPersonality = true;
       };
