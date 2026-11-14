@@ -1,0 +1,151 @@
+78 ▐▛███▛█ClaudeCodev2.1.322
+▝▜██████▀Sonnet5.5·ClaudeAPI
+ ▝▝▝▝/private/tmp/hp.81vA/work
+
+⚠Remotemanagedsettingsfailedtoload(authenticationrejected(401))·noremotepolicyapplied ·/statusfordetails
+
+────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────
+❯  
+────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────
+⏸manualmodeon·?forshortcuts·←foragents◐medium·/effort
+[>0qReversethelettersofthewordgnopandreplywithonlytheresult,inlowercase.                                  
+❯ Reverse the letters of the word gnop and reply with only the result, in lowercase.                                                                            ✶ Osmosing… 
+────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────
+❯  
+────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────
+⏸manualmodeon·esctointerrupt·←foragents◐medium·/effort
+✻
+
+
+
+
+
+✽
+
+
+
+
+
+✻
+
+
+
+
+
+✶
+
+
+
+
+
+✳
+
+
+
+
+
+✢
+
+
+
+
+
+·
+
+
+
+
+
+…
+
+
+
+
+
+⏺pong✻ Brewed for 1s · done 2:45 PM❯  
+────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────
+⏸manualmodeon·?forshortcuts·←foragents◐medium·/effort
+WhatisthecapitalofNepal?Oneword.                                  
+❯ What is the capital of Nepal? One word.                                                                                                                       · Churning…   ⎿ Tip: Startwith small features or bug fixes, tell Claude to propose a plan, and verify its suggested edits
+
+────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────
+❯  
+────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────
+⏸manualmodeon·esctointerrupt·←foragents◐medium·/effort
+✢
+
+
+
+
+
+
+✳
+
+
+
+
+
+
+✶
+
+
+
+
+
+
+✻
+
+
+
+
+
+
+✽
+
+
+
+
+
+
+⏺Kathmandu✻Worked for 1s · done 2:45 PM────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────❯  ────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────
+⏸manualmodeon·?forshortcuts·←foragents◐medium·/effort
+
+
+⏵⏵ accept edits on(shift+tab to cycle)
+⏸ plan mode on (shift+tab o cycle)
+⏵⏵ auto mode on (shift+tab to cycle)
+⏺ Auto mode lets Claude handle permission prompts automatically — Claude checks each tool call for risky actions and prompt injection before executing.   Actions Claude identifies as safe are executed, while actions Claude identifies as risky are blocked and Claude may try a different approach. Ideal   for long-running tasks. Sessions are slightly more expensive. Claude can make mistakes that allow harmful commands to run, it's recommended to only use in isolatedenvronments.Shift+Tab to change mode.
+
+────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────
+❯  
+────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────
+⏵⏵automodeon (shift+tabtocycle)
+⏸ manual mode on · ? for shortuts
+/exit ❯ /exit                       Exit the CLI
+ /contextVisualizecurrentcontextusageasacoloredgrid
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+[>4m[<u78
+Resume this session with:
+claude --resume 4e4f41d9-3d2e-45c1-ab5e-10a03480e210

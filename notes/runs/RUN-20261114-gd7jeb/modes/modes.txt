@@ -1,0 +1,6 @@
+asked auto init permissionMode auto model claude-sonnet-5-5
+  result success 'done' denials 0
+  note.txt: saarthi
+asked manual init permissionMode default model claude-sonnet-5-5
+  result success "The command didn't run. Claude Code needs your approval before a shell command  denials 1
+  note.txt: absent

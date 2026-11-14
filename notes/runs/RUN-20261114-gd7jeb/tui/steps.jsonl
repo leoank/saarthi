@@ -1,0 +1,7 @@
+{"step": "start", "ready": true, "secs": 0.6}
+{"step": "Reverse the letters of the word gnop and reply with only the result, in lowercase.", "answered": true, "secs": 5.3}
+{"step": "What is the capital of Nepal? One word.", "answered": true, "secs": 5.0}
+{"step": "KEY:\\x1b[Z", "answered": false, "secs": 8.1}
+{"step": "KEY:\\x1b[Z", "answered": false, "secs": 8.3}
+{"step": "KEY:\\x1b[Z", "answered": true, "secs": 3.1}
+{"step": "KEY:\\x1b[Z", "answered": false, "secs": 8.3}

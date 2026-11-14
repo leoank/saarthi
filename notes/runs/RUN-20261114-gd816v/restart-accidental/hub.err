@@ -1,0 +1,8 @@
+Traceback (most recent call last):
+  File "/Users/ank/workspace/hub/leoank/saarthi/spikes/13-hub-proxy/rig.py", line 153, in <module>
+    {"node": node, "hub": hub}[sys.argv[1]](*sys.argv[2:])
+    ~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~^^^^^^^^^^^^^^^
+  File "/Users/ank/workspace/hub/leoank/saarthi/spikes/13-hub-proxy/rig.py", line 92, in hub
+    token = open(token_file).read().strip()
+            ~~~~^^^^^^^^^^^^
+FileNotFoundError: [Errno 2] No such file or directory: '/private/var/folders/h3/f66lrt2j2nv1bhjhy6n5yx1m0000gn/T/agenix.d/223030/saarthiSandboxClaudeToken'

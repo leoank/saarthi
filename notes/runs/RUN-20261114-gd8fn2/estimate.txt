@@ -1,0 +1,1 @@
+===RESULT=== {"days": 30, "bytes_per_token": 2.66, "sessions": 116, "requests": 16250, "request_mb": {"p50": 0.6, "p90": 1.33, "p99": 2.09, "max": 2.44}, "session_mb": {"p50": 0.25, "p90": 343.97, "max": 2738.54}, "requests_per_session": {"p50": 2, "p90": 415, "max": 3480}, "total_mb": 11433.63}

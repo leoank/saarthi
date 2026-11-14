@@ -1,0 +1,4 @@
+gap=2 exit=0 secs=20
+gap=15 exit=0 secs=30
+gap=90 exit=0 secs=117
+down-at-start=20 exit=0 secs=38

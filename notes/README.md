@@ -123,3 +123,4 @@ touching the code:
 - [[EXP-20261111-q6sgt8]] Does CLAUDE_CODE_OAUTH_TOKEN take precedence over the owner's keychain login for a session in the default config directory?
 - [[EXP-20261112-rq8kgc]] does tonic gRPC run over libtailscale on a real tailnet, two identities in one process, peers named, no descriptors leaked; positive on darwin and linux, a keyless restart needs a dial retry
 - [[EXP-20261113-1h4ztf]] can libtailscale be cross-built for arm64 Android, linked into the core, and reach the hub from inside the app; positive on the emulator once netmon got interfaces from getifaddrs and tsnet a log directory
+- [[EXP-20261114-d82rcz]] can every hub-token session reach the Claude API through the hub, which adds the token; positive: the interactive TUI works with a dummy (starts in manual mode, warns about remote settings), a hub back within about two minutes costs one retried request, a request is the whole context, 0.6 MB median
