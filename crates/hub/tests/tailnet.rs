@@ -44,6 +44,7 @@ async fn a_node_links_over_the_tailnet_and_the_hub_records_who_it_is() {
         node_tokens: Arc::new(Tokens::parse(common::TOKENS).unwrap()),
         client_tokens: Arc::new(Tokens::parse(common::CLIENT_TOKENS).unwrap()),
         claude_tokens: Arc::new(ClaudeTokens::parse("").unwrap()),
+        claude_api: Arc::new(saarthi_hub::claude_api::ClaudeApi::new(saarthi_hub::claude_api::UPSTREAM)),
         live: Live::new(),
     };
     let serving = hub_tailnet.clone();

@@ -188,8 +188,9 @@ async fn a_wrapper_says_hello_again_to_a_restarted_daemon() {
 }
 
 /// `saarthi run` asks the daemon for the node's default Claude account before it starts the
-/// program (ADR-0046), runs the program with that token in its environment, and names the
-/// account in its hello; a named account the daemon cannot give stops it before it starts.
+/// program (ADR-0046), runs the program with a dummy token and the daemon's socket in its
+/// environment (ADR-0051), and names the account and the socket in its hello; a named
+/// account the daemon cannot give stops it before it starts.
 #[test]
 fn the_wrapper_runs_its_program_under_the_account_the_daemon_gives() {
     let dir = tempfile::tempdir().unwrap();
@@ -197,7 +198,10 @@ fn the_wrapper_runs_its_program_under_the_account_the_daemon_gives() {
     std::fs::create_dir_all(socket.parent().unwrap()).unwrap();
     let daemon = std::os::unix::net::UnixListener::bind(&socket).unwrap();
     let got = dir.path().join("got");
-    let script = format!("printf %s \"$CLAUDE_CODE_OAUTH_TOKEN\" > {}; exec sleep 60", got.display());
+    let script = format!(
+        "printf '%s %s %s' \"$CLAUDE_CODE_OAUTH_TOKEN\" \"$ANTHROPIC_UNIX_SOCKET\" \"$ANTHROPIC_BASE_URL\" > {}; exec sleep 60",
+        got.display()
+    );
     let mut wrapper = Command::new(env!("CARGO_BIN_EXE_saarthi"))
         .args(["run", "--command", "sh", "--wrapper-socket"])
         .arg(&socket)
@@ -213,16 +217,16 @@ fn the_wrapper_runs_its_program_under_the_account_the_daemon_gives() {
     std::io::BufReader::new(&asked).read_line(&mut line).unwrap();
     assert_eq!(line.trim(), r#"{"type":"claude_token","name":null}"#);
     (&asked)
-        .write_all(b"{\"name\":\"work\",\"token\":\"tok-work\"}\n")
+        .write_all(b"{\"name\":\"work\",\"socket\":\"/run/api.sock\"}\n")
         .unwrap();
     drop(asked);
 
     let (hello, _) = daemon.accept().unwrap();
     let mut line = String::new();
     std::io::BufReader::new(&hello).read_line(&mut line).unwrap();
-    assert!(line.contains(r#""claude_token":"work""#), "{line}");
+    assert!(line.contains(r#""claude_token":"work","api_socket":"/run/api.sock""#), "{line}");
     let start = Instant::now();
-    while std::fs::read_to_string(&got).unwrap_or_default() != "tok-work" {
+    while std::fs::read_to_string(&got).unwrap_or_default() != "saarthi-proxied /run/api.sock http://api.anthropic.com" {
         assert!(start.elapsed() < Duration::from_secs(10), "the program never saw the token");
         std::thread::sleep(Duration::from_millis(20));
     }

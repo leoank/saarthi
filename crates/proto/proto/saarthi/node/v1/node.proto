@@ -11,6 +11,38 @@ service NodeService {
   // The Claude token a session started at the node's terminal runs under (ADR-0046): the
   // named one, or without a name the node's default; none for the node's own login.
   rpc ClaudeToken(ClaudeTokenRequest) returns (ClaudeTokenReply);
+  // A Claude API request of a session under one of the hub's tokens (ADR-0051): the hub
+  // adds the token and relays it to Anthropic, streaming the answer back.
+  rpc ClaudeApi(stream ClaudeApiRequest) returns (stream ClaudeApiResponse);
+}
+
+// The request head in the first message only; the body in pieces of at most 1 MB.
+message ClaudeApiRequest {
+  ClaudeApiHead head = 1;
+  bytes body = 2;
+}
+
+message ClaudeApiHead {
+  string claude_token = 1;           // the name of the hub's token to run under
+  string method = 2;
+  string path = 3;                   // with its query; only /v1/ is relayed
+  repeated HttpHeader headers = 4;
+}
+
+// The response head in the first message only; then the body as it arrives.
+message ClaudeApiResponse {
+  ClaudeApiStatus head = 1;
+  bytes body = 2;
+}
+
+message ClaudeApiStatus {
+  uint32 status = 1;
+  repeated HttpHeader headers = 2;
+}
+
+message HttpHeader {
+  string name = 1;
+  bytes value = 2;
 }
 
 message ClaudeTokenRequest {
@@ -107,11 +139,13 @@ message Spawn {
   // empty to run on the host. The node refuses a name it does not have.
   string profile = 6;
   // The Claude token to run under, chosen by the hub (ADR-0039); absent for the node's own
-  // login. The node keeps it in memory and never logs or writes it.
+  // login. Its name only: the node relays the session's API requests through `ClaudeApi`
+  // (ADR-0051).
   ClaudeToken claude_token = 7;
 }
 
-// A named `claude setup-token` token, passed to claude as CLAUDE_CODE_OAUTH_TOKEN.
+// A named `claude setup-token` token. Since ADR-0051 the hub sends the name only and
+// `token` is always empty: the value never leaves the hub.
 message ClaudeToken {
   string name = 1;
   string token = 2;

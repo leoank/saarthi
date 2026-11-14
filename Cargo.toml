@@ -3,5 +3,5 @@ resolver = "3"
 members = ["crates/proto", "crates/tailnet", "crates/node", "crates/hub", "crates/core", "crates/uniffi-bindgen"]
 
 [workspace.package]
-version = "0.6.0"
+version = "0.7.0"
 edition = "2024"

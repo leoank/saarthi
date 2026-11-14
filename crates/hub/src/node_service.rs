@@ -12,7 +12,8 @@ use saarthi_proto::control::v1::{PendingClosedOnNode, PendingOnNode, Update, upd
 use saarthi_proto::event::v1::{EventSource, PendingClosed, ReleaseReason, Session};
 use saarthi_proto::node::v1::node_service_server::NodeService;
 use saarthi_proto::node::v1::{
-    Ack, ClaudeToken, ClaudeTokenReply, ClaudeTokenRequest, HubMessage, NodeMessage, Registered,
+    Ack, ClaudeApiRequest, ClaudeToken, ClaudeTokenReply, ClaudeTokenRequest, HubMessage, NodeMessage,
+    Registered,
     hub_message, node_message::Body,
 };
 use tokio::sync::mpsc;
@@ -34,6 +35,8 @@ pub struct Hub {
     pub client_tokens: Arc<Tokens>,
     /// The named Claude tokens from `--claude-tokens` (ADR-0039); empty without the flag.
     pub claude_tokens: Arc<ClaudeTokens>,
+    /// Relays nodes' Claude API requests under those tokens (ADR-0051).
+    pub claude_api: Arc<crate::claude_api::ClaudeApi>,
     pub live: Arc<Live>,
     /// Push to registered phones and to the ntfy topic, if one is configured.
     pub notifier: Arc<Notifier>,
@@ -72,8 +75,8 @@ impl NodeService for Hub {
     }
 
     /// For a session started at the node's own terminal (ADR-0046): the token named, or the
-    /// node's default without a name; none for its own login. The node already receives
-    /// any of these with a spawn, so this hands it nothing it could not get otherwise.
+    /// node's default without a name; none for its own login. The name only: the node
+    /// relays the session's requests through `ClaudeApi` (ADR-0051).
     async fn claude_token(
         &self,
         request: Request<ClaudeTokenRequest>,
@@ -104,18 +107,37 @@ impl NodeService for Hub {
         if name.is_empty() {
             return Ok(Response::new(ClaudeTokenReply { claude_token: None }));
         }
-        let Some(token) = self.claude_tokens.get(&name) else {
+        if self.claude_tokens.get(&name).is_none() {
             return Err(Status::not_found(format!(
                 "the hub holds no Claude token named {name}"
             )));
-        };
-        tracing::info!(%node, claude_token = %name, "handed a Claude token for a terminal session");
+        }
+        tracing::info!(%node, claude_token = %name, "named a Claude token for a terminal session");
         Ok(Response::new(ClaudeTokenReply {
             claude_token: Some(ClaudeToken {
                 name,
-                token: token.to_string(),
+                token: String::new(),
             }),
         }))
+    }
+
+    type ClaudeApiStream = crate::claude_api::ResponseStream;
+
+    async fn claude_api(
+        &self,
+        request: Request<Streaming<ClaudeApiRequest>>,
+    ) -> Result<Response<Self::ClaudeApiStream>, Status> {
+        let auth = request
+            .metadata()
+            .get("authorization")
+            .and_then(|v| v.to_str().ok())
+            .unwrap_or_default();
+        let Some(node) = self.tokens_name(auth) else {
+            return Err(Status::unauthenticated("unknown node token"));
+        };
+        crate::claude_api::relay(self, &node, request.into_inner())
+            .await
+            .map(Response::new)
     }
 }
 

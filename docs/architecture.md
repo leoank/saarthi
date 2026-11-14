@@ -106,10 +106,14 @@ facts come from hooks and the transcript, and the PTY is only a channel for inpu
   (ADR-0023). A session started without the wrapper is observed, gated and promptable
   (prompts use the messaging socket, ADR-0014) and killed by SIGTERM, but cannot be
   interrupted.
-  Before it starts its program the wrapper asks the daemon for a Claude token, the node's
+  Before it starts its program the wrapper asks the daemon for a Claude account, the node's
   default or one named with `--claude-token`; the daemon asks the hub (`ClaudeToken` on the
-  node service), and the wrapper runs the program with the token in its environment and
-  names the account in its hello, so the session is recorded under it (ADR-0046).
+  node service), which answers with the name only, and gives the wrapper a socket path. The
+  wrapper runs the program with a dummy token and that socket in its environment, in auto
+  permission mode unless its arguments pick one, and names the account and the socket in
+  its hello; the daemon serves the socket while the wrapper is connected, relaying the
+  program's API requests to the hub, and the session is recorded under the account
+  (ADR-0046, ADR-0051).
 - **Health collector.** CPU, memory, disk, network, GPU when present, running claude
   processes, and account usage state. One sample every 30 seconds, sent to the hub. GPU on
   macOS comes from IOKit `IOAccelerator` `PerformanceStatistics` (device utilisation, memory
@@ -148,7 +152,8 @@ facts come from hooks and the transcript, and the PTY is only a channel for inpu
 One Rust binary, tonic for gRPC, sqlx on SQLite in WAL mode.
 
 - **Node service.** The daemon-facing API: register, stream events, receive commands,
-  push health samples, receive a session's Claude token with its spawn.
+  push health samples, and relay the Claude API requests of sessions under the hub's
+  tokens (`ClaudeApi`, ADR-0051).
 - **Control service.** The client-facing API. It is a superset of the node service: list
   nodes and sessions across every node, subscribe to a session's event stream, submit
   decisions and prompts, and later spawn sessions. The two services are separate
@@ -349,21 +354,29 @@ from the app or `saarthi ctl`; a new fingerprint under a name is a renewal and r
 dates. The notifier reminds once, a month before a token expires. Each node has a default
 token, set from the app or `ctl`. A spawn names a token, or takes the node's default, or,
 with neither, runs under the node's own login, which the picker also offers by name for
-host sessions; a sandboxed profile refuses to run with neither. The hub sends the token
-with the spawn or resume command; the node keeps it in memory and passes it to the
-session, or, for a profile whose egress goes through the node's proxy, to the proxy, which
-adds it to requests to the Anthropic API while the sandbox holds a dummy. Nothing is
-written to disk, read back or returned. Any node may use any token for now; a list of
-nodes per token comes later. Clients see names and dates, never a value. A launch
-profile's `token_file` (ADR-0038) remains a fallback for a sandbox the hub sends no token
-to. On the host, the token in the environment wins over the keychain login
-([[EXP-20261111-q6sgt8]]).
+host sessions; a sandboxed profile refuses to run with neither. No token's value leaves
+the hub (ADR-0051, [[EXP-20261114-d82rcz]]): the spawn, resume, probe and terminal
+session get the name only. The session holds a dummy `CLAUDE_CODE_OAUTH_TOKEN`, which wins
+over the keychain login ([[EXP-20261111-q6sgt8]]), and sends its API requests as plain HTTP
+over a unix socket to a proxy the node runs for it (in a sandbox's `tmp/`, or for host and
+terminal sessions and probes in a per-user directory every sandbox is denied); the proxy
+relays them over the node's own connection to the hub (`ClaudeApi`, a bidirectional
+stream), which checks the node and the name, keeps only `/v1/`, adds the token and streams
+Anthropic's answer back. Revoking a node's peer token cuts it off at once. The hub is in
+the path of every such turn: a restart costs a retried request, an outage beyond about two
+minutes ends the turns of the moment. Without the token Claude Code cannot load remote
+settings or read the account's default permission mode, so these sessions start in auto
+unless one is picked. Any node may use any token for now; a list of nodes per token comes
+later. Clients see names and dates, never a value. A launch profile's `token_file`
+(ADR-0038) is the one token a node holds: for a sandbox under no hub token, its proxy adds
+it there (ADR-0050).
 
 Usage per token (ADR-0042): the usage endpoint refuses a setup-token
 ([[RUN-20261111-q60gf1]]), so the hub takes each account's 5-hour and 7-day windows from
-the `rate_limit_event`s of sessions running under its token, which the node forwards as
-daemon `rate_limit` events, and alerts on them per account as on a node's health
-(ADR-0032). With `--usage-probe-node`, one node also runs a throwaway Haiku turn under
+the unified rate-limit headers of the answers it relays (ADR-0051), at most once a minute
+per token unless they change, and from the `rate_limit_event`s of sessions running under
+its token, which the node forwards as daemon `rate_limit` events, and alerts on them per
+account as on a node's health (ADR-0032). With `--usage-probe-node`, one node also runs a throwaway Haiku turn under
 each token about every half hour, in an empty config directory nothing lists, skipping an
 account a session reported on lately, so idle accounts stay fresh too (ADR-0043).
 

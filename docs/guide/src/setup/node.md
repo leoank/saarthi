@@ -211,7 +211,11 @@ daemon, or running while the daemon restarts, becomes reachable as soon as it is
 When the hub holds [Claude accounts](hub.md#claude-accounts), a wrapped session runs under
 the node's **default account**, the one set on the node's health screen in the app, and
 the wrapper prints which before Claude Code starts. A change in the app applies to the next
-session you start. To pick another account, or the machine's own login:
+session you start. The session holds a dummy token and sends its API requests through the
+daemon to the hub, which adds the token (ADR-0051), so Claude Code shows a warning at start
+that remote managed settings could not be loaded. It starts in auto permission mode, the
+default the dummy cannot read from the account, unless you pass a mode of your own. To
+pick another account, or the machine's own login:
 
 ```console
 $ saarthi run --claude-token personal
@@ -251,9 +255,10 @@ It has the network, but no inbound connections. It never sees your own Claude lo
 runs under a Claude token, the account picked when it starts or the node's default, from
 the [hub's Claude accounts](hub.md#claude-accounts). It never sees that token either: Claude
 inside holds a dummy and sends its API requests over a socket in the profile's state
-directory to the node, which adds the token and passes them on to Anthropic (ADR-0050).
-Its other traffic goes out directly. A profile can also name a token file
-of its own, used when the hub sends none (no account picked and no default):
+directory to the node, which relays them to the hub, which adds the token (ADR-0050,
+ADR-0051). Its other traffic goes out directly. A profile can also name a token file
+of its own, used when the session runs under no hub account (none picked and no default);
+then the node adds that token itself:
 
 ```console
 $ claude setup-token        # in your own terminal; paste the token into a file

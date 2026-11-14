@@ -54,10 +54,11 @@ pub enum Account {
 /// How long the daemon gets to fetch a token from the hub.
 const TOKEN_WAIT: Duration = Duration::from_secs(15);
 
-/// The token and its name for `account`, asked of the daemon, which asks the hub. Ok(None)
-/// is the machine's own login. A named token that cannot be had is an error; the default
-/// falls back to the own login, saying why when something failed rather than there being
-/// no default.
+/// The name of the hub's token for `account` and the socket to send the program's API
+/// requests to (ADR-0051), asked of the daemon, which asks the hub. Ok(None) is the
+/// machine's own login. A named token that cannot be had is an error; the default falls
+/// back to the own login, saying why when something failed rather than there being no
+/// default.
 pub fn account_token(socket: &std::path::Path, account: &Account) -> Result<Option<(String, String)>> {
     let name = match account {
         Account::OwnLogin => return Ok(None),
@@ -74,7 +75,7 @@ pub fn account_token(socket: &std::path::Path, account: &Account) -> Result<Opti
         serde_json::from_str(&line).context("the node daemon's answer")
     })();
     let failed = match asked {
-        Ok(TokenReply { name, token: Some(token), error: None }) => return Ok(Some((name, token))),
+        Ok(TokenReply { name, socket: Some(api), error: None }) => return Ok(Some((name, api))),
         Ok(TokenReply { error: None, .. }) if name.is_none() => return Ok(None),
         Ok(TokenReply { error: Some(e), .. }) => e,
         Ok(_) => "the hub sent no token".to_string(),
@@ -100,6 +101,10 @@ pub fn run(opts: Options) -> Result<i32> {
         .openpty(terminal_size())
         .context("opening a PTY")?;
     let mut cmd = CommandBuilder::new(&opts.command);
+    if account.is_some() && wants_auto(&opts.command, &opts.args) {
+        // The dummy cannot read the account's default mode ([[EXP-20261114-d82rcz]]).
+        cmd.args(["--permission-mode", "auto"]);
+    }
     cmd.args(&opts.args);
     cmd.cwd(std::env::current_dir()?);
     // A session started from inside another must not be taken for its child.
@@ -109,15 +114,18 @@ pub fn run(opts: Options) -> Result<i32> {
             cmd.env_remove(name.as_ref());
         }
     }
-    // A setup-token in the environment wins over the login in the keychain
-    // (EXP-20261111-q6sgt8).
-    let token_name = match &account {
-        Some((name, token)) => {
-            cmd.env("CLAUDE_CODE_OAUTH_TOKEN", token);
+    // A token in the environment wins over the login in the keychain (EXP-20261111-q6sgt8):
+    // here a dummy, and the program's API requests go to the daemon's socket and on to the
+    // hub, which adds the token (ADR-0051).
+    let (token_name, api_socket) = match &account {
+        Some((name, api)) => {
+            for (k, v) in crate::claude_api::env(std::path::Path::new(api)) {
+                cmd.env(k, v);
+            }
             eprintln!("saarthi run: Claude account {name}\r");
-            name.clone()
+            (name.clone(), api.clone())
         }
-        None => String::new(),
+        None => (String::new(), String::new()),
     };
     let mut child = pty
         .slave
@@ -143,7 +151,7 @@ pub fn run(opts: Options) -> Result<i32> {
     let link: Link = Arc::new(Mutex::new(None));
     {
         let (socket, writer, link) = (opts.socket.clone(), writer.clone(), link.clone());
-        std::thread::spawn(move || follow_daemon(&socket, pid, &token_name, &writer, &link));
+        std::thread::spawn(move || follow_daemon(&socket, pid, &token_name, &api_socket, &writer, &link));
     }
 
     // Our terminal's input goes to the PTY; a person typing is reported to the daemon.
@@ -198,7 +206,14 @@ pub fn run(opts: Options) -> Result<i32> {
 /// when the daemon goes away (a restart, an upgrade) the wrapper says hello again to the
 /// next one, which otherwise would take the session for one started by hand. Without a
 /// daemon the session runs anyway, unreachable until one appears.
-fn follow_daemon(socket: &std::path::Path, pid: u32, claude_token: &str, writer: &Writer, link: &Link) {
+fn follow_daemon(
+    socket: &std::path::Path,
+    pid: u32,
+    claude_token: &str,
+    api_socket: &str,
+    writer: &Writer,
+    link: &Link,
+) {
     let mut warned = false;
     loop {
         let attempt = UnixStream::connect(socket).and_then(|mut s| {
@@ -207,6 +222,7 @@ fn follow_daemon(socket: &std::path::Path, pid: u32, claude_token: &str, writer:
                 &FromWrapper::Hello {
                     pid,
                     claude_token: claude_token.to_string(),
+                    api_socket: api_socket.to_string(),
                 },
             )?;
             Ok((s.try_clone()?, s))
@@ -228,6 +244,19 @@ fn follow_daemon(socket: &std::path::Path, pid: u32, claude_token: &str, writer:
         }
         std::thread::sleep(RECONNECT_EVERY);
     }
+}
+
+/// Whether `saarthi run` adds `--permission-mode auto` before the program's arguments: when
+/// the program is Claude Code and the arguments choose no permission mode of their own.
+pub fn wants_auto(command: &str, args: &[String]) -> bool {
+    let program = std::path::Path::new(command).file_name().and_then(|n| n.to_str());
+    program == Some("claude")
+        && !args.iter().any(|a| {
+            a == "--permission-mode"
+                || a.starts_with("--permission-mode=")
+                || a == "--dangerously-skip-permissions"
+                || a == "--allow-dangerously-skip-permissions"
+        })
 }
 
 fn send(stream: &mut UnixStream, msg: &FromWrapper) -> std::io::Result<()> {
@@ -374,7 +403,18 @@ impl Drop for RawMode {
 
 #[cfg(test)]
 mod tests {
-    use super::is_human;
+    use super::{is_human, wants_auto};
+
+    #[test]
+    fn claude_starts_in_auto_unless_its_arguments_choose_a_mode() {
+        let args = |a: &[&str]| a.iter().map(|s| s.to_string()).collect::<Vec<_>>();
+        assert!(wants_auto("claude", &[]));
+        assert!(wants_auto("/nix/store/x/bin/claude", &args(&["--resume", "abc"])));
+        assert!(!wants_auto("claude", &args(&["--permission-mode", "plan"])));
+        assert!(!wants_auto("claude", &args(&["--permission-mode=plan"])));
+        assert!(!wants_auto("claude", &args(&["--dangerously-skip-permissions"])));
+        assert!(!wants_auto("sh", &[]));
+    }
 
     #[test]
     fn typing_counts_and_terminal_replies_do_not() {

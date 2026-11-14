@@ -55,6 +55,9 @@ pub struct Spawner {
     /// Running spawned sessions by id: the line writer for each one's stdin. Dropping the
     /// sender closes the input, which ends the session.
     procs: Mutex<HashMap<String, mpsc::Sender<String>>>,
+    /// The hub, through which a session under one of its tokens reaches the Claude API
+    /// (ADR-0051); set when the node links to a hub.
+    hub_api: std::sync::OnceLock<Arc<crate::claude_api::HubApi>>,
 }
 
 /// What sandboxed sessions need besides their profile.
@@ -116,6 +119,24 @@ impl Spawner {
             contained,
             sessions,
             procs: Mutex::new(HashMap::new()),
+            hub_api: std::sync::OnceLock::new(),
+        })
+    }
+
+    /// The hub that relays the Claude API for sessions under its tokens.
+    pub fn set_hub_api(&self, api: Arc<crate::claude_api::HubApi>) {
+        let _ = self.hub_api.set(api);
+    }
+
+    /// Where the API requests of a session under the hub's token `name` go.
+    fn via_hub(&self, name: &str) -> Result<crate::claude_api::Upstream, String> {
+        let api = self
+            .hub_api
+            .get()
+            .ok_or_else(|| format!("this node has no hub to run under the {name} token through"))?;
+        Ok(crate::claude_api::Upstream::Hub {
+            api: api.clone(),
+            name: name.to_string(),
         })
     }
 
@@ -282,9 +303,11 @@ impl Spawner {
     }
 
     /// Starts claude for session `id` in `dir`, as a new session (`--session-id`) or a
-    /// resumed one (`--resume`), under the named Claude token if the hub sent one (as
-    /// `CLAUDE_CODE_OAUTH_TOKEN`, which wins over the keychain login, EXP-20261111-q6sgt8),
-    /// and sends the first prompt if there is one.
+    /// resumed one (`--resume`), and sends the first prompt if there is one. Under one of
+    /// the hub's tokens claude holds a dummy (as `CLAUDE_CODE_OAUTH_TOKEN`, which wins over
+    /// the keychain login, EXP-20261111-q6sgt8) and its API requests go through the hub,
+    /// which adds the token (ADR-0051); without a mode it runs in auto, the default the
+    /// dummy cannot read from the account ([[EXP-20261114-d82rcz]]).
     #[allow(clippy::too_many_arguments)]
     async fn start(
         self: &Arc<Self>,
@@ -297,7 +320,11 @@ impl Spawner {
         profile: Option<&Profile>,
         claude_token: Option<&ClaudeToken>,
     ) -> Result<(), String> {
-        let token = claude_token.map(|t| t.token.as_str());
+        let hub = match claude_token.filter(|t| !t.name.is_empty()) {
+            Some(t) => Some(self.via_hub(&t.name)?),
+            None => None,
+        };
+        let mode = if mode.is_empty() && hub.is_some() { "auto" } else { mode };
         let contained = profile.filter(|p| p.claude_dir().is_some());
         let hooks = match contained {
             Some(_) => self.contained.hooks.as_ref().map(Value::to_string),
@@ -326,14 +353,14 @@ impl Spawner {
             // Inside, claude is found on the profile's PATH; no login shell runs there.
             Some(p) => containment::spawn_seatbelt(
                 p,
-                token,
+                hub,
                 &self.claude,
                 &args.iter().map(|a| a.to_string()).collect::<Vec<_>>(),
                 dir,
                 &self.contained.user_claude,
                 &self.contained.deny,
             )?,
-            None => self.host(&args, dir, token)?,
+            None => self.host(&args, dir, hub)?,
         };
         let Child {
             pid,
@@ -432,10 +459,11 @@ impl Spawner {
     /// One throwaway Haiku turn under `claude_token`, for its account's rate-limit windows
     /// (ADR-0043): claude runs through the login shell in a fresh temporary directory, with
     /// an empty config directory there, so no settings, hooks or session of the node's see
-    /// it; the directory is removed afterwards. Returns the turn's `rate_limit_info` as JSON.
-    /// Only a node that runs headless sessions (spawn roots) takes probes.
+    /// it; the directory is removed afterwards. Its request goes through the hub, as every
+    /// session's under the hub's tokens (ADR-0051). Returns the turn's `rate_limit_info` as
+    /// JSON. Only a node that runs headless sessions (spawn roots) takes probes.
     pub async fn probe(&self, claude_token: Option<&ClaudeToken>) -> Result<String, String> {
-        let Some(token) = claude_token else {
+        let Some(token) = claude_token.filter(|t| !t.name.is_empty()) else {
             return Err("a usage probe needs a Claude token".into());
         };
         if self.roots.is_empty() {
@@ -446,14 +474,20 @@ impl Spawner {
         let (cfg, work) = (dir.join("claude"), dir.join("work"));
         let made = std::fs::create_dir_all(&cfg).and_then(|()| std::fs::create_dir_all(&work));
         let outcome = match made {
-            Ok(()) => self.probe_in(&token.token, &cfg, &work).await,
+            Ok(()) => match self.via_hub(&token.name) {
+                Ok(hub) => self.probe_in(hub, &cfg, &work).await,
+                Err(e) => Err(e),
+            },
             Err(e) => Err(format!("making {}: {e}", dir.display())),
         };
         let _ = std::fs::remove_dir_all(&dir);
         outcome
     }
 
-    async fn probe_in(&self, token: &str, cfg: &Path, work: &Path) -> Result<String, String> {
+    async fn probe_in(&self, hub: crate::claude_api::Upstream, cfg: &Path, work: &Path) -> Result<String, String> {
+        let socket = crate::claude_api::host_socket().map_err(|e| format!("the probe's API socket: {e}"))?;
+        let proxy = crate::claude_api::Proxy::start(&socket, hub)
+            .map_err(|e| format!("starting the probe's Claude API proxy: {e}"))?;
         let mut child = tokio::process::Command::new(&self.shell)
             .arg("-l")
             .arg("-c")
@@ -469,7 +503,7 @@ impl Spawner {
                 "--verbose",
             ])
             .env("CLAUDE_CONFIG_DIR", cfg)
-            .env("CLAUDE_CODE_OAUTH_TOKEN", token)
+            .envs(crate::claude_api::env(proxy.path()))
             .current_dir(work)
             .stdin(Stdio::null())
             .stdout(Stdio::piped())
@@ -509,14 +543,25 @@ impl Spawner {
         }
     }
 
-    /// Starts claude on the host through the user's login shell, for a terminal's PATH,
-    /// under the Claude token if one is given.
-    fn host(&self, args: &[&str], dir: &Path, token: Option<&str>) -> Result<Child, String> {
+    /// Starts claude on the host through the user's login shell, for a terminal's PATH;
+    /// under one of the hub's tokens with a dummy and a proxy to the hub, which the
+    /// returned process holds.
+    fn host(&self, args: &[&str], dir: &Path, hub: Option<crate::claude_api::Upstream>) -> Result<Child, String> {
         let mut command = tokio::process::Command::new(&self.shell);
-        match token {
-            Some(t) => command.env("CLAUDE_CODE_OAUTH_TOKEN", t),
-            // Not one the node itself was started with.
-            None => command.env_remove("CLAUDE_CODE_OAUTH_TOKEN"),
+        let proxy = match hub {
+            Some(hub) => {
+                let socket =
+                    crate::claude_api::host_socket().map_err(|e| format!("the session's API socket: {e}"))?;
+                let proxy = crate::claude_api::Proxy::start(&socket, hub)
+                    .map_err(|e| format!("starting the Claude API proxy: {e}"))?;
+                command.envs(crate::claude_api::env(proxy.path()));
+                Some(proxy)
+            }
+            None => {
+                // Not one the node itself was started with.
+                command.env_remove("CLAUDE_CODE_OAUTH_TOKEN");
+                None
+            }
         };
         let mut child = command
             .arg("-l")
@@ -535,7 +580,7 @@ impl Spawner {
             stdin: Box::new(child.stdin.take().expect("piped")),
             stdout: Box::new(child.stdout.take().expect("piped")),
             stderr: Box::new(child.stderr.take().expect("piped")),
-            proc: Proc::Host(child),
+            proc: Proc::Host(child, proxy),
         })
     }
 

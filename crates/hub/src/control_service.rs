@@ -61,16 +61,17 @@ impl Hub {
         }
     }
 
-    /// The token to hand a node for a spawn or resume under `name`; None for the node's
-    /// own login (the empty name). `why` says where the name came from, for the error.
+    /// The token to name to a node for a spawn or resume under `name`, without its value
+    /// (ADR-0051); None for the node's own login (the empty name). `why` says where the
+    /// name came from, for the error.
     fn claude_token(&self, name: &str, why: &str) -> Result<Option<node::ClaudeToken>, Status> {
         if name.is_empty() {
             return Ok(None);
         }
         match self.claude_tokens.get(name) {
-            Some(token) => Ok(Some(node::ClaudeToken {
+            Some(_) => Ok(Some(node::ClaudeToken {
                 name: name.to_string(),
-                token: token.to_string(),
+                token: String::new(),
             })),
             None => Err(Status::failed_precondition(format!(
                 "the hub holds no Claude token named {name} ({why})"

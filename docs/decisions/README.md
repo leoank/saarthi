@@ -65,6 +65,7 @@ spawns, with the owner's answers of 2026-11-07.
 | [ADR-0048](ADR-0048-the-hub-and-the-node-embed-tsnet-beside-plain-tcp.md) | The hub and the node embed tsnet beside plain TCP | accepted |
 | [ADR-0049](ADR-0049-the-phone-holds-a-tailnet-identity-per-hub.md) | The phone holds a tailnet identity per hub | accepted |
 | [ADR-0050](ADR-0050-a-sandbox-reaches-the-claude-api-through-the-node-holding-a-dummy.md) | A sandbox reaches the Claude API through the node, holding a dummy token | accepted |
+| [ADR-0051](ADR-0051-the-hub-adds-its-claude-tokens-and-never-hands-them-out.md) | The hub adds its Claude tokens and never hands them out | accepted |
 
 Each record:
 

@@ -27,11 +27,15 @@ use crate::sessions::Sessions;
 #[serde(tag = "type", rename_all = "snake_case")]
 pub enum FromWrapper {
     /// First message: the pid of the process the wrapper runs under its PTY, and the named
-    /// Claude token it started that process under, if any (ADR-0046).
+    /// Claude token it started that process under, if any (ADR-0046), with the socket the
+    /// process sends its API requests to, which the daemon serves for as long as this
+    /// connection lasts (ADR-0051).
     Hello {
         pid: u32,
         #[serde(default, skip_serializing_if = "String::is_empty")]
         claude_token: String,
+        #[serde(default, skip_serializing_if = "String::is_empty")]
+        api_socket: String,
     },
     /// First and only message on a connection of its own, before the wrapper starts its
     /// program: which Claude token to start it under, `name` or the node's default without
@@ -51,14 +55,16 @@ pub enum ToWrapper {
     Kill,
 }
 
-/// The daemon's answer to [`FromWrapper::ClaudeToken`]: a token and its name, or neither for
-/// the node's own login; `error` when the hub could not be asked or refused.
+/// The daemon's answer to [`FromWrapper::ClaudeToken`]: the name of one of the hub's tokens
+/// and the socket to start the program with (ADR-0051), or neither for the node's own
+/// login; `error` when the hub could not be asked or refused. The token itself never
+/// leaves the hub.
 #[derive(Debug, Serialize, Deserialize, PartialEq, Default)]
 pub struct TokenReply {
     #[serde(default)]
     pub name: String,
     #[serde(default)]
-    pub token: Option<String>,
+    pub socket: Option<String>,
     #[serde(default)]
     pub error: Option<String>,
 }
@@ -81,6 +87,8 @@ pub struct Wrappers {
     /// The hub's address and this node's token, once the node links to a hub: where a
     /// wrapper's Claude token comes from.
     hub: std::sync::OnceLock<(String, String)>,
+    /// The same hub, relaying the API requests of wrapped programs under its tokens.
+    hub_api: std::sync::OnceLock<Arc<crate::claude_api::HubApi>>,
 }
 
 impl Wrappers {
@@ -91,11 +99,13 @@ impl Wrappers {
             outbox,
             by_pid: Mutex::new(HashMap::new()),
             hub: std::sync::OnceLock::new(),
+            hub_api: std::sync::OnceLock::new(),
         })
     }
 
     /// Where to ask for a wrapper's Claude token: the hub this node links to.
     pub fn set_hub(&self, hub: String, token: String) {
+        let _ = self.hub_api.set(crate::claude_api::HubApi::new(hub.clone(), token.clone()));
         let _ = self.hub.set((hub, token));
     }
 
@@ -110,10 +120,16 @@ impl Wrappers {
             };
         };
         match crate::link::claude_token(hub, token, name).await {
-            Ok(Some(t)) => TokenReply {
-                name: t.name,
-                token: Some(t.token),
-                error: None,
+            Ok(Some(t)) => match crate::claude_api::host_socket() {
+                Ok(socket) => TokenReply {
+                    name: t.name,
+                    socket: Some(socket.to_string_lossy().into_owned()),
+                    error: None,
+                },
+                Err(e) => TokenReply {
+                    error: Some(format!("the Claude API socket's directory: {e}")),
+                    ..Default::default()
+                },
             },
             Ok(None) => TokenReply::default(),
             Err(e) => TokenReply {
@@ -162,8 +178,12 @@ impl Wrappers {
         let Some(first) = lines.next_line().await? else {
             return Ok(());
         };
-        let (pid, claude_token) = match serde_json::from_str(&first)? {
-            FromWrapper::Hello { pid, claude_token } => (pid, claude_token),
+        let (pid, claude_token, api_socket) = match serde_json::from_str(&first)? {
+            FromWrapper::Hello {
+                pid,
+                claude_token,
+                api_socket,
+            } => (pid, claude_token, api_socket),
             FromWrapper::ClaudeToken { name } => {
                 let reply = self.claude_token(name).await;
                 if let Some(e) = &reply.error {
@@ -176,6 +196,9 @@ impl Wrappers {
             }
             FromWrapper::Keystroke => anyhow::bail!("a wrapper must say hello first"),
         };
+        // Held for as long as the wrapper is connected, and started again when it says hello
+        // to a restarted daemon.
+        let _proxy = self.proxy(&claude_token, &api_socket);
         let (tx, mut rx) = mpsc::channel::<ToWrapper>(8);
         self.by_pid.lock().await.insert(pid, tx);
         self.sessions.set_wrapped(pid, true, &claude_token).await;
@@ -206,6 +229,34 @@ impl Wrappers {
         self.sessions.set_wrapped(pid, false, "").await;
         tracing::info!(pid, "wrapper disconnected");
         outcome
+    }
+
+    /// The proxy a wrapped program under the hub's token `name` sends its API requests to,
+    /// on `socket`, a path in the node's socket directory; None, logged, when it cannot be.
+    fn proxy(&self, name: &str, socket: &str) -> Option<crate::claude_api::Proxy> {
+        if name.is_empty() || socket.is_empty() {
+            return None;
+        }
+        let path = Path::new(socket);
+        if path.parent() != Some(crate::claude_api::host_socket_dir().as_path()) {
+            tracing::warn!(socket, "refused a wrapper's API socket outside the node's directory");
+            return None;
+        }
+        let Some(api) = self.hub_api.get() else {
+            tracing::warn!(claude_token = %name, "no hub to relay a wrapped session's API requests");
+            return None;
+        };
+        let upstream = crate::claude_api::Upstream::Hub {
+            api: api.clone(),
+            name: name.to_string(),
+        };
+        match crate::claude_api::Proxy::start(path, upstream) {
+            Ok(p) => Some(p),
+            Err(e) => {
+                tracing::warn!(socket, error = %e, "a wrapped session's API proxy could not start");
+                None
+            }
+        }
     }
 
     async fn keystroke(&self, pid: u32) {
@@ -254,16 +305,18 @@ mod tests {
         let hello = serde_json::to_string(&FromWrapper::Hello {
             pid: 7,
             claude_token: String::new(),
+            api_socket: String::new(),
         })
         .unwrap();
         assert_eq!(hello, r#"{"type":"hello","pid":7}"#);
         let named = FromWrapper::Hello {
             pid: 7,
             claude_token: "work".into(),
+            api_socket: "/run/s.sock".into(),
         };
         assert_eq!(
             serde_json::to_string(&named).unwrap(),
-            r#"{"type":"hello","pid":7,"claude_token":"work"}"#
+            r#"{"type":"hello","pid":7,"claude_token":"work","api_socket":"/run/s.sock"}"#
         );
         let ask = serde_json::to_string(&FromWrapper::ClaudeToken { name: None }).unwrap();
         assert_eq!(ask, r#"{"type":"claude_token","name":null}"#);

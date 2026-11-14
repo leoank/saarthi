@@ -50,7 +50,9 @@ struct Cli {
     #[arg(long)]
     client_tokens: PathBuf,
     /// A file of `<name> <token>` lines: `claude setup-token` tokens that spawned sessions
-    /// may run under (ADR-0039). Read at start; clients see the names, never the tokens.
+    /// may run under (ADR-0039). Read at start. No value leaves the hub: it adds the token
+    /// to the Claude API requests nodes relay for those sessions (ADR-0051); clients and
+    /// nodes see the names only.
     #[arg(long)]
     claude_tokens: Option<PathBuf>,
     /// The node that runs usage probes: one throwaway Haiku turn under each Claude token
@@ -102,6 +104,7 @@ async fn main() -> Result<()> {
         node_tokens: Arc::new(Tokens::load(&cli.node_tokens)?),
         client_tokens: Arc::new(Tokens::load(&cli.client_tokens)?),
         claude_tokens: Arc::new(claude_tokens),
+        claude_api: Arc::new(saarthi_hub::claude_api::ClaudeApi::new(saarthi_hub::claude_api::UPSTREAM)),
         live: Live::new(),
     };
     let listener = tokio::net::TcpListener::bind(cli.listen)

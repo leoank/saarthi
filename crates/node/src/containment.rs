@@ -5,11 +5,11 @@
 //!
 //! - its own state directory: Claude's config directory (`claude/`, which receives the
 //!   registry entry and transcripts), a scratch directory and a home, all read-write;
-//! - the long-lived token of `claude setup-token`: the named token the hub sent with the
-//!   command (ADR-0039), else the profile's `token_file` read at each start; never written
-//!   anywhere (EXP-20261107-413q6m), and never inside: claude there holds a dummy and sends
-//!   its API requests over a unix socket to the node's proxy, which adds the token
-//!   (ADR-0050, `claude_api`);
+//! - the long-lived token of `claude setup-token`, never inside: claude there holds a dummy
+//!   and sends its API requests over a unix socket to the node's proxy (ADR-0050,
+//!   `claude_api`), which relays them to the hub when the session runs under one of the
+//!   hub's tokens (ADR-0051), or else adds the profile's `token_file`, read at each start
+//!   and never written anywhere (EXP-20261107-413q6m);
 //! - the working directory read-write, `/nix/store` and the profile's paths read-only,
 //!   the rest of the home directory unreadable;
 //! - outbound network, no inbound and no loopback TCP: hooks come back over the node's unix
@@ -187,14 +187,12 @@ impl Profile {
         Ok(())
     }
 
-    /// The Claude token a session runs under: the one the hub sent, else the profile's
-    /// token file.
-    fn token(&self, claude_token: Option<&str>) -> Result<String, String> {
-        let token = match (claude_token, &self.token_file) {
-            (Some(t), _) => t.to_string(),
-            (None, Some(f)) => std::fs::read_to_string(f)
+    /// The token of a session that runs under none of the hub's: the profile's token file.
+    fn file_token(&self) -> Result<String, String> {
+        let token = match &self.token_file {
+            Some(f) => std::fs::read_to_string(f)
                 .map_err(|e| format!("reading the profile's token file {}: {e}", f.display()))?,
-            (None, None) => {
+            None => {
                 return Err(format!(
                     "the {} sandbox needs a Claude token: pick one, or set the node's default at the hub",
                     self.name
@@ -212,8 +210,7 @@ impl Profile {
     /// sandbox may use. One socket per session, since sessions may run under different
     /// tokens.
     fn api_socket(&self) -> PathBuf {
-        let id = uuid::Uuid::new_v4().simple().to_string();
-        self.state_dir.as_ref().expect("checked at load").join("tmp").join(format!("claude-api-{}.sock", &id[..8]))
+        self.state_dir.as_ref().expect("checked at load").join("tmp").join(crate::claude_api::socket_name())
     }
 
     /// The environment inside: the node's own variables first, then the profile's. Claude
@@ -233,11 +230,8 @@ impl Profile {
             ("CLAUDE_CODE_TMPDIR".into(), s(&state.join("tmp"))),
             ("TMPDIR".into(), s(&state.join("tmp"))),
             ("XDG_CACHE_HOME".into(), s(&state.join("home/.cache"))),
-            ("CLAUDE_CODE_OAUTH_TOKEN".into(), crate::claude_api::DUMMY_TOKEN.into()),
-            ("ANTHROPIC_UNIX_SOCKET".into(), s(api_socket)),
-            // Plain HTTP over the socket: the proxy outside does the TLS.
-            ("ANTHROPIC_BASE_URL".into(), "http://api.anthropic.com".into()),
         ]);
+        env.extend(crate::claude_api::env(api_socket).map(|(k, v)| (k.to_string(), v)));
         env.extend(self.env.clone());
         env.into_iter().collect()
     }
@@ -277,7 +271,9 @@ pub struct Child {
 }
 
 pub enum Proc {
-    Host(tokio::process::Child),
+    /// A process on the host, and the Claude API proxy of a session under one of the hub's
+    /// tokens, which stops when this is dropped.
+    Host(tokio::process::Child, Option<crate::claude_api::Proxy>),
     #[cfg(target_os = "macos")]
     /// The sandboxed process and its Claude API proxy, which stops when this is dropped.
     Seatbelt(mxc_sdk::v1::MxcProcess, crate::claude_api::Proxy),
@@ -287,7 +283,7 @@ impl Proc {
     /// Waits for the process to exit, and says how it ended.
     pub async fn wait(&mut self) -> String {
         match self {
-            Proc::Host(c) => format!("{:?}", c.wait().await),
+            Proc::Host(c, _) => format!("{:?}", c.wait().await),
             #[cfg(target_os = "macos")]
             Proc::Seatbelt(p, _) => loop {
                 // mxc's wait blocks; polling keeps the handle free for a kill.
@@ -305,7 +301,7 @@ impl Proc {
     pub fn kill(&mut self, pid: u32) {
         let groups = tool_groups(pid);
         match self {
-            Proc::Host(c) => {
+            Proc::Host(c, _) => {
                 let _ = c.start_kill();
             }
             #[cfg(target_os = "macos")]
@@ -350,11 +346,13 @@ pub fn tool_groups(pid: u32) -> Vec<libc::pid_t> {
 }
 
 /// Starts `program args` under a sandboxed profile in `cwd`, through mxc's seatbelt
-/// backend. `deny` adds paths the node keeps to itself, such as the wrappers' socket.
+/// backend. `hub` is the hub's upstream when the session runs under one of its tokens;
+/// without it, the profile's token file. `deny` adds paths the node keeps to itself, such
+/// as the wrappers' socket.
 #[cfg(target_os = "macos")]
 pub fn spawn_seatbelt(
     profile: &Profile,
-    claude_token: Option<&str>,
+    hub: Option<crate::claude_api::Upstream>,
     program: &str,
     args: &[String],
     cwd: &Path,
@@ -373,8 +371,14 @@ pub fn spawn_seatbelt(
         .prepare(user_claude)
         .map_err(|e| format!("preparing the profile's state directory: {e}"))?;
     let user = std::env::var("USER").unwrap_or_default();
-    let token = profile.token(claude_token)?;
-    let proxy = crate::claude_api::Proxy::start(&profile.api_socket(), &token, crate::claude_api::UPSTREAM)
+    let upstream = match hub {
+        Some(hub) => hub,
+        None => crate::claude_api::Upstream::Direct {
+            base: crate::claude_api::UPSTREAM.into(),
+            token: profile.file_token()?,
+        },
+    };
+    let proxy = crate::claude_api::Proxy::start(&profile.api_socket(), upstream)
         .map_err(|e| format!("starting the Claude API proxy: {e}"))?;
     let env = profile.env(&user, proxy.path());
     let (readonly, readwrite, denied) = profile.grants(cwd, user_claude, deny);
@@ -440,7 +444,7 @@ pub fn spawn_seatbelt(
 #[cfg(not(target_os = "macos"))]
 pub fn spawn_seatbelt(
     _profile: &Profile,
-    _claude_token: Option<&str>,
+    _hub: Option<crate::claude_api::Upstream>,
     _program: &str,
     _args: &[String],
     _cwd: &Path,
@@ -509,13 +513,7 @@ backend = "host"
             )
             .unwrap();
             let x = tokenless.get("x").unwrap().unwrap();
-            assert!(
-                x.token(None)
-                    .unwrap_err()
-                    .contains("needs a Claude token")
-            );
-            assert!(x.token(Some("t")).is_ok());
-            assert!(x.token(Some("a\nb")).unwrap_err().contains("not valid"));
+            assert!(x.file_token().unwrap_err().contains("needs a Claude token"));
             let two = "[profiles.a]\nbackend = \"seatbelt\"\nstate_dir = \"/s\"\ntoken_file = \"/t\"\n\
                        [profiles.b]\nbackend = \"seatbelt\"\nstate_dir = \"/s\"\ntoken_file = \"/t\"\n";
             assert!(bad(two).contains("same state_dir"));
@@ -538,9 +536,9 @@ backend = "host"
         );
         let p = Profiles::parse(&text, dir.path()).unwrap();
         let s = p.get("s").unwrap().unwrap();
-        assert_eq!(s.token(None).unwrap(), "tok-123");
-        // A token from the hub wins over the file.
-        assert_eq!(s.token(Some("from-hub")).unwrap(), "from-hub");
+        assert_eq!(s.file_token().unwrap(), "tok-123");
+        std::fs::write(&token, "a\nb").unwrap();
+        assert!(s.file_token().unwrap_err().contains("not valid"));
         let socket = s.api_socket();
         assert!(socket.starts_with(dir.path().join("state/tmp")), "{}", socket.display());
         let env: BTreeMap<_, _> = s.env("me", &socket).into_iter().collect();
@@ -609,7 +607,7 @@ backend = "host"
             tokio::time::sleep(std::time::Duration::from_millis(20)).await;
         };
         assert_eq!(tool_groups(pid), vec![pid as libc::pid_t]);
-        let mut proc = Proc::Host(child);
+        let mut proc = Proc::Host(child, None);
         proc.kill(pid);
         proc.wait().await;
         let gone = |p: i32| unsafe { libc::kill(p, 0) } != 0;

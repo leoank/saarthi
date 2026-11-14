@@ -55,7 +55,19 @@ impl HubProc {
             None,
             claude_tokens,
             Some((node.to_string(), every)),
+            saarthi_hub::claude_api::UPSTREAM,
         )
+    }
+
+    /// The same, holding Claude tokens and relaying nodes' Claude API requests to
+    /// `upstream` instead of Anthropic (ADR-0051).
+    pub fn start_relaying(
+        db_path: &std::path::Path,
+        addr: &str,
+        claude_tokens: &str,
+        upstream: &str,
+    ) -> (Self, String) {
+        Self::start_inner(db_path, addr, None, claude_tokens, None, upstream)
     }
 
     /// The same, holding the named Claude tokens of a `--claude-tokens` file's text.
@@ -65,7 +77,7 @@ impl HubProc {
         ntfy: Option<String>,
         claude_tokens: &str,
     ) -> (Self, String) {
-        Self::start_inner(db_path, addr, ntfy, claude_tokens, None)
+        Self::start_inner(db_path, addr, ntfy, claude_tokens, None, saarthi_hub::claude_api::UPSTREAM)
     }
 
     fn start_inner(
@@ -74,8 +86,10 @@ impl HubProc {
         ntfy: Option<String>,
         claude_tokens: &str,
         probes: Option<(String, Duration)>,
+        upstream: &str,
     ) -> (Self, String) {
         let claude_tokens = claude_tokens.to_string();
+        let upstream = upstream.to_string();
         let (stop, stopped) = tokio::sync::oneshot::channel();
         let (bound_tx, bound_rx) = std::sync::mpsc::channel();
         let (db_path, addr) = (db_path.to_path_buf(), addr.to_string());
@@ -101,6 +115,7 @@ impl HubProc {
                     node_tokens: Arc::new(Tokens::parse(TOKENS).unwrap()),
                     client_tokens: Arc::new(Tokens::parse(CLIENT_TOKENS).unwrap()),
                     claude_tokens: Arc::new(claude_tokens),
+                    claude_api: Arc::new(saarthi_hub::claude_api::ClaudeApi::new(&upstream)),
                     live: Live::new(),
                 };
                 if let Some((node, every)) = probes {
@@ -227,4 +242,58 @@ pub async fn post_hook(addr: std::net::SocketAddr, body: String) -> String {
         .nth(1)
         .unwrap_or_default()
         .to_string()
+}
+
+/// A stand-in for Anthropic's API on plain HTTP (ADR-0051): answers every request with the
+/// credential and path it got, and the unified rate-limit headers of an account at 57% of
+/// its five-hour window and 13% of its week.
+pub async fn fake_claude_api() -> String {
+    let app = axum::Router::new().fallback(|req: axum::extract::Request| async move {
+        let auth = req
+            .headers()
+            .get("authorization")
+            .map(|v| v.to_str().unwrap().to_string())
+            .unwrap_or_default();
+        let key = req.headers().contains_key("x-api-key");
+        let path = req.uri().to_string();
+        let body = axum::body::to_bytes(req.into_body(), 1 << 20).await.unwrap();
+        let json = serde_json::json!({
+            "auth": auth, "x_api_key": key, "path": path, "body": String::from_utf8_lossy(&body),
+        });
+        (
+            [
+                ("anthropic-ratelimit-unified-5h-utilization", "0.57"),
+                ("anthropic-ratelimit-unified-5h-reset", "1794670200"),
+                ("anthropic-ratelimit-unified-7d-utilization", "0.13"),
+                ("anthropic-ratelimit-unified-7d-reset", "1795172400"),
+                ("content-type", "application/json"),
+            ],
+            json.to_string(),
+        )
+    });
+    let listener = TcpListener::bind("127.0.0.1:0").await.unwrap();
+    let addr = listener.local_addr().unwrap();
+    tokio::spawn(axum_serve(listener, app));
+    format!("http://{addr}")
+}
+
+/// Sends a Claude API request the way a proxied claude does, as plain HTTP over its unix
+/// socket, and returns the status line and the JSON the fake API answered with.
+pub async fn through_socket(socket: &std::path::Path, path: &str) -> (String, serde_json::Value) {
+    use tokio::io::{AsyncReadExt, AsyncWriteExt};
+    let mut s = tokio::net::UnixStream::connect(socket).await.unwrap();
+    let request = format!(
+        "POST {path} HTTP/1.1\r\nHost: api.anthropic.com\r\nAuthorization: Bearer saarthi-proxied\r\n\
+         x-api-key: nope\r\nContent-Length: 5\r\nConnection: close\r\n\r\nhello"
+    );
+    s.write_all(request.as_bytes()).await.unwrap();
+    let mut out = String::new();
+    s.read_to_string(&mut out).await.unwrap();
+    let status = out.lines().next().unwrap_or_default().to_string();
+    // Streamed back, so chunked: the JSON is the one object in the body.
+    let json = match (out.find('{'), out.rfind('}')) {
+        (Some(a), Some(b)) => serde_json::from_str(&out[a..=b]).unwrap_or_default(),
+        _ => serde_json::Value::Null,
+    };
+    (status, json)
 }

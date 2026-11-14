@@ -1,29 +1,125 @@
-//! The Claude API proxy of a sandboxed session (ADR-0050, [[EXP-20261110-g5mh89]]): the
-//! sandbox holds only a dummy token. Claude Code inside sends its API requests as plain HTTP
-//! over a unix socket (`ANTHROPIC_UNIX_SOCKET`, with `ANTHROPIC_BASE_URL` set to an
-//! `http://` URL); this proxy, in the node, puts the real token in their `Authorization`
-//! header and sends them on over TLS, streaming the answer back. The sandbox can spend the
-//! token through the socket but never read it.
+//! The Claude API proxy of a session that must not hold its token (ADR-0050, ADR-0051,
+//! [[EXP-20261110-g5mh89]], [[EXP-20261114-d82rcz]]): claude holds only a dummy and sends
+//! its API requests as plain HTTP over a unix socket (`ANTHROPIC_UNIX_SOCKET`, with
+//! `ANTHROPIC_BASE_URL` set to an `http://` URL). The proxy sends each one on:
 //!
-//! Only `/v1/` is forwarded: the inference API Claude Code reaches through its base URL.
-//! Its other calls (settings, policy limits, the account) go straight to Anthropic with the
-//! dummy and are refused there; a session runs without them.
+//! - under one of the hub's tokens, to the hub over the node's connection (`ClaudeApi`),
+//!   which adds the token, so its value never reaches the node;
+//! - under a sandboxed profile's own `token_file`, straight to Anthropic over TLS with the
+//!   token added here.
+//!
+//! The answer streams back as it arrives. Only `/v1/` is forwarded: the inference API Claude
+//! Code reaches through its base URL. Its other calls (settings, policy limits, the account)
+//! go straight to Anthropic with the dummy and are refused there; a session runs without
+//! them.
 
 use std::path::{Path, PathBuf};
+use std::sync::Arc;
 
 use axum::body::Body;
 use axum::extract::{Request, State};
 use axum::http::{HeaderMap, HeaderName, StatusCode, header};
 use axum::response::{IntoResponse, Response};
+use saarthi_proto::node::v1::node_service_client::NodeServiceClient;
+use saarthi_proto::node::v1::{ClaudeApiHead, ClaudeApiRequest, HttpHeader};
+use tokio_stream::StreamExt;
+use tonic::transport::Channel;
 
-/// Where the requests go.
+/// Where a node-held token's requests go.
 pub const UPSTREAM: &str = "https://api.anthropic.com";
 
-/// What `CLAUDE_CODE_OAUTH_TOKEN` holds inside: never a credential.
+/// What `CLAUDE_CODE_OAUTH_TOKEN` holds in a proxied session: never a credential.
 pub const DUMMY_TOKEN: &str = "saarthi-proxied";
+
+/// What `ANTHROPIC_BASE_URL` holds: plain HTTP over the socket, the TLS done outside.
+pub const BASE_URL: &str = "http://api.anthropic.com";
 
 /// A request body larger than this is refused rather than held in memory.
 const MAX_BODY: usize = 64 << 20;
+
+/// A request body goes to the hub in pieces of at most this.
+const PIECE: usize = 1 << 20;
+
+/// The environment a proxied claude gets: the dummy token and the socket.
+pub fn env(socket: &Path) -> [(&'static str, String); 3] {
+    [
+        ("CLAUDE_CODE_OAUTH_TOKEN", DUMMY_TOKEN.to_string()),
+        ("ANTHROPIC_UNIX_SOCKET", socket.to_string_lossy().into_owned()),
+        ("ANTHROPIC_BASE_URL", BASE_URL.to_string()),
+    ]
+}
+
+/// Where the proxies of sessions on the host and of terminal sessions listen: a directory
+/// only this user can enter, beside the wrappers' socket directory, and denied to every
+/// sandbox.
+pub fn host_socket_dir() -> PathBuf {
+    let base = std::env::var_os("XDG_RUNTIME_DIR")
+        .map(PathBuf::from)
+        .unwrap_or_else(std::env::temp_dir);
+    // SAFETY: getuid only reads.
+    base.join(format!("saarthi-{}-api", unsafe { libc::getuid() }))
+}
+
+/// Makes [`host_socket_dir`] if missing, for this user only; the node does at start, so a
+/// sandbox can be denied it.
+pub fn make_host_socket_dir() -> std::io::Result<PathBuf> {
+    use std::os::unix::fs::PermissionsExt;
+    let dir = host_socket_dir();
+    std::fs::create_dir_all(&dir)?;
+    std::fs::set_permissions(&dir, std::fs::Permissions::from_mode(0o700))?;
+    Ok(dir)
+}
+
+/// A new socket path in [`host_socket_dir`], which is made if missing.
+pub fn host_socket() -> std::io::Result<PathBuf> {
+    Ok(make_host_socket_dir()?.join(socket_name()))
+}
+
+/// `claude-api-<8 random hex>.sock`: one per session, since sessions may run under
+/// different tokens.
+pub fn socket_name() -> String {
+    let id = uuid::Uuid::new_v4().simple().to_string();
+    format!("claude-api-{}.sock", &id[..8])
+}
+
+/// The hub, for sessions under its tokens: its address and this node's token, with one
+/// connection kept for every session's requests and made again after a failure.
+pub struct HubApi {
+    hub: String,
+    token: String,
+    channel: tokio::sync::Mutex<Option<Channel>>,
+}
+
+impl HubApi {
+    pub fn new(hub: String, token: String) -> Arc<Self> {
+        Arc::new(Self {
+            hub,
+            token,
+            channel: Default::default(),
+        })
+    }
+
+    async fn client(&self) -> Result<NodeServiceClient<Channel>, String> {
+        let mut kept = self.channel.lock().await;
+        if kept.is_none() {
+            *kept = Some(crate::link::dial(&self.hub).await.map_err(|e| format!("{e:#}"))?);
+        }
+        let channel = kept.clone().expect("just made");
+        Ok(NodeServiceClient::new(channel).max_decoding_message_size(16 << 20))
+    }
+
+    async fn forget(&self) {
+        *self.channel.lock().await = None;
+    }
+}
+
+/// Where a proxy sends its requests.
+pub enum Upstream {
+    /// To the hub, under the token it holds by this name (ADR-0051).
+    Hub { api: Arc<HubApi>, name: String },
+    /// To `base` with a token the node holds, a sandboxed profile's `token_file` (ADR-0050).
+    Direct { base: String, token: String },
+}
 
 /// One proxy, serving until dropped; the socket file goes with it.
 pub struct Proxy {
@@ -32,16 +128,22 @@ pub struct Proxy {
 }
 
 #[derive(Clone)]
-struct Upstream {
-    base: String,
-    bearer: String,
-    client: reqwest::Client,
+enum Route {
+    Hub {
+        api: Arc<HubApi>,
+        name: String,
+    },
+    Direct {
+        base: String,
+        bearer: String,
+        client: reqwest::Client,
+    },
 }
 
 impl Proxy {
-    /// Serves on a new socket at `path` (any stale file there is replaced), adding `token`
-    /// to every request and sending it to `upstream`. Needs a tokio runtime.
-    pub fn start(path: &Path, token: &str, upstream: &str) -> std::io::Result<Proxy> {
+    /// Serves on a new socket at `path` (any stale file there is replaced), sending every
+    /// request to `upstream`. Needs a tokio runtime.
+    pub fn start(path: &Path, upstream: Upstream) -> std::io::Result<Proxy> {
         // The usual limit for a unix socket path is 104 bytes, its terminator included.
         if path.as_os_str().len() > 103 {
             return Err(std::io::Error::other(format!(
@@ -49,18 +151,20 @@ impl Proxy {
                 path.display()
             )));
         }
+        let route = match upstream {
+            Upstream::Hub { api, name } => Route::Hub { api, name },
+            Upstream::Direct { base, token } => Route::Direct {
+                base: base.trim_end_matches('/').to_string(),
+                bearer: format!("Bearer {}", token.trim()),
+                client: reqwest::Client::builder()
+                    .connect_timeout(std::time::Duration::from_secs(10))
+                    .build()
+                    .map_err(std::io::Error::other)?,
+            },
+        };
         let _ = std::fs::remove_file(path);
         let listener = tokio::net::UnixListener::bind(path)?;
-        let client = reqwest::Client::builder()
-            .connect_timeout(std::time::Duration::from_secs(10))
-            .build()
-            .map_err(std::io::Error::other)?;
-        let state = Upstream {
-            base: upstream.trim_end_matches('/').to_string(),
-            bearer: format!("Bearer {}", token.trim()),
-            client,
-        };
-        let app = axum::Router::new().fallback(forward).with_state(state);
+        let app = axum::Router::new().fallback(forward).with_state(route);
         let task = tokio::spawn(async move {
             let _ = axum::serve(listener, app).await;
         });
@@ -106,10 +210,10 @@ fn copy(from: &HeaderMap, to: &mut HeaderMap) {
     }
 }
 
-async fn forward(State(up): State<Upstream>, req: Request) -> Response {
+async fn forward(State(route): State<Route>, req: Request) -> Response {
     let path = req.uri().path_and_query().map(|p| p.as_str()).unwrap_or("/").to_string();
     if !path.starts_with("/v1/") {
-        tracing::warn!(path = %path, "refused a sandbox's API request outside /v1/");
+        tracing::warn!(path = %path, "refused a session's API request outside /v1/");
         return (StatusCode::FORBIDDEN, "saarthi forwards only the Claude API's /v1/ to Anthropic").into_response();
     }
     let method = req.method().clone();
@@ -120,26 +224,119 @@ async fn forward(State(up): State<Upstream>, req: Request) -> Response {
     };
     let mut headers = HeaderMap::new();
     copy(&parts.headers, &mut headers);
-    headers.insert(header::AUTHORIZATION, up.bearer.parse().expect("checked when the token was read"));
-    let sent = up
-        .client
-        .request(method.clone(), format!("{}{path}", up.base))
-        .headers(headers)
-        .body(body)
-        .send()
-        .await;
-    let resp = match sent {
-        Ok(r) => r,
-        Err(e) => {
-            tracing::warn!(path = %path, error = %e, "the Claude API could not be reached");
-            return (StatusCode::BAD_GATEWAY, format!("saarthi could not reach the Claude API: {e}")).into_response();
+    match route {
+        Route::Hub { api, name } => via_hub(&api, &name, method, path, headers, body).await,
+        Route::Direct { base, bearer, client } => {
+            headers.insert(header::AUTHORIZATION, bearer.parse().expect("checked when the token was read"));
+            let sent = client.request(method.clone(), format!("{base}{path}")).headers(headers).body(body).send().await;
+            let resp = match sent {
+                Ok(r) => r,
+                Err(e) => {
+                    tracing::warn!(path = %path, error = %e, "the Claude API could not be reached");
+                    return (StatusCode::BAD_GATEWAY, format!("saarthi could not reach the Claude API: {e}"))
+                        .into_response();
+                }
+            };
+            tracing::debug!(%method, path = %path, status = %resp.status(), "proxied a Claude API request");
+            let mut out = Response::builder().status(resp.status());
+            copy(resp.headers(), out.headers_mut().expect("a fresh builder"));
+            // Streamed as it arrives: a turn's answer is server-sent events.
+            out.body(Body::from_stream(resp.bytes_stream()))
+                .unwrap_or_else(|e| (StatusCode::BAD_GATEWAY, e.to_string()).into_response())
+        }
+    }
+}
+
+/// One request through the hub's `ClaudeApi`: the head and the body in pieces, then the
+/// answer's head and its body as it streams back. A hub that cannot be reached is a 502,
+/// which claude retries; one that refuses the token or the request a 403.
+async fn via_hub(
+    api: &HubApi,
+    name: &str,
+    method: axum::http::Method,
+    path: String,
+    headers: HeaderMap,
+    body: axum::body::Bytes,
+) -> Response {
+    let mut head = Some(ClaudeApiHead {
+        claude_token: name.to_string(),
+        method: method.to_string(),
+        path: path.clone(),
+        headers: headers
+            .iter()
+            .map(|(n, v)| HttpHeader {
+                name: n.as_str().to_string(),
+                value: v.as_bytes().to_vec(),
+            })
+            .collect(),
+    });
+    let mut pieces: Vec<ClaudeApiRequest> = body
+        .chunks(PIECE)
+        .map(|c| ClaudeApiRequest {
+            head: head.take(),
+            body: c.to_vec(),
+        })
+        .collect();
+    if let Some(head) = head {
+        pieces.push(ClaudeApiRequest {
+            head: Some(head),
+            body: Vec::new(),
+        });
+    }
+    let bad_gateway = |why: String| {
+        tracing::warn!(path = %path, error = %why, "the hub did not relay a Claude API request");
+        (StatusCode::BAD_GATEWAY, format!("saarthi: the hub did not relay the request: {why}")).into_response()
+    };
+    let mut client = match api.client().await {
+        Ok(c) => c,
+        Err(e) => return bad_gateway(e),
+    };
+    let mut request = tonic::Request::new(tokio_stream::iter(pieces));
+    match format!("Bearer {}", api.token).parse() {
+        Ok(v) => request.metadata_mut().insert("authorization", v),
+        Err(_) => return bad_gateway("the node token is not valid in a header".into()),
+    };
+    let mut stream = match client.claude_api(request).await {
+        Ok(r) => r.into_inner(),
+        Err(status) => {
+            use tonic::Code;
+            if matches!(
+                status.code(),
+                Code::NotFound | Code::PermissionDenied | Code::Unauthenticated | Code::InvalidArgument
+            ) {
+                tracing::warn!(path = %path, error = %status.message(), "the hub refused a Claude API request");
+                return (StatusCode::FORBIDDEN, format!("saarthi: {}", status.message())).into_response();
+            }
+            api.forget().await;
+            return bad_gateway(status.message().to_string());
         }
     };
-    tracing::debug!(%method, path = %path, status = %resp.status(), "proxied a Claude API request");
-    let mut out = Response::builder().status(resp.status());
-    copy(resp.headers(), out.headers_mut().expect("a fresh builder"));
-    // Streamed as it arrives: a turn's answer is server-sent events.
-    out.body(Body::from_stream(resp.bytes_stream()))
+    let first = match stream.message().await {
+        Ok(Some(m)) => m,
+        Ok(None) => return bad_gateway("the hub sent no answer".into()),
+        Err(status) => {
+            api.forget().await;
+            return bad_gateway(status.message().to_string());
+        }
+    };
+    let Some(status) = first.head else {
+        return bad_gateway("the hub's answer had no head".into());
+    };
+    tracing::debug!(%method, path = %path, status = status.status, "relayed a Claude API request through the hub");
+    let mut out = Response::builder().status(status.status as u16);
+    let hs = out.headers_mut().expect("a fresh builder");
+    for h in status.headers {
+        if let (Ok(n), Ok(v)) = (
+            HeaderName::from_bytes(h.name.as_bytes()),
+            axum::http::HeaderValue::from_bytes(&h.value),
+        ) && passes(&n)
+        {
+            hs.append(n, v);
+        }
+    }
+    // A hub that goes away mid-answer breaks the stream, and claude retries the request.
+    let body = stream.map(|m| m.map(|m| axum::body::Bytes::from(m.body)));
+    out.body(Body::from_stream(body))
         .unwrap_or_else(|e| (StatusCode::BAD_GATEWAY, e.to_string()).into_response())
 }
 
@@ -167,6 +364,13 @@ mod tests {
         format!("http://{addr}")
     }
 
+    fn direct(token: &str, base: &str) -> Upstream {
+        Upstream::Direct {
+            base: base.to_string(),
+            token: token.to_string(),
+        }
+    }
+
     async fn ask(socket: &Path, request: &str) -> String {
         let mut s = tokio::net::UnixStream::connect(socket).await.unwrap();
         s.write_all(request.as_bytes()).await.unwrap();
@@ -179,7 +383,7 @@ mod tests {
     async fn the_real_token_replaces_the_dummy_on_the_way_out() {
         let dir = tempfile::tempdir().unwrap();
         let socket = dir.path().join("api.sock");
-        let proxy = Proxy::start(&socket, "real-token\n", &fake_api().await).unwrap();
+        let proxy = Proxy::start(&socket, direct("real-token\n", &fake_api().await)).unwrap();
         let answer = ask(
             &socket,
             "POST /v1/messages?beta=true HTTP/1.1\r\nHost: api.anthropic.com\r\n\
@@ -204,7 +408,7 @@ mod tests {
     async fn nothing_outside_v1_is_forwarded() {
         let dir = tempfile::tempdir().unwrap();
         let socket = dir.path().join("api.sock");
-        let _proxy = Proxy::start(&socket, "real-token", &fake_api().await).unwrap();
+        let _proxy = Proxy::start(&socket, direct("real-token", &fake_api().await)).unwrap();
         let answer = ask(&socket, "GET /api/oauth/profile HTTP/1.1\r\nHost: x\r\nConnection: close\r\n\r\n").await;
         assert!(answer.starts_with("HTTP/1.1 403"), "{answer}");
         assert!(!answer.contains("real-token"));
@@ -213,7 +417,7 @@ mod tests {
     #[test]
     fn a_socket_path_too_long_for_unix_is_refused_up_front() {
         let long = PathBuf::from(format!("/tmp/{}/api.sock", "x".repeat(100)));
-        let err = Proxy::start(&long, "t", UPSTREAM).err().unwrap();
+        let err = Proxy::start(&long, direct("t", UPSTREAM)).err().unwrap();
         assert!(err.to_string().contains("too long"), "{err}");
     }
 }

@@ -64,7 +64,7 @@ done ones. The project page's *Progress* lists this phase on one line.
       with no Tailscale app (ADR-0049, [[EXP-20261113-1h4ztf]])
     - [x] 2.5.2 Checked on the owner's phone, including a switch between Wi-Fi and mobile
       data (the owner, 2026-11-13)
-  - [ ] 2.6 The hub holds every hub token and adds it (the owner's choice of 2026-11-14,
+  - [x] 2.6 The hub holds every hub token and adds it (the owner's choice of 2026-11-14,
     [[AGS-20261114-d827jm]]): every session under a hub token, host, sandboxed or at a
     terminal, holds a dummy and reaches the API through the node's socket and the hub; the
     node's own login stays direct; a hub restart may cut running turns, zero-downtime
@@ -72,8 +72,9 @@ done ones. The project page's *Progress* lists this phase on one line.
     choices of 2026-11-14: spawned and terminal sessions start in auto mode by default
     (the dummy loses the account's default), the hub records usage from the rate-limit
     headers it relays, compressing node-to-hub traffic is a later goal (ghost001 has
-    10 TB a month). An ADR superseding the delivery of ADR-0039 and ADR-0050's token
-    holder comes next
+    10 TB a month). Built as ADR-0051 ([[AGS-20261114-kp7xq8]]): `ClaudeApi` on the node
+    service, the node's proxy relaying for host, sandboxed, terminal and probe sessions,
+    usage from the relayed headers; checked live against a scratch hub
 
 ## Notes
 Migrated from PRJ-0001's Progress by `yajna phase migrate`.

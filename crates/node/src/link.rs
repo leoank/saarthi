@@ -51,6 +51,10 @@ pub struct Parts {
 
 /// Runs until the outbox closes, which happens only when the node shuts down.
 pub async fn run(cfg: Config, mut rx: mpsc::Receiver<NodeMessage>, parts: Parts) {
+    // Sessions under the hub's tokens reach the Claude API through it (ADR-0051).
+    parts
+        .spawner
+        .set_hub_api(crate::claude_api::HubApi::new(cfg.hub.clone(), cfg.token.clone()));
     let mut buffer = Buffer {
         events: VecDeque::new(),
         cap: cfg.buffer_cap,
@@ -132,7 +136,7 @@ pub fn tailnet_up(tailnet: Arc<saarthi_tailnet::Tailnet>) {
 /// The transport boundary (ADR-0004): plain TCP over the host's network, or the node's own
 /// tailnet identity (ADR-0048), where the hub's name may not resolve for a moment after a
 /// start ([[EXP-20261112-rq8kgc]]) and the caller's retry covers it.
-async fn dial(hub: &str) -> Result<Channel> {
+pub(crate) async fn dial(hub: &str) -> Result<Channel> {
     // A machine that sleeps leaves a dead link behind; HTTP/2 pings notice within half a
     // minute so the stream ends and the outbox's buffer is resent on the next connection,
     // and a connect attempt gives up in seconds (phase 1.5 item 15).

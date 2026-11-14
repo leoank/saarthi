@@ -1,6 +1,7 @@
 //! The saarthi hub: records every node's sessions, events and health, and passes a person's
 //! decisions and prompts from a client to the node that holds the session.
 
+pub mod claude_api;
 pub mod claude_tokens;
 pub mod control_service;
 pub mod db;
@@ -134,13 +135,11 @@ async fn probe_due(
             continue;
         }
         next.insert(t.name.clone(), now + spread(every));
-        let Some(token) = hub.claude_tokens.get(&t.name) else {
-            continue;
-        };
+        // The name only: the node relays the probe's request through the hub (ADR-0051).
         let action = command::Action::Probe(Probe {
             claude_token: Some(ClaudeToken {
                 name: t.name.clone(),
-                token: token.to_string(),
+                token: String::new(),
             }),
         });
         let result = match hub

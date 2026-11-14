@@ -84,8 +84,14 @@ personal  sk-ant-oat01-...
 ```
 
 and give it to the hub with `--claude-tokens`. The names are what the app and `ctl` show;
-the tokens never leave the hub except to a node starting a session, which keeps it in
-memory. Adding, replacing or removing one is an edit to the file and a restart. Then:
+the tokens never leave the hub (ADR-0051). A session under one holds a dummy, and its node
+sends its Claude API requests to the hub over the node's own connection; the hub adds the
+token and passes them on to Anthropic. So cutting a machine off is deleting its line in the
+node tokens file and restarting the hub: no Claude token needs renewing. The flip side is
+that every turn under a hub token goes through the hub: a restart costs a retried request,
+and an outage of more than about two minutes ends the turns running then (they can be
+resumed). Sessions under the node's own login are not affected. Adding, replacing or
+removing a token is an edit to the file and a restart. Then:
 
 - each node gets a **default account**, set from its health screen in the app or with
   `saarthi ctl default-token <node> <name>`; sessions started on it run under that token

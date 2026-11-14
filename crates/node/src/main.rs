@@ -301,11 +301,15 @@ async fn serve(args: Serve) -> Result<()> {
         .hook_socket
         .clone()
         .unwrap_or_else(|| home.join(".local/state/saarthi/hook.sock"));
+    if let Err(e) = saarthi_node::claude_api::make_host_socket_dir() {
+        tracing::warn!(error = %e, "the Claude API sockets' directory could not be made");
+    }
     let contained = Contained {
         hooks: Some(hooks::socket_settings(&hook_socket, HOOK_TIMEOUT_SECS)),
         user_claude: claude_dir.clone(),
-        // The wrappers' socket would let a sandbox pose as `saarthi run`.
-        deny: vec![wrapper_socket.clone()],
+        // The wrappers' socket would let a sandbox pose as `saarthi run`, and the proxies of
+        // host and terminal sessions spend the hub's tokens (ADR-0051).
+        deny: vec![wrapper_socket.clone(), saarthi_node::claude_api::host_socket_dir()],
         profiles,
     };
     // The hooks block `saarthi node hooks` prints by default, so it matches the user's own
