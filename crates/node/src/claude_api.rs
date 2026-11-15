@@ -53,11 +53,8 @@ pub fn env(socket: &Path) -> [(&'static str, String); 3] {
 /// only this user can enter, beside the wrappers' socket directory, and denied to every
 /// sandbox.
 pub fn host_socket_dir() -> PathBuf {
-    let base = std::env::var_os("XDG_RUNTIME_DIR")
-        .map(PathBuf::from)
-        .unwrap_or_else(std::env::temp_dir);
     // SAFETY: getuid only reads.
-    base.join(format!("saarthi-{}-api", unsafe { libc::getuid() }))
+    crate::wrapper::user_dir().join(format!("saarthi-{}-api", unsafe { libc::getuid() }))
 }
 
 /// Makes [`host_socket_dir`] if missing, for this user only; the node does at start, so a

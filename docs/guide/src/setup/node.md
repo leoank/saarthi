@@ -63,7 +63,9 @@ if the tailnet ever logs the machine out, the node waits for a login until you g
 key again.
 The log says `on the tailnet` once it has joined; until then, and for a moment after a
 restart, the link reports `not on the tailnet yet` or a name it cannot resolve, and
-retries.
+retries. A join that fails (the key file not there yet, the control server out of reach)
+is logged and tried again every 30 seconds, so a key that arrives after the node starts is
+picked up without a restart.
 
 ## 3. The hooks
 
@@ -203,7 +205,9 @@ $ saarthi run -- --model opus
 ```
 
 A shell alias makes it the default: `alias claude='saarthi run --'`. The wrapper talks to
-the daemon over a unix socket under `$XDG_RUNTIME_DIR` (or the temporary directory); if
+the daemon over a unix socket under `$XDG_RUNTIME_DIR` on Linux, or the per-user temporary
+directory on macOS, which it asks the system for rather than reading `$TMPDIR` (a Nix
+shell changes that), so it finds the daemon from any shell; if
 the daemon is not running, the session still works and the wrapper says it cannot be
 reached remotely. It tries again every two seconds, so a session started before the
 daemon, or running while the daemon restarts, becomes reachable as soon as it is back.

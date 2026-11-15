@@ -69,14 +69,42 @@ pub struct TokenReply {
     pub error: Option<String>,
 }
 
-/// Where the daemon listens for wrappers unless told otherwise: a directory only this user
-/// can enter, `$XDG_RUNTIME_DIR` on Linux and the per-user temporary directory on macOS.
+/// Where the daemon listens for wrappers unless told otherwise: under [`user_dir`].
 pub fn default_socket() -> PathBuf {
-    let base = std::env::var_os("XDG_RUNTIME_DIR")
-        .map(PathBuf::from)
-        .unwrap_or_else(std::env::temp_dir);
-    base.join(format!("saarthi-{}", unsafe { libc::getuid() }))
+    user_dir()
+        .join(format!("saarthi-{}", unsafe { libc::getuid() }))
         .join("node.sock")
+}
+
+/// A directory only this user can enter, where the daemon and the wrappers find each
+/// other's sockets: `$XDG_RUNTIME_DIR` on Linux, the per-user temporary directory on macOS.
+/// On macOS it is asked of the system rather than read from `$TMPDIR`, which a Nix shell
+/// points elsewhere, so a `saarthi run` started in one still finds the daemon.
+pub fn user_dir() -> PathBuf {
+    if let Some(dir) = std::env::var_os("XDG_RUNTIME_DIR") {
+        return PathBuf::from(dir);
+    }
+    #[cfg(target_os = "macos")]
+    if let Some(dir) = darwin_user_temp_dir() {
+        return dir;
+    }
+    std::env::temp_dir()
+}
+
+/// `confstr(_CS_DARWIN_USER_TEMP_DIR)`: the per-user `/var/folders/…/T/` launchd also gives
+/// as `$TMPDIR`.
+#[cfg(target_os = "macos")]
+fn darwin_user_temp_dir() -> Option<PathBuf> {
+    use std::os::unix::ffi::OsStringExt;
+    let mut buf = vec![0u8; libc::PATH_MAX as usize];
+    // SAFETY: confstr writes at most `len` bytes, NUL included, and returns the length it
+    // needed with the NUL, or 0 on failure.
+    let n = unsafe { libc::confstr(libc::_CS_DARWIN_USER_TEMP_DIR, buf.as_mut_ptr().cast(), buf.len()) };
+    if n == 0 || n > buf.len() {
+        return None;
+    }
+    buf.truncate(n - 1);
+    Some(PathBuf::from(std::ffi::OsString::from_vec(buf)))
 }
 
 pub struct Wrappers {
@@ -299,6 +327,19 @@ mod tests {
     use super::*;
     use crate::registry::Record;
     use std::time::Duration;
+
+    /// The test runs under `nix develop`, whose `$TMPDIR` is a `/tmp/nix-shell.*`
+    /// directory: the sockets must not follow it.
+    #[cfg(target_os = "macos")]
+    #[test]
+    fn the_socket_directory_on_macos_does_not_follow_tmpdir() {
+        let dir = darwin_user_temp_dir().expect("the per-user temporary directory");
+        assert!(dir.is_dir(), "{}", dir.display());
+        assert!(dir.starts_with("/var/folders") || dir.starts_with("/private/var/folders"), "{}", dir.display());
+        if std::env::var_os("XDG_RUNTIME_DIR").is_none() {
+            assert_eq!(user_dir(), dir);
+        }
+    }
 
     #[test]
     fn wire_messages_are_tagged_json_lines() {

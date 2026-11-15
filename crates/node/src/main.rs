@@ -26,6 +26,9 @@ mod usage;
 /// Seconds Claude Code waits for a hook of the node's before giving up on it.
 const HOOK_TIMEOUT_SECS: u32 = 600;
 
+/// How often joining the hub's tailnet is tried again after it failed.
+const TAILNET_RETRY: Duration = Duration::from_secs(30);
+
 #[derive(Parser)]
 #[command(
     name = "saarthi",
@@ -357,12 +360,25 @@ async fn serve(args: Serve) -> Result<()> {
                     ephemeral: false,
                 };
                 // Until it has joined the link retries; a tailnet that cannot be joined
-                // costs the link, not the node (ADR-0044).
+                // costs the link, not the node (ADR-0044). Joining is tried again until it
+                // works: the auth key may arrive after the node starts (on macOS nothing
+                // orders the node's launchd agent after agenix's).
                 tokio::spawn(async move {
-                    match saarthi_tailnet::Tailnet::start(opts).await {
-                        Ok(t) => link::tailnet_up(t),
-                        Err(e) => {
-                            tracing::error!(error = %format!("{e:#}"), "the hub's tailnet left out")
+                    let mut last = None::<String>;
+                    loop {
+                        match saarthi_tailnet::Tailnet::start(opts.clone()).await {
+                            Ok(t) => {
+                                link::tailnet_up(t);
+                                break;
+                            }
+                            Err(e) => {
+                                let e = format!("{e:#}");
+                                if last.as_ref() != Some(&e) {
+                                    tracing::error!(error = %e, "the hub's tailnet could not be joined; trying again every 30 s");
+                                    last = Some(e);
+                                }
+                                tokio::time::sleep(TAILNET_RETRY).await;
+                            }
                         }
                     }
                 });
