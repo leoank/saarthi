@@ -4,7 +4,7 @@ type: experiment
 schema_version: 1
 title: Does a streamed HTTP request from the app reach a unix-socket service on a node through the hub and back, server-sent events and range reads included, inside an Android WebView
 project: PRJ-0001
-status: planned           # planned | active | paused | concluded | abandoned
+status: active            # planned | active | paused | concluded | abandoned
 outcome: null             # null | positive | negative | inconclusive | infra
 influenced_by: []
 created: 2026-11-14
@@ -53,6 +53,8 @@ the phone instead and the WebView loads from there.
 ## Runs
 One line per run after its link, what was tried and what it showed; `yajna validate`
 rejects a bare link here. Metric runs also land in results.tsv.
+- [[RUN-20261114-rn027z]] the spike relay on one machine in front of a real `yajna serve`: pages, a 1 MB range and 256 MB pass byte for byte (1.3 GB/s), events arrive with 0.2 ms added, also during a 1 GB download; H1 holds locally
+- [[RUN-20261114-rwcse4]] the WebView on the emulator: loaded from a loopback port, events arrive one by one in about 230 ms; through `shouldInterceptRequest` none of ten arrive, the body is handed over in large blocks; H2 false, the core serves a loopback port; the files viewer needs DOM storage
 
 ## Conclusion
 Written once, by a human, when status becomes `concluded`.

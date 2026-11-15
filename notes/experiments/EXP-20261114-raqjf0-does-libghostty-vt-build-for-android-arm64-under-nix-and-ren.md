@@ -4,7 +4,7 @@ type: experiment
 schema_version: 1
 title: Does libghostty-vt build for Android arm64 under Nix and render a node's shell on the phone at a usable speed
 project: PRJ-0001
-status: planned           # planned | active | paused | concluded | abandoned
+status: active            # planned | active | paused | concluded | abandoned
 outcome: null             # null | positive | negative | inconclusive | infra
 influenced_by: []
 created: 2026-11-14
@@ -46,6 +46,7 @@ uses) behind the same byte stream; the node side does not change.
 ## Runs
 One line per run after its link, what was tried and what it showed; `yajna validate`
 rejects a bare link here. Metric runs also land in results.tsv.
+- [[RUN-20261114-s2jk7j]] the build: Ghostty v1.4.0's libghostty-vt builds for aarch64-linux-android (API 26) under Nix with Zig 0.17.1 and the NDK, unpatched; 2.1 MB stripped, 16 KB pages, needs only libc and libm; a smoke test passes on the host and links for Android
 
 ## Conclusion
 Written once, by a human, when status becomes `concluded`.

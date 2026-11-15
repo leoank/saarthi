@@ -1,0 +1,34 @@
+// EXP-20261114-raqjjy: the shape ADR-0052 proposes, cut down to what the relay needs.
+syntax = "proto3";
+package relay;
+
+service Node {
+  // The node's long-lived link: it names itself; the hub asks it to open services.
+  rpc Link(stream NodeMsg) returns (stream HubMsg);
+  // Dialled back by the node per request: first piece carries the id; then the hub sends
+  // the client's request pieces and the node sends the answer's.
+  rpc ServiceStream(stream Piece) returns (stream Piece);
+}
+
+service Control {
+  // A client's request: head first (node, service, method, path, headers), then body
+  // pieces; back come the answer's head (status, headers) and its body as it arrives.
+  rpc ServiceRequest(stream Piece) returns (stream Piece);
+}
+
+message NodeMsg { string name = 1; }
+message HubMsg { string id = 1; string service = 2; }
+message Header { string name = 1; bytes value = 2; }
+message Head {
+  string node = 1;
+  string service = 2;
+  string method = 3;
+  string path = 4;
+  repeated Header headers = 5;
+  uint32 status = 6;
+}
+message Piece {
+  string id = 1;
+  Head head = 2;
+  bytes body = 3;
+}

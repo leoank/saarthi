@@ -1,0 +1,5 @@
+--------- beginning of main
+11-14 22:54:15.361  3426  3426 I SPIKE   : mode intercept path /__sse.html
+11-14 22:54:15.926  3426  3461 I SPIKE   : intercepted /__sse.html 200 text/html
+11-14 22:54:15.953  3426  3462 I SPIKE   : intercepted /api/events 200 text/event-stream
+11-14 22:54:16.455  3426  3463 I SPIKE   : intercepted /favicon.ico 404 text/plain

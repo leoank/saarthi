@@ -1,0 +1,12 @@
+--------- beginning of main
+11-14 22:54:37.967  3562  3562 I SPIKE   : mode intercept path /files/
+11-14 22:54:38.132  3562  3596 I SPIKE   : intercepted /files/ 200 text/html
+11-14 22:54:38.164  3562  3598 I SPIKE   : intercepted /files/app.js 200 text/javascript
+11-14 22:54:38.182  3562  3597 I SPIKE   : intercepted /files/app.css 200 text/css
+11-14 22:54:38.299  3562  3597 I SPIKE   : intercepted /files/chunks/chunk-Y6SLVHK3.js 200 text/javascript
+11-14 22:54:38.302  3562  3596 I SPIKE   : intercepted /files/chunks/chunk-LXR5EDXL.js 200 text/javascript
+11-14 22:54:38.416  3562  3596 I SPIKE   : intercepted /api/info 200 application/json
+11-14 22:54:38.423  3562  3597 I SPIKE   : intercepted /api/files/roots 200 application/json
+11-14 22:54:38.470  3562  3596 I SPIKE   : intercepted /api/reviews 200 application/json
+11-14 22:54:43.445  3562  3596 I SPIKE   : intercepted /api/reviews 200 application/json
+11-14 22:54:48.507  3562  3596 I SPIKE   : intercepted /api/reviews 200 application/json

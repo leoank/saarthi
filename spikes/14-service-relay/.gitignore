@@ -1,0 +1,6 @@
+target/
+webview/.gradle/
+webview/.kotlin/
+webview/build/
+webview/app/build/
+webview/local.properties
