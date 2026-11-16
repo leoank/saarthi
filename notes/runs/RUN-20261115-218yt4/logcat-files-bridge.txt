@@ -1,0 +1,27 @@
+--------- beginning of main
+11-15 01:54:10.130  3355  3355 I SPIKE   : mode bridge path /files/#data/log.txt
+11-15 01:54:10.198  3355  3394 I SPIKE   : intercepted /files/ 200 text/html
+11-15 01:54:10.298  3355  3397 I SPIKE   : intercepted /files/app.css 200 text/css
+11-15 01:54:10.322  3355  3394 I SPIKE   : intercepted /files/app.js 200 text/javascript
+11-15 01:54:10.454  3355  3394 I SPIKE   : intercepted /files/chunks/chunk-LXR5EDXL.js 200 text/javascript
+11-15 01:54:10.468  3355  3395 I SPIKE   : intercepted /files/chunks/chunk-Y6SLVHK3.js 200 text/javascript
+11-15 01:54:10.581  3355  3397 I SPIKE   : intercepted /api/files/roots 200 application/json
+11-15 01:54:10.585  3355  3355 I SPIKE   : bridge port given
+11-15 01:54:10.593  3355  3394 I SPIKE   : intercepted /api/info 200 application/json
+11-15 01:54:10.659  3355  3394 I SPIKE   : intercepted /api/reviews 200 application/json
+11-15 01:54:10.663  3355  3395 I SPIKE   : intercepted /api/files/stat 200 application/json
+11-15 01:54:10.664  3355  3394 I SPIKE   : intercepted /api/files/list 200 application/json
+11-15 01:54:10.700  3355  3394 I SPIKE   : intercepted /api/files/raw 200 text/plain
+11-15 01:54:11.000  3355  3437 I SPIKE   : bridge stream 1 open /api/events
+11-15 01:54:15.652  3355  3394 I SPIKE   : intercepted /api/reviews 200 application/json
+11-15 01:54:19.950  3355  3394 I SPIKE   : intercepted /api/files/raw 206 text/plain
+11-15 01:54:19.958  3355  3394 I SPIKE   : intercepted /api/files/stat 200 application/json
+11-15 01:54:19.962  3355  3394 I SPIKE   : intercepted /api/files/raw 200 text/plain
+11-15 01:54:20.648  3355  3394 I SPIKE   : intercepted /api/reviews 200 application/json
+11-15 01:54:20.961  3355  3394 I SPIKE   : intercepted /api/files/raw 206 text/plain
+11-15 01:54:20.968  3355  3394 I SPIKE   : intercepted /api/files/stat 200 application/json
+11-15 01:54:20.974  3355  3394 I SPIKE   : intercepted /api/files/raw 200 text/plain
+11-15 01:54:21.967  3355  3394 I SPIKE   : intercepted /api/files/raw 206 text/plain
+11-15 01:54:21.972  3355  3394 I SPIKE   : intercepted /api/files/stat 200 application/json
+11-15 01:54:21.976  3355  3394 I SPIKE   : intercepted /api/files/raw 200 text/plain
+11-15 01:54:25.656  3355  3394 I SPIKE   : intercepted /api/reviews 200 application/json

@@ -1,0 +1,2 @@
+ssh exec round trip ms p50=964 min=955
+round-trip min/avg/max/stddev = 85.267/86.147/88.402/1.002 ms

@@ -6,6 +6,9 @@
 //!     service-relay hub <listen addr>
 //!     service-relay node <hub url> <node name> <service>=<unix:/path | tcp:host:port>...
 //!     service-relay proxy <hub url> <port> <node> <service>
+//!     service-relay delay <listen addr> <target addr> <one-way ms>
+//!
+//! `SPIKE_ADAPTIVE=1` turns on HTTP/2's adaptive flow-control window in hub, node and proxy.
 //!
 //! `proxy` is the client: a loopback HTTP server whose every request goes through the hub,
 //! so curl and a browser (or a WebView) can be pointed at it.
@@ -54,6 +57,12 @@ fn headers(h: &hyper::HeaderMap) -> Vec<Header> {
         .filter(|(n, _)| passes(n.as_str()))
         .map(|(n, v)| Header { name: n.as_str().to_string(), value: v.as_bytes().to_vec() })
         .collect()
+}
+
+/// `SPIKE_ADAPTIVE=1`: HTTP/2's flow-control windows grow with the measured bandwidth-delay
+/// product instead of staying at h2's 64 KB per stream.
+fn adaptive() -> bool {
+    std::env::var("SPIKE_ADAPTIVE").is_ok_and(|v| v == "1")
 }
 
 // ---- hub
@@ -163,6 +172,7 @@ impl control_server::Control for Hub {
 async fn hub(addr: &str) -> anyhow::Result<()> {
     let hub = Hub::default();
     Server::builder()
+        .http2_adaptive_window(Some(adaptive()))
         .add_service(node_server::NodeServer::new(hub.clone()))
         .add_service(control_server::ControlServer::new(hub))
         .serve(addr.parse()?)
@@ -173,7 +183,7 @@ async fn hub(addr: &str) -> anyhow::Result<()> {
 // ---- node
 
 async fn node(url: String, name: String, services: HashMap<String, String>) -> anyhow::Result<()> {
-    let ch = Channel::from_shared(url)?.connect().await?;
+    let ch = Channel::from_shared(url)?.http2_adaptive_window(adaptive()).connect().await?;
     let (tx, rx) = mpsc::channel(1);
     tx.send(NodeMsg { name }).await?;
     let mut link = node_client::NodeClient::new(ch.clone())
@@ -255,10 +265,57 @@ async fn connect(addr: &str) -> anyhow::Result<hyper::client::conn::http1::SendR
     }
 }
 
+// ---- a link with latency
+
+/// Forwards TCP from `listen` to `target`, holding every chunk `one_way_ms` in each direction
+/// (no bandwidth limit): a long link on one machine.
+async fn delay(listen: &str, target: String, one_way_ms: u64) -> anyhow::Result<()> {
+    let listener = tokio::net::TcpListener::bind(listen).await?;
+    let d = std::time::Duration::from_millis(one_way_ms);
+    loop {
+        let (a, _) = listener.accept().await?;
+        let target = target.clone();
+        tokio::spawn(async move {
+            let Ok(b) = tokio::net::TcpStream::connect(&target).await else { return };
+            let _ = a.set_nodelay(true);
+            let _ = b.set_nodelay(true);
+            let (ar, aw) = a.into_split();
+            let (br, bw) = b.into_split();
+            tokio::spawn(one_way(ar, bw, d));
+            one_way(br, aw, d).await;
+        });
+    }
+}
+
+async fn one_way(mut r: tokio::net::tcp::OwnedReadHalf, mut w: tokio::net::tcp::OwnedWriteHalf, d: std::time::Duration) {
+    use tokio::io::{AsyncReadExt, AsyncWriteExt};
+    let (tx, mut rx) = mpsc::unbounded_channel::<(tokio::time::Instant, Vec<u8>)>();
+    tokio::spawn(async move {
+        while let Some((at, buf)) = rx.recv().await {
+            tokio::time::sleep_until(at).await;
+            if w.write_all(&buf).await.is_err() {
+                return;
+            }
+        }
+        let _ = w.shutdown().await;
+    });
+    let mut buf = vec![0u8; 64 * 1024];
+    loop {
+        match r.read(&mut buf).await {
+            Ok(0) | Err(_) => return,
+            Ok(n) => {
+                if tx.send((tokio::time::Instant::now() + d, buf[..n].to_vec())).is_err() {
+                    return;
+                }
+            }
+        }
+    }
+}
+
 // ---- client
 
 async fn proxy(url: String, port: u16, node: String, service: String) -> anyhow::Result<()> {
-    let ch = Channel::from_shared(url)?.connect().await?;
+    let ch = Channel::from_shared(url)?.http2_adaptive_window(adaptive()).connect().await?;
     let listener = tokio::net::TcpListener::bind(("127.0.0.1", port)).await?;
     eprintln!("proxy: listening on 127.0.0.1:{}", listener.local_addr()?.port());
     loop {
@@ -354,6 +411,7 @@ async fn main() -> anyhow::Result<()> {
             node(a[1].clone(), a[2].clone(), services).await
         }
         Some("proxy") => proxy(a[1].clone(), a[2].parse()?, a[3].clone(), a[4].clone()).await,
+        Some("delay") => delay(&a[1], a[2].clone(), a[3].parse()?).await,
         _ => anyhow::bail!("usage: hub <addr> | node <url> <name> <svc>=<addr>... | proxy <url> <port> <node> <svc>"),
     }
 }

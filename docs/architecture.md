@@ -612,7 +612,8 @@ HTTP services, each on a unix socket, starting one on demand, and the hub relays
 client's requests to them over the node's link, the node dialling back a stream per
 request (ADR-0052); yajna's per-user `yajna serve` is the first. The app shows notebooks
 in a web view over that relay, with native screens for new projects, reviews and bench
-work (ADR-0053). A node started with `--terminal` opens a login shell under a PTY for a
+work (ADR-0053); the web view's event streams go over a bridge the app supplies, an
+`EventSource` carried over a message port (ADR-0056). A node started with `--terminal` opens a login shell under a PTY for a
 client's terminal stream (ADR-0054). Push to talk and spoken replies work in every
 session (ADR-0055).
 

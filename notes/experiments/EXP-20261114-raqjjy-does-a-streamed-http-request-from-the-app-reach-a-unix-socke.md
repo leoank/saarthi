@@ -55,6 +55,9 @@ One line per run after its link, what was tried and what it showed; `yajna valid
 rejects a bare link here. Metric runs also land in results.tsv.
 - [[RUN-20261114-rn027z]] the spike relay on one machine in front of a real `yajna serve`: pages, a 1 MB range and 256 MB pass byte for byte (1.3 GB/s), events arrive with 0.2 ms added, also during a 1 GB download; H1 holds locally
 - [[RUN-20261114-rwcse4]] the WebView on the emulator: loaded from a loopback port, events arrive one by one in about 230 ms; through `shouldInterceptRequest` none of ten arrive, the body is handed over in large blocks; H2 false, the core serves a loopback port; the files viewer needs DOM storage
+- [[RUN-20261115-218yt4]] the bridge the owner chose: a script the app puts at the top of each page replaces EventSource and the app carries the stream over a WebMessagePort; events arrive in about 240 ms, and yajna's files viewer, unchanged, follows an open file live, its range reads through the intercept
+- [[RUN-20261115-2t8qqy]] the hub on ghost001 (86 ms away): all bytes whole, a small request costs three round trips (260 ms; two if `OpenService` carried the request's head), an event one (86 ms); throughput was this Mac's hostel link (0.9 MB/s)
+- [[RUN-20261116-ca6zg1]] an 86 ms link simulated on one machine: with tonic's default windows (1 MB and 2 MB per stream, not HTTP/2's 64 KB) the relay carries 9.8 MB/s; the adaptive window is slower (7.4 MB/s, a 1 MB range twice as long) as it starts every stream at 64 KB; keep the defaults
 
 ## Conclusion
 Written once, by a human, when status becomes `concluded`.

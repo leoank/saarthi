@@ -17,6 +17,9 @@ ADR-0036; the session that recorded them is [[AGS-20261114-rapbh2]].
   link (ADR-0052). No port, key or process is added to reach a machine's notebooks.
 - **The app is the one client.** A notebook section next to the sessions: a web view of
   what `yajna serve` renders, then native screens where the phone needs them (ADR-0053).
+  The web view's requests are answered from the relay through `shouldInterceptRequest`,
+  and its event streams through an `EventSource` the app supplies over a message port
+  (ADR-0056).
 
 ```
 phone app ──ServiceRequest──▶ hub ──OpenService on Link──▶ node
