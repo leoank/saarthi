@@ -47,6 +47,7 @@ impl Hub {
         let spawning = self.live.spawning(&id).await;
         let connected = spawning.is_some();
         let (spawn_roots, profiles) = spawning.unwrap_or_default();
+        let services = self.live.services(&id).await.unwrap_or_default();
         Node {
             id,
             name,
@@ -58,6 +59,7 @@ impl Hub {
             default_claude_token,
             tailnet,
             tailnet_peer,
+            services,
         }
     }
 
@@ -547,6 +549,18 @@ impl ControlService for Hub {
         }
         tracing::info!(%client, unregister = r.unregister, "push endpoint");
         Ok(Response::new(RegisterPushResponse {}))
+    }
+
+    type ServiceRequestStream = crate::services::ToClientStream;
+
+    async fn service_request(
+        &self,
+        request: Request<tonic::Streaming<ServiceRequestPart>>,
+    ) -> Result<Response<Self::ServiceRequestStream>, Status> {
+        let client = self.client(&request)?;
+        crate::services::request(self, &client, request.into_inner())
+            .await
+            .map(Response::new)
     }
 }
 

@@ -47,14 +47,15 @@ pub struct Parts {
     pub spawner: Arc<Spawner>,
     /// Whether the keep-awake hold may be taken (ADR-0031), switched by `SetKeepAwake`.
     pub keep_awake: Arc<AtomicBool>,
+    /// The local services clients reach through the hub (ADR-0052).
+    pub services: Arc<crate::services::Services>,
 }
 
 /// Runs until the outbox closes, which happens only when the node shuts down.
 pub async fn run(cfg: Config, mut rx: mpsc::Receiver<NodeMessage>, parts: Parts) {
     // Sessions under the hub's tokens reach the Claude API through it (ADR-0051).
-    parts
-        .spawner
-        .set_hub_api(crate::claude_api::HubApi::new(cfg.hub.clone(), cfg.token.clone()));
+    let api = crate::claude_api::HubApi::new(cfg.hub.clone(), cfg.token.clone());
+    parts.spawner.set_hub_api(api.clone());
     let mut buffer = Buffer {
         events: VecDeque::new(),
         cap: cfg.buffer_cap,
@@ -62,7 +63,7 @@ pub async fn run(cfg: Config, mut rx: mpsc::Receiver<NodeMessage>, parts: Parts)
     };
     let mut backoff = MIN_BACKOFF;
     loop {
-        match stream(&cfg, &mut rx, &parts, &mut buffer, &mut backoff).await {
+        match stream(&cfg, &mut rx, &parts, &api, &mut buffer, &mut backoff).await {
             Ok(()) => return,
             Err(e) => {
                 tracing::warn!(error = %format!("{e:#}"), buffered = buffer.events.len(), "hub link down")
@@ -189,6 +190,7 @@ async fn stream(
     cfg: &Config,
     rx: &mut mpsc::Receiver<NodeMessage>,
     parts: &Parts,
+    api: &Arc<crate::claude_api::HubApi>,
     buffer: &mut Buffer,
     backoff: &mut Duration,
 ) -> Result<()> {
@@ -201,6 +203,7 @@ async fn stream(
         pending: parts.pending.snapshot().await,
         spawn_roots: parts.spawner.roots(),
         profiles: parts.spawner.launch_profiles(),
+        services: parts.services.names(),
     };
     tx.send(NodeMessage {
         body: Some(Body::Register(register)),
@@ -271,6 +274,11 @@ async fn stream(
                         .await
                         .map_err(|_| anyhow!("the link closed"))?;
                 }
+                // A client's request to a local service: answered over a stream of its own,
+                // so the link keeps flowing (ADR-0052).
+                Some(hub_message::Body::OpenService(open)) => {
+                    tokio::spawn(crate::services::open(parts.services.clone(), api.clone(), open));
+                }
                 Some(hub_message::Body::Registered(_)) => bail!("registered twice on one stream"),
                 None => bail!("the hub closed the link"),
             },
@@ -286,6 +294,7 @@ async fn act(cmd: &Command, parts: &Parts) -> CommandResult {
         wrappers,
         spawner,
         keep_awake,
+        ..
     } = parts;
     let id = &cmd.session_id;
     let outcome = match &cmd.action {

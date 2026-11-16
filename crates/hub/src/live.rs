@@ -6,20 +6,40 @@ use std::sync::Arc;
 use std::sync::atomic::{AtomicU64, Ordering};
 use std::time::Duration;
 
-use saarthi_proto::control::v1::Update;
+use saarthi_proto::control::v1::{ServiceResponsePart, Update};
 use saarthi_proto::event::v1::{Event, LaunchProfile};
-use saarthi_proto::node::v1::{Command, CommandResult, HubMessage, command, hub_message};
+use saarthi_proto::node::v1::{
+    Command, CommandResult, HubMessage, OpenService, ServiceDown, ServiceRequestHead, command,
+    hub_message,
+};
 use tokio::sync::{Mutex, broadcast, mpsc, oneshot};
 use tonic::Status;
 
 /// How long a client waits for a node to act on a command.
 const COMMAND_TIMEOUT: Duration = Duration::from_secs(15);
 
+/// How long a service request waits for the node to dial its stream back (ADR-0052).
+const SERVICE_DIAL_TIMEOUT: Duration = Duration::from_secs(20);
+
 pub type ToNode = mpsc::Sender<Result<HubMessage, Status>>;
+
+/// What a client's service request is answered through.
+pub type ToClient = mpsc::Sender<Result<ServiceResponsePart, Status>>;
+
+/// The request body's pieces, for the node's stream.
+pub type BodyDown = mpsc::Receiver<Result<ServiceDown, Status>>;
+
+/// A service request waiting for the node to dial its stream back.
+pub struct PendingService {
+    pub node_id: String,
+    pub body: BodyDown,
+    pub to_client: ToClient,
+}
 
 pub struct Live {
     nodes: Mutex<HashMap<String, NodeLink>>,
     waiting: Mutex<HashMap<String, oneshot::Sender<CommandResult>>>,
+    services: Mutex<HashMap<String, PendingService>>,
     links: AtomicU64,
     updates: broadcast::Sender<Update>,
     /// Newly stored events with their node id, for session streams.
@@ -33,6 +53,8 @@ struct NodeLink {
     /// registration.
     spawn_roots: Vec<String>,
     profiles: Vec<LaunchProfile>,
+    /// The local services it offers through the hub (ADR-0052).
+    services: Vec<String>,
 }
 
 impl Live {
@@ -40,6 +62,7 @@ impl Live {
         Arc::new(Self {
             nodes: Mutex::new(HashMap::new()),
             waiting: Mutex::new(HashMap::new()),
+            services: Mutex::new(HashMap::new()),
             links: AtomicU64::new(0),
             updates: broadcast::channel(1024).0,
             events: broadcast::channel(4096).0,
@@ -54,6 +77,7 @@ impl Live {
         tx: ToNode,
         spawn_roots: Vec<String>,
         profiles: Vec<LaunchProfile>,
+        services: Vec<String>,
     ) -> u64 {
         let link = self.links.fetch_add(1, Ordering::Relaxed);
         self.nodes.lock().await.insert(
@@ -63,6 +87,7 @@ impl Live {
                 tx,
                 spawn_roots,
                 profiles,
+                services,
             },
         );
         link
@@ -84,6 +109,76 @@ impl Live {
         nodes
             .get(node_id)
             .map(|n| (n.spawn_roots.clone(), n.profiles.clone()))
+    }
+
+    /// A linked node's services; None when the node is not linked.
+    pub async fn services(&self, node_id: &str) -> Option<Vec<String>> {
+        self.nodes.lock().await.get(node_id).map(|n| n.services.clone())
+    }
+
+    /// Asks a node to open one of its services for a client's request (ADR-0052, ADR-0057):
+    /// the request waits under a fresh id until the node dials its stream back, and is
+    /// answered with an error if it does not in time.
+    pub async fn open_service(
+        self: &Arc<Self>,
+        node_id: &str,
+        head: ServiceRequestHead,
+        body: BodyDown,
+        to_client: ToClient,
+    ) -> Result<(), Status> {
+        let tx = match self.nodes.lock().await.get(node_id) {
+            Some(n) if n.services.contains(&head.service) => n.tx.clone(),
+            Some(_) => {
+                return Err(Status::not_found(format!(
+                    "the node offers no service named {}",
+                    head.service
+                )));
+            }
+            None => return Err(Status::unavailable("the node is not connected")),
+        };
+        let id = uuid::Uuid::new_v4().simple().to_string();
+        self.services.lock().await.insert(
+            id.clone(),
+            PendingService {
+                node_id: node_id.to_string(),
+                body,
+                to_client,
+            },
+        );
+        let open = OpenService {
+            id: id.clone(),
+            head: Some(head),
+        };
+        if tx
+            .send(Ok(HubMessage {
+                body: Some(hub_message::Body::OpenService(open)),
+            }))
+            .await
+            .is_err()
+        {
+            self.services.lock().await.remove(&id);
+            return Err(Status::unavailable("the node went away"));
+        }
+        let live = self.clone();
+        tokio::spawn(async move {
+            tokio::time::sleep(SERVICE_DIAL_TIMEOUT).await;
+            if let Some(p) = live.services.lock().await.remove(&id) {
+                let _ = p
+                    .to_client
+                    .send(Err(Status::deadline_exceeded("the node did not open the service in time")))
+                    .await;
+            }
+        });
+        Ok(())
+    }
+
+    /// The request a node's `ServiceStream` names, if it is waiting and is that node's.
+    pub async fn take_service(&self, id: &str, node_id: &str) -> Option<PendingService> {
+        let mut services = self.services.lock().await;
+        if services.get(id).is_some_and(|p| p.node_id == node_id) {
+            return services.remove(id);
+        }
+        None
     }
 
     /// Sends a command to a node and waits for its result.

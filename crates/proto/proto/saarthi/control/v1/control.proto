@@ -5,6 +5,7 @@ syntax = "proto3";
 package saarthi.control.v1;
 
 import "saarthi/event/v1/event.proto";
+import "saarthi/node/v1/node.proto";
 
 service ControlService {
   rpc ListNodes(ListNodesRequest) returns (ListNodesResponse);
@@ -42,6 +43,10 @@ service ControlService {
   // Adds (or with `unregister`, removes) a UnifiedPush endpoint the hub posts notifications
   // to: a JSON object per held request or finished turn (ADR-0026).
   rpc RegisterPush(RegisterPushRequest) returns (RegisterPushResponse);
+  // An HTTP request to one of a node's local services, relayed through the node's link
+  // (ADR-0052): the head first, then the body in pieces of at most 1 MB; back come the
+  // answer's head and its body as it arrives, for as long as the service keeps it open.
+  rpc ServiceRequest(stream ServiceRequestPart) returns (stream ServiceResponsePart);
 }
 
 message Node {
@@ -63,6 +68,9 @@ message Node {
   string tailnet = 9;
   // Who that tailnet said the caller was, `host (login)`. Recorded, not checked.
   string tailnet_peer = 10;
+  // The local HTTP services a client may reach through the hub (ADR-0052), as the node last
+  // registered them; empty when it is not connected.
+  repeated string services = 11;
 }
 
 message ListNodesRequest {}
@@ -235,4 +243,15 @@ message CommandResponse {
   string error = 2;
   string note = 3;
   string session_id = 4;        // Spawn only: the new session's id
+}
+
+message ServiceRequestPart {
+  string node_id = 1;                               // the first message only
+  saarthi.node.v1.ServiceRequestHead head = 2;      // the first message only
+  bytes body = 3;
+}
+
+message ServiceResponsePart {
+  saarthi.node.v1.HttpStatus head = 1;              // the first message only
+  bytes body = 2;
 }

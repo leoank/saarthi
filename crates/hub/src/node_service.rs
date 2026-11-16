@@ -12,7 +12,7 @@ use saarthi_proto::control::v1::{PendingClosedOnNode, PendingOnNode, Update, upd
 use saarthi_proto::event::v1::{EventSource, PendingClosed, ReleaseReason, Session};
 use saarthi_proto::node::v1::node_service_server::NodeService;
 use saarthi_proto::node::v1::{
-    Ack, ClaudeApiRequest, ClaudeToken, ClaudeTokenReply, ClaudeTokenRequest, HubMessage, NodeMessage,
+    Ack, ClaudeApiRequest, ClaudeToken, ServiceUp, ClaudeTokenReply, ClaudeTokenRequest, HubMessage, NodeMessage,
     Registered,
     hub_message, node_message::Body,
 };
@@ -139,6 +139,31 @@ impl NodeService for Hub {
             .await
             .map(Response::new)
     }
+
+    type ServiceStreamStream = crate::services::ToNodeStream;
+
+    async fn service_stream(
+        &self,
+        request: Request<Streaming<ServiceUp>>,
+    ) -> Result<Response<Self::ServiceStreamStream>, Status> {
+        let auth = request
+            .metadata()
+            .get("authorization")
+            .and_then(|v| v.to_str().ok())
+            .unwrap_or_default();
+        let Some(node) = self.tokens_name(auth) else {
+            return Err(Status::unauthenticated("unknown node token"));
+        };
+        let node_id = self
+            .db
+            .node_id(&node)
+            .await
+            .map_err(|e| Status::internal(format!("{e:#}")))?
+            .ok_or_else(|| Status::failed_precondition("the node has not registered"))?;
+        crate::services::stream(self, &node_id, request.into_inner())
+            .await
+            .map(Response::new)
+    }
 }
 
 impl Hub {
@@ -192,6 +217,7 @@ async fn serve_node(
             tx.clone(),
             register.spawn_roots.clone(),
             register.profiles.clone(),
+            register.services.clone(),
         )
         .await;
     tracing::info!(node = %name, %node_id, last_seq, sessions = register.sessions.len(),

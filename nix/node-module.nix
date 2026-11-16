@@ -24,6 +24,9 @@ let
   cfg = config.services.saarthi-node;
   toml = pkgs.formats.toml { };
   profilesFile = toml.generate "saarthi-profiles.toml" { profiles = cfg.profiles; };
+  servicesFile = toml.generate "saarthi-services.toml" {
+    services = lib.mapAttrs (_: lib.filterAttrs (_: v: v != null)) cfg.services;
+  };
   args = [
     (lib.getExe cfg.package)
     "node"
@@ -67,6 +70,10 @@ let
   ++ lib.optionals (cfg.profiles != { }) [
     "--profiles"
     "${profilesFile}"
+  ]
+  ++ lib.optionals (cfg.services != { }) [
+    "--services"
+    "${servicesFile}"
   ]
   ++ cfg.extraArgs;
   cmdline = lib.escapeShellArgs args;
@@ -203,6 +210,51 @@ in
         directory, the file holding a token from `claude setup-token`, `path`, `readonly`,
         `readwrite` and `denied` paths, `claude_files` linked from `~/.claude`, and `env`.
         `~/` is the user's home. Empty: no profiles.
+      '';
+    };
+
+    services = lib.mkOption {
+      type = lib.types.attrsOf (
+        lib.types.submodule {
+          options = {
+            socket = lib.mkOption {
+              type = lib.types.str;
+              description = "The unix socket the service answers HTTP on; `~/` is the user's home.";
+            };
+            start = lib.mkOption {
+              type = lib.types.listOf lib.types.str;
+              default = [ ];
+              description = ''
+                The command that starts the service when nothing answers on its socket; empty:
+                the node never starts it.
+              '';
+            };
+            idle = lib.mkOption {
+              type = lib.types.nullOr lib.types.str;
+              default = null;
+              example = "10m";
+              description = ''
+                How long a service the node started may go without requests before the node
+                stops it (`90s`, `10m`, `1h`); null: never stopped.
+              '';
+            };
+          };
+        }
+      );
+      default = { };
+      example = lib.literalExpression ''
+        {
+          yajna = {
+            socket = "~/.local/state/yajna/serve.sock";
+            start = [ "yajna" "serve" "--socket" "~/.local/state/yajna/serve.sock" ];
+            idle = "10m";
+          };
+        }
+      '';
+      description = ''
+        Local HTTP services on unix sockets that the owner's clients reach through the hub
+        (ADR-0052), written to the TOML file `--services` reads. Sandboxes are denied their
+        sockets. Empty: none.
       '';
     };
 

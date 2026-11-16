@@ -194,6 +194,10 @@ let
     ];
     claude = "/opt/claude";
     profiles.sandbox.backend = "seatbelt";
+    services.notes = {
+      socket = "~/notes.sock";
+      idle = "10m";
+    };
     tailnet = {
       enable = true;
       authKeyFile = "/run/agenix/tk";
@@ -248,6 +252,7 @@ let
             "--spawn-root"
             "--claude "
             "--profiles"
+            "--services"
             "--tailnet"
           ];
           name = lib.hasInfix "--name rogue" l;
@@ -255,7 +260,7 @@ let
           ignore = lib.hasInfix "--ignore-cwd" l && lib.hasInfix "live-work-" l;
           usage = lib.hasInfix "--claude-usage --keep-awake --spawn-root /home/u/a --spawn-root /home/u/b --claude /opt/claude" l;
           profiles =
-            builtins.match ".*--profiles /nix/store/[a-z0-9]+-saarthi-profiles\\.toml --hold-secs 60.*" l != null;
+            builtins.match ".*--profiles /nix/store/[a-z0-9]+-saarthi-profiles\\.toml --services /nix/store/[a-z0-9]+-saarthi-services\\.toml --hold-secs 60.*" l != null;
           onPath = rich.config.home.packages == [ rich.pkg ];
         };
         expected = {

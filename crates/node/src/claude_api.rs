@@ -132,6 +132,29 @@ impl HubApi {
     async fn forget(&self) {
         *self.channel.lock().await = None;
     }
+
+    /// Dials a `ServiceStream` back to the hub for a service request (ADR-0052): `up` starts
+    /// with the request's id; the returned stream carries its body down.
+    pub async fn service_stream(
+        &self,
+        up: tokio_stream::wrappers::ReceiverStream<saarthi_proto::node::v1::ServiceUp>,
+    ) -> Result<tonic::Streaming<saarthi_proto::node::v1::ServiceDown>, String> {
+        let mut client = self.client().await?;
+        let mut request = tonic::Request::new(up);
+        let bearer = format!("Bearer {}", self.token)
+            .parse()
+            .map_err(|_| "the node token is not valid in a header".to_string())?;
+        request.metadata_mut().insert("authorization", bearer);
+        match client.service_stream(request).await {
+            Ok(r) => Ok(r.into_inner()),
+            Err(status) => {
+                if status.code() == tonic::Code::Unavailable {
+                    self.forget().await;
+                }
+                Err(status.message().to_string())
+            }
+        }
+    }
 }
 
 /// Where a proxy sends its requests.

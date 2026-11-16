@@ -122,6 +122,17 @@ pub enum Ctl {
         #[arg(long)]
         then: Option<String>,
     },
+    /// A GET to one of a node's local services through the hub (ADR-0052): the status and
+    /// headers to stderr, the body to stdout as it arrives (an event stream until Ctrl-C).
+    Service {
+        node: String,
+        service: String,
+        #[arg(default_value = "/")]
+        path: String,
+        /// A request header, `name: value`; repeatable.
+        #[arg(long = "header", short = 'H')]
+        headers: Vec<String>,
+    },
 }
 
 /// Which Claude credential a spawn or resume runs under (ADR-0039).
@@ -267,13 +278,18 @@ pub async fn run(hub: &str, token: &str, cmd: Ctl) -> Result<()> {
                 } else {
                     format!("  default token: {}", n.default_claude_token)
                 };
+                let services = if n.services.is_empty() {
+                    String::new()
+                } else {
+                    format!("  services: {}", n.services.join(", "))
+                };
                 let tailnet = if n.tailnet.is_empty() {
                     String::new()
                 } else {
                     format!("  tailnet {}: {}", n.tailnet, n.tailnet_peer)
                 };
                 println!(
-                    "{}  {}  {}  {state}{roots}{profiles}{token}{tailnet}",
+                    "{}  {}  {}  {state}{roots}{profiles}{services}{token}{tailnet}",
                     n.id, n.name, n.version
                 );
             }
@@ -500,6 +516,57 @@ pub async fn run(hub: &str, token: &str, cmd: Ctl) -> Result<()> {
             };
             let r = c.inner.interrupt(c.request(req)).await?.into_inner();
             report(r)?;
+        }
+        Ctl::Service {
+            node,
+            service,
+            path,
+            headers,
+        } => {
+            use std::io::Write;
+            let node_id = c.node_id(&node).await?;
+            let headers = headers
+                .iter()
+                .map(|h| match h.split_once(':') {
+                    Some((n, v)) => Ok(saarthi_proto::node::v1::HttpHeader {
+                        name: n.trim().to_string(),
+                        value: v.trim().as_bytes().to_vec(),
+                    }),
+                    None => bail!("a header is `name: value`, not {h:?}"),
+                })
+                .collect::<Result<Vec<_>>>()?;
+            let head = saarthi_proto::node::v1::ServiceRequestHead {
+                service,
+                method: "GET".into(),
+                path,
+                headers,
+                has_body: false,
+            };
+            let first = ServiceRequestPart {
+                node_id,
+                head: Some(head),
+                body: Vec::new(),
+            };
+            let mut stream = c
+                .inner
+                .service_request(c.request(tokio_stream::iter([first])))
+                .await?
+                .into_inner();
+            let Some(head) = stream.message().await?.and_then(|m| m.head) else {
+                bail!("the hub sent no answer");
+            };
+            eprintln!("{}", head.status);
+            for h in &head.headers {
+                eprintln!("{}: {}", h.name, String::from_utf8_lossy(&h.value));
+            }
+            let mut out = std::io::stdout().lock();
+            while let Some(m) = stream.message().await? {
+                out.write_all(&m.body)?;
+                out.flush()?;
+            }
+            if !(200..300).contains(&head.status) {
+                bail!("the service answered {}", head.status);
+            }
         }
     }
     Ok(())

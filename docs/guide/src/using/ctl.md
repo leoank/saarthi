@@ -99,4 +99,8 @@ The path is the node's, and `~` there is the node's home. See
 [Starting a session](sessions.md#starting-a-session). `keep-awake on` or `off` switches the
 node's keep-awake hold, as the switch on its health screen does.
 
+`saarthi ctl service <node> <service> [path]` sends a GET to one of the node's
+[local services](../setup/node.md#local-services) through the hub, with `-H 'name: value'`
+for headers: the status and headers go to stderr and the body to stdout as it arrives.
+
 For a live overview with keys to act on it, see [the terminal dashboard](tui.md). Every command and flag is in the [command line reference](../reference/cli.md).

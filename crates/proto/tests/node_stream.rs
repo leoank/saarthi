@@ -36,6 +36,15 @@ impl NodeService for Hub {
         Err(Status::unimplemented("not part of this test"))
     }
 
+    type ServiceStreamStream = Pin<Box<dyn Stream<Item = Result<saarthi_proto::node::v1::ServiceDown, Status>> + Send>>;
+
+    async fn service_stream(
+        &self,
+        _: Request<Streaming<saarthi_proto::node::v1::ServiceUp>>,
+    ) -> Result<Response<Self::ServiceStreamStream>, Status> {
+        Err(Status::unimplemented("not part of this test"))
+    }
+
     async fn link(
         &self,
         request: Request<Streaming<NodeMessage>>,

@@ -178,6 +178,31 @@ pub async fn start_spawning_node(
     roots: &[std::path::PathBuf],
     contained: saarthi_node::spawner::Contained,
 ) -> NodeProc {
+    start_node_full(hub_addr, token, claude_dir, hold, claude, roots, contained, Default::default()).await
+}
+
+/// A node offering local services through the hub (ADR-0052).
+pub async fn start_serving_node(
+    hub_addr: &str,
+    token: &str,
+    claude_dir: &std::path::Path,
+    services: Arc<saarthi_node::services::Services>,
+) -> NodeProc {
+    let hold = Duration::from_secs(30);
+    start_node_full(hub_addr, token, claude_dir, hold, "claude", &[], Default::default(), services).await
+}
+
+#[allow(clippy::too_many_arguments)]
+async fn start_node_full(
+    hub_addr: &str,
+    token: &str,
+    claude_dir: &std::path::Path,
+    hold: Duration,
+    claude: &str,
+    roots: &[std::path::PathBuf],
+    contained: saarthi_node::spawner::Contained,
+    services: Arc<saarthi_node::services::Services>,
+) -> NodeProc {
     let (outbox, rx) = Outbox::new(1024);
     let sessions = Arc::new(Sessions::new(
         claude_dir.to_path_buf(),
@@ -202,6 +227,7 @@ pub async fn start_spawning_node(
         wrappers,
         spawner,
         keep_awake: Default::default(),
+        services,
     };
     let task = tokio::spawn(link::run(cfg, rx, parts));
     let listener = TcpListener::bind("127.0.0.1:0").await.unwrap();

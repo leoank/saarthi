@@ -11,6 +11,7 @@ pub mod pending;
 pub mod prompt;
 pub mod registry;
 pub mod run;
+pub mod services;
 pub mod sessions;
 pub mod sink;
 pub mod spawner;

@@ -34,6 +34,7 @@ Useful flags (all of them are in the [command line reference](../reference/cli.m
 | `--spawn-root <dir>` | Allow the app to start sessions in this directory or below it. Repeatable; without it, nobody can start sessions on this node. A missing directory is created at start; one that cannot be is left out, with an error in the log. See [Starting sessions from the app](#starting-sessions-from-the-app). |
 | `--claude <path>` | The `claude` that started sessions run. Default `claude`, found on your login shell's PATH. |
 | `--profiles <file>` | Launch profiles a started session may run under, such as a sandbox. A file that does not parse is left out, with an error in the log, and sessions run on the host. See [Sandboxed sessions](#sandboxed-sessions). |
+| `--services <file>` | Local HTTP services on unix sockets, such as yajna's notebook server, that your clients reach through the hub. A file that does not parse is left out, with an error in the log. See [Local services](#local-services). |
 | `--hook-socket <path>` | Where sandboxed sessions send their hooks. Default `~/.local/state/saarthi/hook.sock`. |
 | `--ignore-cwd <glob>` | Do not track sessions whose working directory matches, for example throwaway test sessions. Repeatable. |
 | `--hold-secs` | How long a permission dialog of a plain `claude` session waits for the phone before falling through to the terminal. Default 120. |
@@ -301,6 +302,35 @@ The app's *New session* offers the node's profiles under *Runs as*, with each on
 `description`; `saarthi ctl spawn ... --profile sandbox` does the same from a terminal. A
 session started under a profile shows its name in the session list, its header and
 History.
+
+## Local services
+
+A node can put HTTP servers that listen on unix sockets in front of your clients, through
+the hub and the node's own link to it: no port is opened and no key added on the machine.
+yajna's notebook server is the first. They are named in a TOML file given with
+`--services`:
+
+```toml
+[services.yajna]
+socket = "~/.local/state/yajna/serve.sock"
+start = ["yajna", "serve", "--socket", "~/.local/state/yajna/serve.sock"]
+idle = "10m"
+```
+
+- `socket` is where the service answers; `~` is your home.
+- `start`, optional, starts the service when nothing answers on the socket at a request;
+  without it the node only uses a service that is already running.
+- `idle`, optional, stops a service the node started after that long without requests
+  (`90s`, `10m`, `1h`).
+
+The node lists the services' names to the hub, and `saarthi ctl nodes` shows them. Any of
+your clients may reach any of them, as it may start a session, so list only services that
+need no more protection than that; sandboxed sessions are denied their sockets. With
+home-manager, the module's `services` option writes the file. To try one from a terminal:
+
+```console
+$ saarthi ctl service laptop yajna /api/info
+```
 
 ## Checking it
 

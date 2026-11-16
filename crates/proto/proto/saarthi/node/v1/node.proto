@@ -14,6 +14,10 @@ service NodeService {
   // A Claude API request of a session under one of the hub's tokens (ADR-0051): the hub
   // adds the token and relays it to Anthropic, streaming the answer back.
   rpc ClaudeApi(stream ClaudeApiRequest) returns (stream ClaudeApiResponse);
+  // A request to one of the node's local services (ADR-0052, ADR-0057), dialled back by the
+  // node after `OpenService`: its first message names the request; down come the request's
+  // body pieces, if it has a body; up go the answer's head and its body as it arrives.
+  rpc ServiceStream(stream ServiceUp) returns (stream ServiceDown);
 }
 
 // The request head in the first message only; the body in pieces of at most 1 MB.
@@ -74,6 +78,8 @@ message Register {
   repeated string spawn_roots = 5;
   // The launch profiles a spawn may name, besides the host.
   repeated saarthi.event.v1.LaunchProfile profiles = 6;
+  // The local HTTP services a client may reach through the hub (ADR-0052), by name.
+  repeated string services = 7;
 }
 
 message HubMessage {
@@ -81,7 +87,39 @@ message HubMessage {
     Registered registered = 1;
     Ack ack = 2;
     Command command = 3;
+    OpenService open_service = 4;
   }
+}
+
+// A client's request to one of the node's services (ADR-0052, ADR-0057): the node starts on
+// it and dials `ServiceStream` back with `id`.
+message OpenService {
+  string id = 1;
+  ServiceRequestHead head = 2;
+}
+
+message ServiceRequestHead {
+  string service = 1;           // a name the node registered
+  string method = 2;
+  string path = 3;              // with its query
+  repeated HttpHeader headers = 4;
+  bool has_body = 5;            // the body follows on ServiceStream; false: none
+}
+
+message ServiceUp {
+  string id = 1;                // the first message only
+  HttpStatus head = 2;          // the answer's status and headers, once, before its body
+  bytes body = 3;               // in pieces of at most 1 MB
+  string error = 4;             // the service could not be reached: instead of a head
+}
+
+message ServiceDown {
+  bytes body = 1;               // the request's body, in pieces of at most 1 MB
+}
+
+message HttpStatus {
+  uint32 status = 1;
+  repeated HttpHeader headers = 2;
 }
 
 message Registered {

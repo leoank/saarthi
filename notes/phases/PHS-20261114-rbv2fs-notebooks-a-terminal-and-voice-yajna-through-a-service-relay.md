@@ -23,7 +23,7 @@ the phone alone.
 One item per piece of work, ticked when it lands; add items as the plan grows and keep the
 done ones. The project page's *Progress* lists this phase on one line.
 - [x] 1. The service relay: does a streamed request reach a socket service through the hub, and feed a WebView ([[EXP-20261114-raqjjy]]): yes, through ghost001 too; the WebView's event streams over the app's bridge (ADR-0056)
-- [ ] 2. The service relay: services in the node's config, started on demand; `ServiceRequest`, `OpenService` and `ServiceStream` (ADR-0052)
+- [x] 2. The service relay: services in the node's config, started on demand; `ServiceRequest`, `OpenService` and `ServiceStream` (ADR-0052): built in 0.8.0 with `--services`, the module's `services` option and `saarthi ctl service`; `OpenService` carries the request's head (ADR-0057); tested end to end on loopback, not yet through the deployed hub
 - [ ] 3. The notebook section in the app: the notebooks of each node from yajna's API, the files viewer and pages in a web view fed through `shouldInterceptRequest`, its event streams over the app's `EventSource` bridge (ADR-0053, ADR-0056; needs yajna's `serve --socket`)
 - [ ] 4. New project: a spawn of `/yajna:project <brief>` in a chosen notebook (ADR-0053)
 - [ ] 5. The terminal: does libghostty-vt build for Android and keep up ([[EXP-20261114-raqjf0]])

@@ -206,6 +206,11 @@ struct Serve {
     /// (ADR-0038). Without it every spawned session runs on the host.
     #[arg(long)]
     profiles: Option<PathBuf>,
+    /// A TOML file of local HTTP services on unix sockets that the owner's clients reach
+    /// through the hub, such as yajna's notebook server (ADR-0052). A sandbox is denied
+    /// their sockets.
+    #[arg(long)]
+    services: Option<PathBuf>,
     /// The unix socket sandboxed sessions post their hooks to, since loopback TCP is closed
     /// inside. Defaults to `~/.local/state/saarthi/hook.sock`; bound only when a profile is
     /// sandboxed. Keep it short: a socket path has at most 104 bytes on macOS.
@@ -300,6 +305,18 @@ async fn serve(args: Serve) -> Result<()> {
         }),
         None => Profiles::default(),
     };
+    let services = Arc::new(match &args.services {
+        // A bad services file costs the services, not the node (ADR-0044).
+        Some(path) => saarthi_node::services::Services::load(path, &home).unwrap_or_else(|e| {
+            tracing::error!(path = %path.display(), error = %format!("{e:#}"), "local services left out");
+            Default::default()
+        }),
+        None => Default::default(),
+    });
+    for name in services.names() {
+        tracing::info!(service = %name, "local service offered through the hub");
+    }
+    tokio::spawn(services.clone().reap_idle());
     let hook_socket = args
         .hook_socket
         .clone()
@@ -310,9 +327,13 @@ async fn serve(args: Serve) -> Result<()> {
     let contained = Contained {
         hooks: Some(hooks::socket_settings(&hook_socket, HOOK_TIMEOUT_SECS)),
         user_claude: claude_dir.clone(),
-        // The wrappers' socket would let a sandbox pose as `saarthi run`, and the proxies of
-        // host and terminal sessions spend the hub's tokens (ADR-0051).
-        deny: vec![wrapper_socket.clone(), saarthi_node::claude_api::host_socket_dir()],
+        // The wrappers' socket would let a sandbox pose as `saarthi run`, the proxies of host
+        // and terminal sessions spend the hub's tokens (ADR-0051), and the local services
+        // answer the owner (ADR-0052).
+        deny: [wrapper_socket.clone(), saarthi_node::claude_api::host_socket_dir()]
+            .into_iter()
+            .chain(services.sockets())
+            .collect(),
         profiles,
     };
     // The hooks block `saarthi node hooks` prints by default, so it matches the user's own
@@ -400,6 +421,7 @@ async fn serve(args: Serve) -> Result<()> {
                 wrappers,
                 spawner,
                 keep_awake: keep_awake.clone(),
+                services: services.clone(),
             };
             tokio::spawn(link::run(cfg, rx, parts))
         }
