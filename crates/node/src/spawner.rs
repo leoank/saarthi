@@ -272,6 +272,7 @@ impl Spawner {
         prompt: &str,
         model: &str,
         claude_token: Option<&ClaudeToken>,
+        ran_in: &str,
     ) -> Result<(), String> {
         if uuid::Uuid::parse_str(id).is_err() {
             return Err("the session id is not a UUID".into());
@@ -286,7 +287,7 @@ impl Spawner {
         } else {
             match self.contained.profiles.all().find(|p| p.claude_dir().is_some_and(|d| has(&d))) {
                 Some(p) => Some(p.clone()),
-                None => return Err(format!("this node has no transcript of the session in {cwd}")),
+                None => self.restore(id, &dir, ran_in).await?,
             }
         };
         self.start(
@@ -300,6 +301,52 @@ impl Spawner {
             claude_token,
         )
         .await
+    }
+
+    /// Writes the transcript of session `id` in `dir` from the hub's copy, for a node that
+    /// no longer has it (wiped, or a fresh disk), where the launch profile it ran under keeps
+    /// its transcripts; returns that profile, `None` for the host.
+    async fn restore(&self, id: &str, dir: &Path, ran_in: &str) -> Result<Option<Profile>, String> {
+        let profile = match ran_in {
+            "" => None,
+            name => match self.contained.profiles.all().find(|p| p.name == name) {
+                Some(p) => Some(p.clone()),
+                None => {
+                    return Err(format!(
+                        "the session ran under the launch profile {name}, which this node does not have"
+                    ));
+                }
+            },
+        };
+        let claude_dir = match profile.as_ref().and_then(|p| p.claude_dir()) {
+            Some(d) => d,
+            None => self.sessions.claude_dir().to_path_buf(),
+        };
+        let api = self
+            .hub_api
+            .get()
+            .ok_or("this node has no transcript of the session, and no hub to ask for one")?;
+        let lines = api
+            .session_transcript(id)
+            .await
+            .map_err(|e| format!("this node has no transcript of the session, and the hub's did not come: {e}"))?;
+        let transcript = crate::transcript::rebuild(&lines);
+        if transcript.is_empty() {
+            return Err("neither this node nor the hub has a transcript of the session".into());
+        }
+        let path = crate::sessions::transcript_path(&claude_dir, &dir.to_string_lossy(), id);
+        let write = async {
+            if let Some(parent) = path.parent() {
+                tokio::fs::create_dir_all(parent).await?;
+            }
+            tokio::fs::write(&path, transcript.as_bytes()).await
+        };
+        write
+            .await
+            .map_err(|e| format!("could not write the restored transcript {}: {e}", path.display()))?;
+        tracing::info!(session = %id, path = %path.display(), lines = transcript.lines().count(),
+            "restored a transcript from the hub to resume");
+        Ok(profile)
     }
 
     /// Starts claude for session `id` in `dir`, as a new session (`--session-id`) or a
@@ -1043,7 +1090,7 @@ echo closed >> LOG
         std::fs::create_dir_all(transcript.parent().unwrap()).unwrap();
         std::fs::write(&transcript, "").unwrap();
         std::fs::remove_file(&log).unwrap();
-        spawner.resume(&id, &cwd, "go on", "", None).await.unwrap();
+        spawner.resume(&id, &cwd, "go on", "", None, "").await.unwrap();
         let text = log_has(&log, "go on").await;
         assert!(text.contains(&format!("--resume {id}")), "{text}");
         assert!(text.contains("proxy=403"), "resumed inside the sandbox, with its proxy: {text}");
@@ -1058,7 +1105,7 @@ echo closed >> LOG
         let cwd_s = cwd.to_string_lossy().into_owned();
         let err = f
             .spawner
-            .resume(&id, &cwd_s, "", "", None)
+            .resume(&id, &cwd_s, "", "", None, "")
             .await
             .unwrap_err();
         assert!(err.contains("no transcript"), "{err}");
@@ -1067,7 +1114,7 @@ echo closed >> LOG
         std::fs::create_dir_all(transcript.parent().unwrap()).unwrap();
         std::fs::write(&transcript, "").unwrap();
         f.spawner
-            .resume(&id, &cwd_s, "go on", "", None)
+            .resume(&id, &cwd_s, "go on", "", None, "")
             .await
             .unwrap();
         let log = log_has(&f.log, "go on").await;
@@ -1078,7 +1125,7 @@ echo closed >> LOG
 
         let err = f
             .spawner
-            .resume(&id, &cwd_s, "", "", None)
+            .resume(&id, &cwd_s, "", "", None, "")
             .await
             .unwrap_err();
         assert!(err.contains("still running"), "{err}");

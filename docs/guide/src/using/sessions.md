@@ -148,3 +148,12 @@ permission mode, whatever mode it was started in. In History it moves to the top
 with its start time and duration from the latest run.
 
 A session that is still running somewhere cannot be resumed; end it first.
+
+A node that no longer has the session's transcript (a reinstalled machine, a live disk
+after a reboot, a deleted `~/.claude`) gets it back from the hub when you resume: the hub
+keeps every line of the conversation, and the node writes them where Claude Code looks,
+in the launch profile the session ran under, before running `claude --resume`. The
+session's directory must exist on the node again, cloned or created. Sessions recorded
+before 0.11.0 lack the attachments Claude Code adds between turns (a file you mentioned,
+a hook's output); they resume with their prompts, replies and tool calls, without those.
+Subagents' own transcripts are not restored.

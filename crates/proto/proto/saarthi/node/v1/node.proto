@@ -18,6 +18,18 @@ service NodeService {
   // node after `OpenService`: its first message names the request; down come the request's
   // body pieces, if it has a body; up go the answer's head and its body as it arrives.
   rpc ServiceStream(stream ServiceUp) returns (stream ServiceDown);
+  // A session's transcript as the hub stored it, for a node that resumes a session whose
+  // transcript it no longer has: the node's own session's transcript lines, in the order
+  // they were read, in parts.
+  rpc SessionTranscript(SessionTranscriptRequest) returns (stream SessionTranscriptPart);
+}
+
+message SessionTranscriptRequest {
+  string session_id = 1;
+}
+
+message SessionTranscriptPart {
+  repeated string lines = 1;    // raw transcript lines, without their newline
 }
 
 // The request head in the first message only; the body in pieces of at most 1 MB.
@@ -197,6 +209,9 @@ message Resume {
   string prompt = 2;            // the next turn; empty to resume idle
   string model = 3;             // empty for claude's default
   ClaudeToken claude_token = 4; // as for Spawn
+  // The launch profile the session ran under, from the hub's record; empty for the host. A
+  // node restoring the transcript from the hub puts it there.
+  string profile = 5;
 }
 
 // Node-level: one throwaway Haiku turn under a Claude token, for the account's rate-limit

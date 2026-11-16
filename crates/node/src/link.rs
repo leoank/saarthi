@@ -351,7 +351,7 @@ async fn act(cmd: &Command, parts: &Parts) -> CommandResult {
             .await
             .map(|()| String::new()),
         Some(command::Action::Resume(r)) => spawner
-            .resume(id, &r.cwd, &r.prompt, &r.model, r.claude_token.as_ref())
+            .resume(id, &r.cwd, &r.prompt, &r.model, r.claude_token.as_ref(), &r.profile)
             .await
             .map(|()| String::new()),
         Some(command::Action::SetKeepAwake(k)) => {

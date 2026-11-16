@@ -13,7 +13,7 @@ use saarthi_proto::event::v1::{EventSource, PendingClosed, ReleaseReason, Sessio
 use saarthi_proto::node::v1::node_service_server::NodeService;
 use saarthi_proto::node::v1::{
     Ack, ClaudeApiRequest, ClaudeToken, ServiceUp, ClaudeTokenReply, ClaudeTokenRequest, HubMessage, NodeMessage,
-    Registered,
+    Registered, SessionTranscriptPart, SessionTranscriptRequest,
     hub_message, node_message::Body,
 };
 use tokio::sync::mpsc;
@@ -163,6 +163,70 @@ impl NodeService for Hub {
         crate::services::stream(self, &node_id, request.into_inner())
             .await
             .map(Response::new)
+    }
+
+    type SessionTranscriptStream = ReceiverStream<Result<SessionTranscriptPart, Status>>;
+
+    async fn session_transcript(
+        &self,
+        request: Request<SessionTranscriptRequest>,
+    ) -> Result<Response<Self::SessionTranscriptStream>, Status> {
+        /// Rows read at a time, and roughly the most a part carries; a line longer than
+        /// that goes in a part of its own.
+        const PAGE: i64 = 500;
+        const PART_BYTES: usize = 2 << 20;
+        let auth = request
+            .metadata()
+            .get("authorization")
+            .and_then(|v| v.to_str().ok())
+            .unwrap_or_default();
+        let Some(node) = self.tokens_name(auth) else {
+            return Err(Status::unauthenticated("unknown node token"));
+        };
+        let internal = |e: anyhow::Error| Status::internal(format!("{e:#}"));
+        let node_id = self
+            .db
+            .node_id(&node)
+            .await
+            .map_err(internal)?
+            .ok_or_else(|| Status::failed_precondition("the node has not registered"))?;
+        let session_id = request.into_inner().session_id;
+        let (tx, rx) = mpsc::channel(4);
+        let db = self.db.clone();
+        tokio::spawn(async move {
+            let mut after = 0;
+            let mut part = Vec::new();
+            let mut size = 0;
+            loop {
+                let rows = match db.transcript(&node_id, &session_id, after, PAGE).await {
+                    Ok(rows) => rows,
+                    Err(e) => {
+                        let _ = tx.send(Err(Status::internal(format!("{e:#}")))).await;
+                        return;
+                    }
+                };
+                let done = (rows.len() as i64) < PAGE;
+                for (seq, line) in rows {
+                    after = seq;
+                    if size + line.len() > PART_BYTES && !part.is_empty() {
+                        let lines = std::mem::take(&mut part);
+                        if tx.send(Ok(SessionTranscriptPart { lines })).await.is_err() {
+                            return;
+                        }
+                        size = 0;
+                    }
+                    size += line.len();
+                    part.push(line);
+                }
+                if done {
+                    break;
+                }
+            }
+            if !part.is_empty() {
+                let _ = tx.send(Ok(SessionTranscriptPart { lines: part })).await;
+            }
+        });
+        Ok(Response::new(ReceiverStream::new(rx)))
     }
 }
 

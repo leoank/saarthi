@@ -408,6 +408,7 @@ impl ControlService for Hub {
             prompt: r.prompt,
             model: r.model,
             claude_token,
+            profile: session.profile,
         });
         let result = self.live.command(&r.node_id, &r.session_id, action).await?;
         if result.ok {

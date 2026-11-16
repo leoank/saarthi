@@ -50,7 +50,7 @@ spawns, with the owner's answers of 2026-11-07.
 | [ADR-0033](ADR-0033-a-user-guide-on-github-pages.md) | A user guide on GitHub Pages, built by Nix with mdBook in yajna's theme | accepted |
 | [ADR-0034](ADR-0034-phase-2-spawns-headless-sessions-under-the-node-s-own-login-first.md) | Phase 2 spawns headless sessions under the node's own login first, leases last | accepted |
 | [ADR-0035](ADR-0035-a-spawned-session-may-start-idle-and-in-a-new-directory.md) | A spawned session may start idle, and in a directory the spawn creates | accepted |
-| [ADR-0036](ADR-0036-history-and-resume-in-place.md) | Session history on one screen, and finished sessions resumed in place | accepted |
+| [ADR-0036](ADR-0036-history-and-resume-in-place.md) | Session history on one screen, and finished sessions resumed in place | accepted, amended by ADR-0059 |
 | [ADR-0037](ADR-0037-spawned-sessions-carry-the-node-hooks-and-a-permission-mode.md) | Spawned sessions carry the node's hooks, and a spawn picks a permission mode | accepted |
 | [ADR-0038](ADR-0038-sandboxed-spawns-on-seatbelt-with-a-long-lived-token.md) | Sandboxed spawns on seatbelt, under launch profiles from the node's config, with a long-lived token | accepted |
 | [ADR-0039](ADR-0039-sessions-run-under-named-setup-tokens-the-hub-holds.md) | Sessions run under named `claude setup-token` tokens the hub holds, not leased slots | accepted |
@@ -73,6 +73,7 @@ spawns, with the owner's answers of 2026-11-07.
 | [ADR-0056](ADR-0056-the-app-carries-a-web-view-s-event-streams-over-a-bridge.md) | The app carries a web view's event streams over a bridge | accepted, amended by ADR-0058 |
 | [ADR-0057](ADR-0057-the-hub-sends-the-request-s-head-with-open-service.md) | The hub sends the request's head with `OpenService` | accepted |
 | [ADR-0058](ADR-0058-the-web-view-bridge-carries-request-bodies-and-ranges-are-placed.md) | The web view bridge carries request bodies, and range answers are placed at their offset | accepted |
+| [ADR-0059](ADR-0059-a-node-restores-a-transcript-from-the-hub-to-resume.md) | A node restores a transcript from the hub to resume a session | accepted |
 
 Each record:
 

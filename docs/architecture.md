@@ -492,7 +492,9 @@ the proxy; on exit the node only reports the end.
 Resume works by session id in both directions, so a terminal session can be continued
 headless and a spawned one can be attached at a terminal later. Headless, it continues
 the same session in place ([[EXP-20261106-62st4b]]); the hub's `Resume` sends the node
-the directory from its record, and the spawner runs it with `--resume` (ADR-0036). `claude --bg` is the
+the directory from its record, and the spawner runs it with `--resume` (ADR-0036). A node
+without the transcript asks the hub for its copy with `SessionTranscript` and writes it
+back first, into the launch profile the hub names (ADR-0059). `claude --bg` is the
 alternative for sessions the person may want to `attach` to: Claude Code keeps the process
 and offers `logs`, `stop` and `rm`, but its output is a terminal stream, so the daemon still
 relies on hooks and the transcript.

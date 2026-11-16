@@ -571,6 +571,30 @@ impl Db {
         Ok(rows.iter().map(event_from).collect())
     }
 
+    /// A page of a session's transcript lines as the node sent them, after `after_seq`, in
+    /// order: each with its seq, to ask for the next page from.
+    pub async fn transcript(
+        &self,
+        node_id: &str,
+        session_id: &str,
+        after_seq: i64,
+        limit: i64,
+    ) -> Result<Vec<(i64, String)>> {
+        let rows: Vec<(i64, String)> = sqlx::query_as(
+            "SELECT seq, payload FROM events
+             WHERE node_id = ?1 AND session_id = ?2 AND source = ?3 AND seq > ?4
+             ORDER BY seq LIMIT ?5",
+        )
+        .bind(node_id)
+        .bind(session_id)
+        .bind(EventSource::Transcript.as_str_name())
+        .bind(after_seq)
+        .bind(limit)
+        .fetch_all(&self.pool)
+        .await?;
+        Ok(rows)
+    }
+
     /// The payload of a session's latest daemon `usage` event: its totals by model.
     pub async fn last_usage(&self, node_id: &str, session_id: &str) -> Result<Option<String>> {
         let row = sqlx::query(

@@ -45,6 +45,16 @@ impl NodeService for Hub {
         Err(Status::unimplemented("not part of this test"))
     }
 
+    type SessionTranscriptStream =
+        Pin<Box<dyn Stream<Item = Result<saarthi_proto::node::v1::SessionTranscriptPart, Status>> + Send>>;
+
+    async fn session_transcript(
+        &self,
+        _: Request<saarthi_proto::node::v1::SessionTranscriptRequest>,
+    ) -> Result<Response<Self::SessionTranscriptStream>, Status> {
+        Err(Status::unimplemented("not part of this test"))
+    }
+
     async fn link(
         &self,
         request: Request<Streaming<NodeMessage>>,

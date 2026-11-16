@@ -157,6 +157,36 @@ impl HubApi {
     }
 }
 
+impl HubApi {
+    /// A session's transcript lines as the hub kept them, in order, for a session this node
+    /// no longer has a transcript of.
+    pub async fn session_transcript(&self, session_id: &str) -> Result<Vec<String>, String> {
+        // A transcript line can be large (a screenshot, a whole file): no part limit here.
+        let mut client = self.client().await?.max_decoding_message_size(usize::MAX);
+        let mut request = tonic::Request::new(saarthi_proto::node::v1::SessionTranscriptRequest {
+            session_id: session_id.to_string(),
+        });
+        let bearer = format!("Bearer {}", self.token)
+            .parse()
+            .map_err(|_| "the node token is not valid in a header".to_string())?;
+        request.metadata_mut().insert("authorization", bearer);
+        let mut stream = match client.session_transcript(request).await {
+            Ok(r) => r.into_inner(),
+            Err(status) => {
+                if status.code() == tonic::Code::Unavailable {
+                    self.forget().await;
+                }
+                return Err(status.message().to_string());
+            }
+        };
+        let mut lines = Vec::new();
+        while let Some(part) = stream.message().await.map_err(|s| s.message().to_string())? {
+            lines.extend(part.lines);
+        }
+        Ok(lines)
+    }
+}
+
 /// Where a proxy sends its requests.
 pub enum Upstream {
     /// To the hub, under the token it holds by this name (ADR-0051).

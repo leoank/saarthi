@@ -1,7 +1,8 @@
 //! Tails a session's transcript JSONL and its subagent transcripts (EXP-0002). Keeps the
-//! `uuid`-bearing `user`, `assistant` and `system` lines; attachment and session-state lines
-//! are dropped. Usage is summed once per `message.id`, since one API message is written as
-//! one line per content block.
+//! `uuid`-bearing `user`, `assistant`, `system` and `attachment` lines, the ones a
+//! conversation is chained through, so the hub's copy can rebuild a transcript a node no
+//! longer has ([`rebuild`]); session-state lines are dropped. Usage is summed once per
+//! `message.id`, since one API message is written as one line per content block.
 
 use std::collections::{BTreeMap, HashMap, HashSet};
 use std::io::SeekFrom;
@@ -16,7 +17,7 @@ use tokio::sync::watch;
 
 use crate::outbox::Outbox;
 
-const KEPT_TYPES: [&str; 3] = ["user", "assistant", "system"];
+const KEPT_TYPES: [&str; 4] = ["user", "assistant", "system", "attachment"];
 
 /// Token totals for one model, as `message.usage` names them.
 #[derive(Debug, Default, Clone, PartialEq, Serialize)]
@@ -101,6 +102,46 @@ pub fn classify(raw: &str, usage: &mut Usage) -> Line {
     } else {
         Line::Kept { kind, line, uuid }
     }
+}
+
+/// A session's main transcript rebuilt from the lines the hub kept, in the order the node
+/// read them, for `claude --resume`: subagents' lines (`isSidechain`) and repeats left out.
+/// Claude Code follows each line's `parentUuid` back from the last; the hub kept no
+/// attachment lines before they were sent, and a line whose parent is missing would end
+/// the conversation there, so it is chained to the line before it instead.
+pub fn rebuild(lines: &[String]) -> String {
+    let mut seen = HashSet::new();
+    let mut out = String::new();
+    let mut last: Option<String> = None;
+    for line in lines {
+        let Ok(mut v) = serde_json::from_str::<Value>(line) else {
+            continue;
+        };
+        if v["isSidechain"].as_bool() == Some(true) {
+            continue;
+        }
+        let Some(uuid) = v["uuid"].as_str().map(str::to_string) else {
+            continue;
+        };
+        if !seen.insert(uuid.clone()) {
+            continue;
+        }
+        let parent = v["parentUuid"].as_str().map(str::to_string);
+        let repaired = match &parent {
+            Some(p) if !seen.contains(p) => Some(last.clone().map_or(Value::Null, Value::String)),
+            _ => None,
+        };
+        match repaired {
+            Some(p) => {
+                v["parentUuid"] = p;
+                out.push_str(&v.to_string());
+            }
+            None => out.push_str(line),
+        }
+        out.push('\n');
+        last = Some(uuid);
+    }
+    out
 }
 
 /// Where a session's subagent transcripts live: `<dir>/<session id>/subagents/`.
@@ -240,7 +281,7 @@ mod tests {
     }
 
     #[test]
-    fn keeps_message_lines_and_drops_the_rest() {
+    fn keeps_message_and_attachment_lines_and_drops_the_rest() {
         let mut usage = Usage::default();
         let user = r#"{"type":"user","uuid":"a","message":{"role":"user","content":"hi"}}"#;
         let system = r#"{"type":"system","subtype":"turn_duration","uuid":"b","durationMs":5}"#;
@@ -252,9 +293,32 @@ mod tests {
         assert!(
             matches!(classify(system, &mut usage), Line::Kept { kind, .. } if kind == "system")
         );
-        assert_eq!(classify(attachment, &mut usage), Line::Dropped);
+        assert!(
+            matches!(classify(attachment, &mut usage), Line::Kept { kind, .. } if kind == "attachment")
+        );
         assert_eq!(classify(state, &mut usage), Line::Dropped);
         assert_eq!(classify("not json", &mut usage), Line::Dropped);
+    }
+
+    #[test]
+    fn a_transcript_is_rebuilt_whole_from_the_hubs_lines() {
+        let line = |v: serde_json::Value| v.to_string();
+        let lines = vec![
+            line(serde_json::json!({"type": "user", "uuid": "a", "parentUuid": null})),
+            // An attachment the hub never had sits between "a" and "b".
+            line(serde_json::json!({"type": "assistant", "uuid": "b", "parentUuid": "gone"})),
+            line(serde_json::json!({"type": "user", "uuid": "s", "parentUuid": "b", "isSidechain": true})),
+            line(serde_json::json!({"type": "user", "uuid": "c", "parentUuid": "b"})),
+            line(serde_json::json!({"type": "user", "uuid": "c", "parentUuid": "b"})),
+            "not json".to_string(),
+        ];
+        let out: Vec<serde_json::Value> =
+            rebuild(&lines).lines().map(|l| serde_json::from_str(l).unwrap()).collect();
+        let chain: Vec<(&str, Option<&str>)> =
+            out.iter().map(|v| (v["uuid"].as_str().unwrap(), v["parentUuid"].as_str())).collect();
+        assert_eq!(chain, [("a", None), ("b", Some("a")), ("c", Some("b"))]);
+        // A line whose parent is there is written as it was read.
+        assert_eq!(rebuild(&lines[..1]), format!("{}\n", lines[0]));
     }
 
     #[test]
