@@ -23,6 +23,9 @@ limits without a Claude login) is simply absent.
 | `usage.<window>_resets_s` | Unix seconds | When each of the three windows resets |
 | `usage.age_s` | seconds | Age of the usage numbers: 0 when polled live (`--claude-usage`), otherwise the age of Claude Code's own cached copy |
 
+The two keep-awake metrics are also sent on their own the moment either changes, so a
+client sees a switch take effect within seconds.
+
 The app charts CPU, memory, GPU, disk, load, network in and out (as MB/s, from the bytes
 since the previous sample and the time between the two) and the three usage windows. The
 hub keeps every sample in its `health` table.

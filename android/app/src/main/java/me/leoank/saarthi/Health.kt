@@ -37,6 +37,7 @@ import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableIntStateOf
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
+import androidx.compose.runtime.rememberCoroutineScope
 import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
@@ -45,6 +46,7 @@ import androidx.compose.ui.graphics.Path
 import androidx.compose.ui.graphics.drawscope.Stroke
 import androidx.compose.ui.unit.dp
 import kotlinx.coroutines.delay
+import kotlinx.coroutines.launch
 
 private val ranges = listOf("1 h" to 1L, "6 h" to 6L, "24 h" to 24L)
 
@@ -93,15 +95,19 @@ private val series = listOf(
 fun HealthScreen(model: HubModel, snackbar: SnackbarHostState, nodeId: String, back: () -> Unit) {
     val node = model.node(nodeId)
     var range by remember { mutableIntStateOf(0) }
-    // The keep-awake switch as the latest sample reports it, or as just set from here until
-    // a sample says so (ADR-0034).
-    val reported = model.health.lastOrNull()?.metrics?.firstOrNull { it.name == "node.keep_awake_enabled" }?.value?.let { it == 1.0 }
+    // Each metric's latest value, not the latest sample's: the usage poller's samples carry
+    // only the usage windows, and keep-awake's own only its two flags.
+    val latest = buildMap { for (p in model.health) for (m in p.metrics) put(m.name, m.value) }
+    // The keep-awake switch as the node last reported it, or as just set from here until
+    // the node reports that (ADR-0034).
+    val reported = latest["node.keep_awake_enabled"]?.let { it == 1.0 }
     var switched by remember(nodeId) { mutableStateOf<Boolean?>(null) }
-    LaunchedEffect(reported) { switched = null }
+    LaunchedEffect(reported) { if (reported == switched) switched = null }
     val keepAwake = switched ?: reported
     LaunchedEffect(nodeId, range) {
         while (true) {
             model.loadHealth(nodeId, System.currentTimeMillis() - ranges[range].second * 3_600_000)
+    val scope = rememberCoroutineScope()
             delay(60_000)
         }
     }
@@ -112,14 +118,17 @@ fun HealthScreen(model: HubModel, snackbar: SnackbarHostState, nodeId: String, b
                     Column {
                         Text(node?.name ?: "Node")
                         node?.let {
-                            val awake = model.health.lastOrNull()?.metrics?.firstOrNull { m -> m.name == "node.keep_awake" }?.value
+                            // Said the way the switch is: on and holding, on and waiting for
+                            // a session to work, or nothing when off.
+                            val holding = latest["node.keep_awake"] == 1.0
                             Text(
                                 listOfNotNull(
                                     if (it.connected) "online · v${it.version}" else "offline · last seen ${relative(it.lastSeenMs)}",
                                     when {
-                                        awake == 1.0 -> "keeping the machine awake"
-                                        awake == 0.0 && keepAwake == true -> "letting it sleep"
-                                        else -> null
+                                        !it.connected || keepAwake != true -> null
+                                        switched != null -> "keep awake on"
+                                        holding -> "keep awake on, holding the machine awake"
+                                        else -> "keep awake on, nothing working"
                                     },
                                 ).joinToString(" · "),
                                 style = MaterialTheme.typography.bodySmall,
@@ -134,7 +143,7 @@ fun HealthScreen(model: HubModel, snackbar: SnackbarHostState, nodeId: String, b
         snackbarHost = { SnackbarHost(snackbar) },
     ) { padding ->
         val points = model.health.map { p -> p.timeMs to p.metrics.associate { it.name to it.value } }
-        val memory = points.lastOrNull()?.second
+        val memory = latest.takeIf { it.isNotEmpty() }
         LazyColumn(
             contentPadding = PaddingValues(16.dp),
             verticalArrangement = Arrangement.spacedBy(12.dp),
@@ -165,7 +174,18 @@ fun HealthScreen(model: HubModel, snackbar: SnackbarHostState, nodeId: String, b
                         }
                         Switch(
                             checked = keepAwake,
-                            onCheckedChange = { on -> switched = on; model.setKeepAwake(nodeId, on) },
+                            onCheckedChange = { on ->
+                                switched = on
+                                model.setKeepAwake(nodeId, on)
+                                // The node reports a change within seconds; read it back.
+                                scope.launch {
+                                    delay(5_000)
+                                    model.loadHealth(nodeId, System.currentTimeMillis() - ranges[range].second * 3_600_000)
+                                    // Then what the node says, even if it is not what was asked.
+                                    delay(3_000)
+                                    switched = null
+                                }
+                            },
                         )
                     }
                 }

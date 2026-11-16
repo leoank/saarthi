@@ -512,6 +512,7 @@ async fn serve(args: Serve) -> Result<()> {
                 keep_awake.clone(),
                 held.clone(),
                 Duration::from_secs(args.registry_secs.max(1)),
+                Some(outbox.clone()),
             ));
             true
         }

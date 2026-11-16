@@ -482,7 +482,7 @@ class HubModel(app: Application) : AndroidViewModel(app) {
     /** Switches a node's keep-awake hold (ADR-0031); health reports it from the next
      *  sample, so the health screen shows the switch as set until then. */
     fun setKeepAwake(nodeId: String, on: Boolean) = withHub {
-        done(it.setKeepAwake(nodeId, on), if (on) "Keeping the machine awake while a session works" else "Letting the machine sleep")
+        done(it.setKeepAwake(nodeId, on), if (on) "Keep awake on: the machine stays awake while a session works" else "Keep awake off: the machine may sleep")
     }
 
     /** Shows one session's conversation: what the cache has at once, then the stream from

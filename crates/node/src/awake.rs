@@ -104,17 +104,28 @@ impl Hold {
 }
 
 /// Watches the sessions and holds or releases the machine while `enabled`; runs until the
-/// node exits.
+/// node exits. Each change of the switch or the hold goes to `report` at once as a sample
+/// of the two keep-awake metrics, so a client sees it in seconds rather than at the next
+/// health sample.
 pub async fn keep(
     hold: Hold,
     sessions: Arc<Sessions>,
     enabled: Arc<AtomicBool>,
     held: Held,
     every: Duration,
+    report: Option<saarthi_node::outbox::Outbox>,
 ) {
     let mut child: Option<tokio::process::Child> = None;
     let mut tick = tokio::time::interval(every);
+    let mut reported = None;
     loop {
+        if let Some(outbox) = &report {
+            let now = (enabled.load(Ordering::Relaxed), held.load(Ordering::Relaxed));
+            if reported != Some(now) {
+                reported = Some(now);
+                outbox.health(sample(now.0, now.1)).await;
+            }
+        }
         tick.tick().await;
         let busy = enabled.load(Ordering::Relaxed)
             && sessions
@@ -151,6 +162,16 @@ pub async fn keep(
     }
 }
 
+/// The two keep-awake metrics as a sample of their own.
+pub fn sample(enabled: bool, held: bool) -> saarthi_proto::event::v1::HealthSample {
+    let flag = |b: bool| if b { 1.0 } else { 0.0 };
+    let metric = |name: &str, value| saarthi_proto::event::v1::Metric { name: name.into(), value };
+    saarthi_proto::event::v1::HealthSample {
+        time_ms: saarthi_node::outbox::now_ms(),
+        metrics: vec![metric("node.keep_awake", flag(held)), metric("node.keep_awake_enabled", flag(enabled))],
+    }
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;
@@ -177,6 +198,19 @@ exec "$@"
         path
     }
 
+    /// `Hold::check` on the stand-in, again while it fails: on Linux a script just written
+    /// can fail to run ("Text file busy") while another test's thread forks with the
+    /// file still open for writing.
+    async fn held_by(inhibit: PathBuf) -> Hold {
+        for _ in 0..50 {
+            if let Some(h) = Hold::check(inhibit.clone()).await {
+                return h;
+            }
+            tokio::time::sleep(Duration::from_millis(20)).await;
+        }
+        panic!("the stand-in never ran");
+    }
+
     async fn until(what: &str, mut done: impl FnMut() -> bool) {
         for _ in 0..200 {
             if done() {
@@ -194,13 +228,13 @@ exec "$@"
         std::fs::write(dir.path().join("refuse"), "").unwrap();
         assert!(Hold::check(inhibit.clone()).await.is_none());
         std::fs::remove_file(dir.path().join("refuse")).unwrap();
-        assert!(matches!(Hold::check(inhibit).await, Some(Hold::Inhibit(_))));
+        assert!(matches!(held_by(inhibit).await, Hold::Inhibit(_)));
     }
 
     #[tokio::test]
     async fn the_lock_is_held_while_a_session_is_busy_and_only_then() {
         let dir = tempfile::tempdir().unwrap();
-        let hold = Hold::check(fake(dir.path())).await.unwrap();
+        let hold = held_by(fake(dir.path())).await;
         let (outbox, _rx) = Outbox::new(64);
         let sessions = Arc::new(Sessions::new(
             dir.path().join(".claude"),
@@ -209,12 +243,14 @@ exec "$@"
             Vec::new(),
         ));
         let (enabled, held) = (Arc::new(AtomicBool::new(true)), Held::default());
+        let (report, mut reports) = Outbox::new(64);
         tokio::spawn(keep(
             hold,
             sessions.clone(),
             enabled.clone(),
             held.clone(),
             Duration::from_millis(20),
+            Some(report),
         ));
         let record = |status: &str| Record {
             pid: std::process::id(),
@@ -250,5 +286,15 @@ exec "$@"
         tokio::time::sleep(Duration::from_millis(150)).await;
         assert!(!held.load(Ordering::Relaxed));
         assert_eq!(holds(), 1);
+
+        // Every change went out at once as (switched on, held).
+        let mut seen = Vec::new();
+        while let Ok(m) = reports.try_recv() {
+            if let Some(saarthi_proto::node::v1::node_message::Body::Health(h)) = m.body {
+                let get = |n: &str| h.metrics.iter().find(|m| m.name == n).unwrap().value == 1.0;
+                seen.push((get("node.keep_awake_enabled"), get("node.keep_awake")));
+            }
+        }
+        assert_eq!(seen, [(true, false), (true, true), (true, false), (false, false)]);
     }
 }

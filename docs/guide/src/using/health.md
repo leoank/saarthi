@@ -16,13 +16,15 @@ Each chart shows the latest value and the peak over the span. The full list of w
 node reports, including what is not charted, is in [Health metrics](../reference/metrics.md).
 
 The subtitle under the node's name says whether it is online and, when keep-awake is on,
-whether it is *keeping the machine awake* (a session is busy) or *letting it sleep*.
+whether it is *holding the machine awake* (a session is busy) or has *nothing working*,
+in which case the machine may sleep as usual.
 
 The **Keep awake** switch at the top turns that hold on and off while the node runs
 (on macOS, and on Linux where polkit allows the lock: a node that cannot hold the machine shows no switch; `--keep-awake` sets it at start). On, the node keeps the machine out of idle
 sleep while any session is busy, so a turn started from the phone finishes when the
 screen turns off; lid-close sleep still happens. The switch shows the state the node
-last reported, which arrives with its next health sample.
+last reported; the node reports a change at once, and the screen reads it back a few
+seconds after you flip the switch.
 
 ## Rate limits
 
