@@ -8,8 +8,8 @@ edition.workspace = true
 crate-type = ["lib", "cdylib"]
 
 [dependencies]
-saarthi-proto = { version = "0.11.0", path = "../proto" }
-saarthi-tailnet = { version = "0.11.0", path = "../tailnet" }
+saarthi-proto = { version = "0.11.1", path = "../proto" }
+saarthi-tailnet = { version = "0.11.1", path = "../tailnet" }
 jiff = { version = "0.2.38", default-features = false, features = ["std"] }
 serde_json = "1.0.154"
 thiserror = "2"
