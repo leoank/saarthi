@@ -1,6 +1,7 @@
 //! Node health, one sample per interval: CPU, memory, the disk holding the home directory,
 //! network since the last sample, running claude processes, the GPU on macOS (EXP-0009),
-//! and the account's usage utilization as `/usage` last cached it (EXP-0002).
+//! the battery where there is one, and the account's usage utilization as `/usage` last
+//! cached it (EXP-0002).
 
 use std::path::{Path, PathBuf};
 
@@ -89,6 +90,9 @@ impl Sampler {
         put("claude.processes", claude as f64);
 
         for (name, value) in gpu::sample() {
+            put(name, value);
+        }
+        for (name, value) in battery::sample() {
             put(name, value);
         }
         if let Some(claude_json) = &self.claude_json {
@@ -222,6 +226,141 @@ mod gpu {
     }
 }
 
+/// What a battery reports, in the units each machine gives them.
+#[derive(Debug, Default, PartialEq)]
+struct Battery {
+    /// Charge now and when full, in one unit (percent, mAh or µWh).
+    now: Option<f64>,
+    full: Option<f64>,
+    /// What a full charge held when new, in the unit of `full_raw`.
+    design: Option<f64>,
+    /// What a full charge holds now, in the unit of `design`.
+    full_raw: Option<f64>,
+    cycles: Option<f64>,
+    charging: Option<bool>,
+    on_power: Option<bool>,
+    temp_c: Option<f64>,
+}
+
+impl Battery {
+    fn metrics(&self) -> Vec<(&'static str, f64)> {
+        let mut out = Vec::new();
+        if let (Some(now), Some(full)) = (self.now, self.full)
+            && full > 0.0
+        {
+            out.push(("battery.charge_pct", (100.0 * now / full).min(100.0)));
+        }
+        if let (Some(full), Some(design)) = (self.full_raw, self.design)
+            && design > 0.0
+        {
+            out.push(("battery.health_pct", 100.0 * full / design));
+        }
+        let flag = |b: bool| if b { 1.0 } else { 0.0 };
+        out.extend(self.cycles.map(|c| ("battery.cycles", c)));
+        out.extend(self.charging.map(|c| ("battery.charging", flag(c))));
+        out.extend(self.on_power.map(|c| ("battery.on_power", flag(c))));
+        out.extend(self.temp_c.map(|t| ("battery.temp_c", t)));
+        out
+    }
+}
+
+#[cfg(target_os = "macos")]
+mod battery {
+    //! IOKit's `AppleSmartBattery`, as `ioreg -rn AppleSmartBattery` shows it. The health
+    //! is the full-charge capacity over the design capacity, as macOS's *Maximum Capacity*.
+
+    use core_foundation::base::{CFType, TCFType, kCFAllocatorDefault};
+    use core_foundation::boolean::CFBoolean;
+    use core_foundation::number::CFNumber;
+    use core_foundation::string::CFString;
+    use io_kit_sys::{
+        IOObjectRelease, IORegistryEntryCreateCFProperty, IOServiceGetMatchingService,
+        IOServiceMatching, kIOMasterPortDefault,
+    };
+
+    pub fn sample() -> Vec<(&'static str, f64)> {
+        unsafe {
+            let svc = IOServiceGetMatchingService(
+                kIOMasterPortDefault,
+                IOServiceMatching(c"AppleSmartBattery".as_ptr()),
+            );
+            if svc == 0 {
+                return Vec::new();
+            }
+            let get = |k: &'static str| -> Option<CFType> {
+                let key = CFString::from_static_string(k);
+                let raw = IORegistryEntryCreateCFProperty(svc, key.as_concrete_TypeRef(), kCFAllocatorDefault, 0);
+                (!raw.is_null()).then(|| CFType::wrap_under_create_rule(raw))
+            };
+            let num = |k| get(k).and_then(|v| v.downcast::<CFNumber>()).and_then(|n| n.to_f64());
+            let yes = |k| get(k).and_then(|v| v.downcast::<CFBoolean>()).map(bool::from);
+            let b = if yes("BatteryInstalled") == Some(false) {
+                super::Battery::default()
+            } else {
+                super::Battery {
+                    now: num("CurrentCapacity"),
+                    full: num("MaxCapacity"),
+                    design: num("DesignCapacity"),
+                    full_raw: num("NominalChargeCapacity").or_else(|| num("AppleRawMaxCapacity")),
+                    cycles: num("CycleCount"),
+                    charging: yes("IsCharging"),
+                    on_power: yes("ExternalConnected"),
+                    temp_c: num("Temperature").map(|t| t / 100.0),
+                }
+            };
+            IOObjectRelease(svc);
+            b.metrics()
+        }
+    }
+}
+
+#[cfg(not(target_os = "macos"))]
+mod battery {
+    //! `/sys/class/power_supply`: the first battery of the system (not a mouse's), and
+    //! whether any mains supply is online.
+
+    use std::path::Path;
+
+    pub fn sample() -> Vec<(&'static str, f64)> {
+        read(Path::new("/sys/class/power_supply")).metrics()
+    }
+
+    pub(super) fn read(root: &Path) -> super::Battery {
+        let Ok(dir) = std::fs::read_dir(root) else {
+            return super::Battery::default();
+        };
+        let mut supplies: Vec<_> = dir.flatten().map(|e| e.path()).collect();
+        supplies.sort();
+        let text = |p: &Path, k: &str| std::fs::read_to_string(p.join(k)).ok().map(|s| s.trim().to_string());
+        let num = |p: &Path, k: &str| text(p, k).and_then(|s| s.parse::<f64>().ok());
+        let on_power = supplies
+            .iter()
+            .filter(|p| text(p, "type").as_deref() == Some("Mains"))
+            .map(|p| num(p, "online") == Some(1.0))
+            .reduce(|a, b| a || b);
+        let Some(bat) = supplies.iter().find(|p| {
+            text(p, "type").as_deref() == Some("Battery") && text(p, "scope").as_deref() != Some("Device")
+        }) else {
+            return super::Battery::default();
+        };
+        // Energy (µWh) where the battery reports it, else charge (µAh).
+        let (full, design) = match (num(bat, "energy_full"), num(bat, "energy_full_design")) {
+            (Some(f), Some(d)) => (Some(f), Some(d)),
+            _ => (num(bat, "charge_full"), num(bat, "charge_full_design")),
+        };
+        super::Battery {
+            now: num(bat, "capacity"),
+            full: Some(100.0),
+            design,
+            full_raw: full,
+            cycles: num(bat, "cycle_count").filter(|c| *c > 0.0),
+            charging: text(bat, "status").map(|s| s == "Charging"),
+            on_power,
+            temp_c: num(bat, "temp").map(|t| t / 10.0),
+        }
+    }
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;
@@ -273,6 +412,46 @@ mod tests {
             ]
         );
         assert!(cached_usage(&dir.path().join("missing"), 0).is_empty());
+    }
+
+    #[test]
+    fn a_battery_reports_its_charge_health_and_state() {
+        let b = Battery {
+            now: Some(54.0),
+            full: Some(100.0),
+            design: Some(8579.0),
+            full_raw: Some(8091.0),
+            cycles: Some(186.0),
+            charging: Some(false),
+            on_power: Some(true),
+            temp_c: Some(30.07),
+        };
+        let m: std::collections::HashMap<_, _> = b.metrics().into_iter().collect();
+        assert_eq!(m["battery.charge_pct"], 54.0);
+        assert!((m["battery.health_pct"] - 94.31).abs() < 0.01, "{}", m["battery.health_pct"]);
+        assert_eq!((m["battery.cycles"], m["battery.charging"], m["battery.on_power"]), (186.0, 0.0, 1.0));
+        assert!(Battery::default().metrics().is_empty(), "no battery, no metrics");
+    }
+
+    #[cfg(not(target_os = "macos"))]
+    #[test]
+    fn linux_reads_the_system_battery_and_the_mains() {
+        let dir = tempfile::tempdir().unwrap();
+        let put = |supply: &str, files: &[(&str, &str)]| {
+            std::fs::create_dir_all(dir.path().join(supply)).unwrap();
+            for (k, v) in files {
+                std::fs::write(dir.path().join(supply).join(k), format!("{v}\n")).unwrap();
+            }
+        };
+        put("AC", &[("type", "Mains"), ("online", "1")]);
+        put("BAT0", &[("type", "Battery"), ("capacity", "80"), ("status", "Charging"),
+            ("energy_full", "45000000"), ("energy_full_design", "50000000"), ("cycle_count", "12")]);
+        put("hidpp_battery_0", &[("type", "Battery"), ("scope", "Device"), ("capacity", "5")]);
+        let m: std::collections::HashMap<_, _> = battery::read(dir.path()).metrics().into_iter().collect();
+        assert_eq!(m["battery.charge_pct"], 80.0);
+        assert_eq!(m["battery.health_pct"], 90.0);
+        assert_eq!((m["battery.charging"], m["battery.on_power"], m["battery.cycles"]), (1.0, 1.0, 12.0));
+        assert!(battery::read(&dir.path().join("none")).metrics().is_empty());
     }
 
     #[test]

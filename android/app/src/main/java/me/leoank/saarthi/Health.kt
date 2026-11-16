@@ -78,6 +78,9 @@ private val series = listOf(
         val used = m["disk.used_bytes"]; val total = m["disk.total_bytes"]
         if (used != null && total != null && total > 0) 100 * used / total else null
     },
+    // Only from a machine with a battery.
+    Series("Battery", "%", 100.0) { it["battery.charge_pct"] },
+    Series("Battery health", "%", 100.0) { it["battery.health_pct"] },
     Series("Load, 1 min", "", null) { it["cpu.load_1m"] },
     // Bytes on all interfaces since the node's previous sample.
     Series("Network in", "MB/s", null, rate = true) { it["net.rx_bytes"]?.div(1_000_000) },
@@ -104,10 +107,10 @@ fun HealthScreen(model: HubModel, snackbar: SnackbarHostState, nodeId: String, b
     var switched by remember(nodeId) { mutableStateOf<Boolean?>(null) }
     LaunchedEffect(reported) { if (reported == switched) switched = null }
     val keepAwake = switched ?: reported
+    val scope = rememberCoroutineScope()
     LaunchedEffect(nodeId, range) {
         while (true) {
             model.loadHealth(nodeId, System.currentTimeMillis() - ranges[range].second * 3_600_000)
-    val scope = rememberCoroutineScope()
             delay(60_000)
         }
     }
@@ -235,6 +238,19 @@ fun HealthScreen(model: HubModel, snackbar: SnackbarHostState, nodeId: String, b
                             val used = memory["mem.used_bytes"]; val total = memory["mem.total_bytes"]
                             if (used != null && total != null) "${gigabytes(used)} of ${gigabytes(total)}" else null
                         }
+                        s.name == "Battery" -> latest["battery.charge_pct"]?.let {
+                            when {
+                                latest["battery.charging"] == 1.0 -> "charging"
+                                latest["battery.on_power"] == 1.0 -> "on power, not charging"
+                                latest["battery.on_power"] == 0.0 -> "on battery"
+                                else -> null
+                            }
+                        }
+                        s.name == "Battery health" -> listOfNotNull(
+                            "full charge against new",
+                            latest["battery.cycles"]?.let { "%.0f cycles".format(it) },
+                            latest["battery.temp_c"]?.let { "%.0f °C".format(it) },
+                        ).joinToString(" · ")
                         s.name.startsWith("Claude") && memory != null -> when (val age = memory["usage.age_s"]) {
                             null -> null
                             0.0 -> "live from the usage endpoint"

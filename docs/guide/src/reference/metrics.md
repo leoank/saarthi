@@ -15,6 +15,12 @@ limits without a Claude login) is simply absent.
 | `gpu.util_pct` | % | GPU device utilisation (macOS) |
 | `gpu.mem_used_bytes` | bytes | GPU memory in use (macOS) |
 | `claude.processes` | | Running Claude Code processes |
+| `battery.charge_pct` | % | Battery charge; this and the other battery metrics only from a machine with a battery |
+| `battery.health_pct` | % | What a full charge holds against what it held new (macOS's *Maximum Capacity*) |
+| `battery.cycles` | | Charge cycles |
+| `battery.charging` | 0 or 1 | Charging now |
+| `battery.on_power` | 0 or 1 | Plugged in |
+| `battery.temp_c` | °C | Battery temperature, where the machine reports it |
 | `node.keep_awake` | 0 or 1 | Whether the daemon is holding the machine awake; only from a node that can |
 | `node.keep_awake_enabled` | 0 or 1 | Whether keep-awake is switched on (`--keep-awake`, or the app's switch); only from a node that can hold |
 | `usage.five_hour_pct` | % | Claude 5-hour window used |
@@ -26,6 +32,6 @@ limits without a Claude login) is simply absent.
 The two keep-awake metrics are also sent on their own the moment either changes, so a
 client sees a switch take effect within seconds.
 
-The app charts CPU, memory, GPU, disk, load, network in and out (as MB/s, from the bytes
-since the previous sample and the time between the two) and the three usage windows. The
-hub keeps every sample in its `health` table.
+The app charts CPU, memory, GPU, disk, battery charge and health, load, network in and
+out (as MB/s, from the bytes since the previous sample and the time between the two) and
+the three usage windows. The hub keeps every sample in its `health` table.

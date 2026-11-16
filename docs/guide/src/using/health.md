@@ -7,6 +7,9 @@ every minute:
 
 - **CPU**, **Memory** and **Disk** (the disk holding your home directory), in percent;
 - **GPU** utilisation, on macOS;
+- **Battery** charge, with whether it is charging, plugged in or on battery, and
+  **Battery health**, what a full charge holds against what it held new, with the cycle
+  count; only for a machine with a battery;
 - **Load**, the one-minute load average;
 - **Network in** and **Network out**, in MB/s across all interfaces;
 - your Claude rate limits: **Claude 5-hour limit**, **Claude 7-day limit** and
