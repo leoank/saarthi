@@ -71,8 +71,9 @@ to read and a *Jump to latest* button brings you back. When your last prompt is 
 screen, *Your last prompt* at the top scrolls to it. Long-press any text to select and
 copy it.
 
-A prompt you sent shows a clock while it goes out, one tick once the hub has it and two
-once it is in the transcript. Allowing, denying or answering a request shows no
+Your prompts and Claude's replies show the time Claude Code wrote them. A prompt you sent
+shows a clock while it goes out, one tick once the hub has it and two once it is in the
+transcript. Allowing, denying or answering a request shows no
 confirmation: the card leaving is the confirmation, and a message appears only when the
 node has something to say.
 

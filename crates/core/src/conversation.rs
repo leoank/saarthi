@@ -175,7 +175,7 @@ impl Conversation {
                 self.turn_start = self.totals.clone();
                 return vec![Item {
                     seq: e.seq,
-                    time_ms: e.time_ms,
+                    time_ms: written(&v).unwrap_or(e.time_ms),
                     role: Role::Turn,
                     tool: String::new(),
                     text: turn_line(ms, &spent),
@@ -260,12 +260,20 @@ pub struct Item {
     pub error: bool,
 }
 
+/// When Claude Code wrote a transcript line, from its own `timestamp`; the event's time is
+/// when the node read it, which after a restart is when it read the transcript again.
+fn written(v: &Value) -> Option<i64> {
+    let t: jiff::Timestamp = v["timestamp"].as_str()?.parse().ok()?;
+    Some(t.as_millisecond())
+}
+
 /// The items one event shows as; most events show as none or one.
 pub fn items(e: &Event) -> Vec<Item> {
     let v: Value = serde_json::from_str(&e.payload_json).unwrap_or_default();
+    let time_ms = written(&v).unwrap_or(e.time_ms);
     let item = |role, text: String| Item {
         seq: e.seq,
-        time_ms: e.time_ms,
+        time_ms,
         role,
         tool: String::new(),
         text,
@@ -666,6 +674,21 @@ mod tests {
 
     fn shown(e: Event) -> Vec<(Role, String)> {
         items(&e).into_iter().map(|i| (i.role, i.text)).collect()
+    }
+
+    #[test]
+    fn an_item_is_timed_by_when_claude_code_wrote_it() {
+        let mut e = event(
+            EventSource::Transcript,
+            "assistant",
+            serde_json::json!({"timestamp": "2026-10-25T10:59:10.637Z", "message": {"content": [{"type": "text", "text": "hi"}]}}),
+        );
+        e.time_ms = 9;
+        assert_eq!(items(&e)[0].time_ms, 1_792_925_950_637);
+        // A line without one keeps the time the node read it.
+        let mut e = event(EventSource::Transcript, "assistant", serde_json::json!({"message": {"content": [{"type": "text", "text": "hi"}]}}));
+        e.time_ms = 9;
+        assert_eq!(items(&e)[0].time_ms, 9);
     }
 
     #[test]

@@ -408,8 +408,17 @@ private fun Conversation(model: HubModel, s: SessionInfo, modifier: Modifier) {
 private fun ConversationRow(e: Entry, cwd: String, delivered: Boolean = false) {
     val item = e.item
     when (item.role) {
-        Role.USER -> UserTurn(item.text, ticks = if (delivered) 2 else 0)
-        Role.ASSISTANT -> Markdown(item.text, Modifier.fillMaxWidth().padding(vertical = 4.dp))
+        Role.USER -> UserTurn(item.text, ticks = if (delivered) 2 else 0, timeMs = item.timeMs)
+        Role.ASSISTANT -> Column(Modifier.fillMaxWidth().padding(vertical = 4.dp)) {
+            Markdown(item.text, Modifier.fillMaxWidth())
+            Text(
+                clockTime(item.timeMs),
+                style = MaterialTheme.typography.labelSmall,
+                color = MaterialTheme.colorScheme.onSurfaceVariant.copy(alpha = 0.7f),
+                textAlign = TextAlign.End,
+                modifier = Modifier.fillMaxWidth(),
+            )
+        }
         Role.THINKING -> Folded(
             label = "Thinking",
             summary = null,
@@ -479,7 +488,7 @@ private fun Working() {
 @Composable
 private fun SentTurn(x: Sent, retry: () -> Unit) {
     Column(Modifier.fillMaxWidth().clickable(enabled = x.failed != null, onClick = retry)) {
-        UserTurn(x.text, ticks = if (x.accepted) 1 else 0, pending = !x.accepted && x.failed == null)
+        UserTurn(x.text, ticks = if (x.accepted) 1 else 0, pending = !x.accepted && x.failed == null, timeMs = x.timeMs)
         (x.failed?.let { "$it · tap to retry" } ?: x.note)?.let {
             Text(
                 it,
@@ -493,7 +502,7 @@ private fun SentTurn(x: Sent, retry: () -> Unit) {
 }
 
 @Composable
-private fun UserTurn(text: String, ticks: Int = 0, pending: Boolean = false) {
+private fun UserTurn(text: String, ticks: Int = 0, pending: Boolean = false, timeMs: Long? = null) {
     Row(
         Modifier
             .fillMaxWidth()
@@ -516,6 +525,14 @@ private fun UserTurn(text: String, ticks: Int = 0, pending: Boolean = false) {
         )
         if (ticks > 0 || pending) {
             Icon(
+        if (timeMs != null) {
+            Text(
+                clockTime(timeMs),
+                style = MaterialTheme.typography.labelSmall,
+                color = MaterialTheme.colorScheme.onSurfaceVariant.copy(alpha = 0.7f),
+                modifier = Modifier.padding(end = if (ticks > 0 || pending) 4.dp else 10.dp, top = 14.dp),
+            )
+        }
                 when {
                     pending -> Icons.Filled.Schedule
                     ticks >= 2 -> Icons.Filled.DoneAll
