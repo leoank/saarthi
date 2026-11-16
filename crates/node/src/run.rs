@@ -125,7 +125,12 @@ pub fn run(opts: Options) -> Result<i32> {
             eprintln!("saarthi run: Claude account {name}\r");
             (name.clone(), api.clone())
         }
-        None => (String::new(), String::new()),
+        None => {
+            for name in crate::claude_api::inherited() {
+                cmd.env_remove(name);
+            }
+            (String::new(), String::new())
+        }
     };
     let mut child = pty
         .slave

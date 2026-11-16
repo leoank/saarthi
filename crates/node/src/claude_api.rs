@@ -49,6 +49,30 @@ pub fn env(socket: &Path) -> [(&'static str, String); 3] {
     ]
 }
 
+/// The variables to remove from a session under its own login that this process inherited
+/// from a session under a hub token (ADR-0051): a node or `saarthi run` started inside such
+/// a session must not hand its proxy on. Only saarthi's own are named: a proxy socket of its
+/// naming, its base URL, its dummy; a user's own settings of the same names are kept.
+pub fn inherited() -> Vec<&'static str> {
+    let ours_socket = std::env::var_os("ANTHROPIC_UNIX_SOCKET").is_some_and(|s| {
+        Path::new(&s)
+            .file_name()
+            .and_then(|n| n.to_str())
+            .is_some_and(|n| n.starts_with("claude-api-") && n.ends_with(".sock"))
+    });
+    let mut names = Vec::new();
+    if ours_socket {
+        names.push("ANTHROPIC_UNIX_SOCKET");
+        if std::env::var("ANTHROPIC_BASE_URL").is_ok_and(|v| v == BASE_URL) {
+            names.push("ANTHROPIC_BASE_URL");
+        }
+    }
+    if std::env::var("CLAUDE_CODE_OAUTH_TOKEN").is_ok_and(|v| v == DUMMY_TOKEN) {
+        names.push("CLAUDE_CODE_OAUTH_TOKEN");
+    }
+    names
+}
+
 /// Where the proxies of sessions on the host and of terminal sessions listen: a directory
 /// only this user can enter, beside the wrappers' socket directory, and denied to every
 /// sandbox.

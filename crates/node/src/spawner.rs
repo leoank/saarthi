@@ -558,8 +558,11 @@ impl Spawner {
                 Some(proxy)
             }
             None => {
-                // Not one the node itself was started with.
+                // Not one the node itself was started with, nor a proxy it inherited.
                 command.env_remove("CLAUDE_CODE_OAUTH_TOKEN");
+                for name in crate::claude_api::inherited() {
+                    command.env_remove(name);
+                }
                 None
             }
         };
