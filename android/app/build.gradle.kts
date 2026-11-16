@@ -12,8 +12,8 @@ android {
         applicationId = "me.leoank.saarthi"
         minSdk = 26
         targetSdk = 35
-        versionCode = 11
-        versionName = "0.10.0"
+        versionCode = 12
+        versionName = "0.11.0"
         ndk { abiFilters += "arm64-v8a" }
     }
     buildFeatures { compose = true }
