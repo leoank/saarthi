@@ -332,6 +332,8 @@ home-manager, the module's `services` option writes the file. To try one from a 
 $ saarthi ctl service laptop yajna /api/info
 ```
 
+The app shows the notebooks of a node offering `yajna`; see [Notebooks](../using/notebooks.md).
+
 ## Checking it
 
 The node appears in the app and in `saarthi ctl nodes` as connected. Start a session and it

@@ -80,6 +80,87 @@ pub struct NodeInfo {
     /// The Claude token its spawned sessions run under when none is picked; empty for the
     /// node's own login (ADR-0039).
     pub default_claude_token: String,
+    /// The local services a client may reach through the hub (ADR-0052), `yajna` for
+    /// the machine's notebooks; empty when the node has none or is offline.
+    pub services: Vec<String>,
+}
+
+/// A notebook a node's `yajna serve` answers for (yajna's ADR-0036).
+#[derive(Debug, Clone, PartialEq, uniffi::Record)]
+pub struct NotebookInfo {
+    pub node_id: String,
+    /// The name it is linked by, `[[ns/ID]]`.
+    pub namespace: String,
+    /// `lab` or `project`.
+    pub shape: String,
+    /// Where it lives on the node.
+    pub path: String,
+    /// Its pages under the service, `/n/<namespace>/`.
+    pub url: String,
+}
+
+/// One HTTP header of a service request or answer; a value that is not UTF-8 is passed
+/// with its invalid bytes replaced.
+#[derive(Debug, Clone, PartialEq, uniffi::Record)]
+pub struct HeaderInfo {
+    pub name: String,
+    pub value: String,
+}
+
+/// A node service's answer (ADR-0052): its status and headers at once, its body read
+/// piece by piece as the service writes it.
+#[derive(uniffi::Object)]
+pub struct ServiceResponse {
+    status: u32,
+    headers: Vec<HeaderInfo>,
+    body: tokio::sync::Mutex<Option<tonic::Streaming<ServiceResponsePart>>>,
+    stop: watch::Sender<bool>,
+}
+
+#[uniffi::export(async_runtime = "tokio")]
+impl ServiceResponse {
+    pub fn status(&self) -> u32 {
+        self.status
+    }
+
+    pub fn headers(&self) -> Vec<HeaderInfo> {
+        self.headers.clone()
+    }
+
+    /// The next piece of the body, as it arrives; `None` at its end or once cancelled.
+    pub async fn read(&self) -> Result<Option<Vec<u8>>, CoreError> {
+        let mut stopped = self.stop.subscribe();
+        let mut body = self.body.lock().await;
+        loop {
+            if *stopped.borrow_and_update() {
+                *body = None;
+                return Ok(None);
+            }
+            let Some(stream) = body.as_mut() else {
+                return Ok(None);
+            };
+            tokio::select! {
+                _ = stopped.changed() => continue,
+                m = stream.message() => match m {
+                    Ok(Some(p)) if p.body.is_empty() => continue,
+                    Ok(Some(p)) => return Ok(Some(p.body)),
+                    Ok(None) => {
+                        *body = None;
+                        return Ok(None);
+                    }
+                    Err(s) => {
+                        *body = None;
+                        return Err(s.into());
+                    }
+                },
+            }
+        }
+    }
+
+    /// Stops the answer: a read waiting returns `None`, and the stream to the node closes.
+    pub fn cancel(&self) {
+        let _ = self.stop.send(true);
+    }
 }
 
 /// A named Claude token the hub holds (ADR-0039): its name, dates and the account's latest
@@ -587,6 +668,101 @@ impl Hub {
         Ok(())
     }
 
+    /// Sends an HTTP request to one of a node's local services through the hub (ADR-0052)
+    /// and returns the answer once its head arrives; its body follows through
+    /// [`ServiceResponse::read`]. `path` starts with `/` and carries the query. The hub
+    /// drops `Host` and the hop-by-hop headers.
+    pub async fn service_request(
+        &self,
+        node_id: String,
+        service: String,
+        method: String,
+        path: String,
+        headers: Vec<HeaderInfo>,
+        body: Option<Vec<u8>>,
+    ) -> Result<Arc<ServiceResponse>, CoreError> {
+        let head = saarthi_proto::node::v1::ServiceRequestHead {
+            service,
+            method,
+            path,
+            headers: headers
+                .into_iter()
+                .map(|h| saarthi_proto::node::v1::HttpHeader {
+                    name: h.name,
+                    value: h.value.into_bytes(),
+                })
+                .collect(),
+            has_body: body.is_some(),
+        };
+        let mut parts = vec![ServiceRequestPart {
+            node_id,
+            head: Some(head),
+            body: Vec::new(),
+        }];
+        for piece in body.unwrap_or_default().chunks(SERVICE_PIECE) {
+            parts.push(ServiceRequestPart {
+                body: piece.to_vec(),
+                ..Default::default()
+            });
+        }
+        let mut stream = self
+            .client
+            .clone()
+            .service_request(self.req(tokio_stream::iter(parts)))
+            .await?
+            .into_inner();
+        let head = stream
+            .message()
+            .await?
+            .and_then(|m| m.head)
+            .ok_or_else(|| CoreError::Hub {
+                reason: "the service's answer came without its head".into(),
+            })?;
+        let (stop, _) = watch::channel(false);
+        Ok(Arc::new(ServiceResponse {
+            status: head.status,
+            headers: head
+                .headers
+                .into_iter()
+                .map(|h| HeaderInfo {
+                    name: h.name,
+                    value: String::from_utf8_lossy(&h.value).into_owned(),
+                })
+                .collect(),
+            body: tokio::sync::Mutex::new(Some(stream)),
+            stop,
+        }))
+    }
+
+    /// The notebooks a node's `yajna` service answers for, from yajna's
+    /// `/api/notebooks`; the node starts the service if it is not running.
+    pub async fn notebooks(&self, node_id: String) -> Result<Vec<NotebookInfo>, CoreError> {
+        let r = self
+            .service_request(
+                node_id.clone(),
+                "yajna".into(),
+                "GET".into(),
+                "/api/notebooks".into(),
+                Vec::new(),
+                None,
+            )
+            .await?;
+        let mut body = Vec::new();
+        while let Some(piece) = r.read().await? {
+            body.extend(piece);
+        }
+        if r.status != 200 {
+            return Err(CoreError::Refused {
+                reason: format!(
+                    "yajna answered {}: {}",
+                    r.status,
+                    String::from_utf8_lossy(&body).trim()
+                ),
+            });
+        }
+        notebooks(&node_id, &body)
+    }
+
     /// Calls the listener with every change to nodes, sessions and pending requests until
     /// the subscription is cancelled. List first, then watch.
     pub async fn watch(
@@ -699,6 +875,30 @@ impl Hub {
     }
 }
 
+/// The size of the pieces a request body is sent in.
+const SERVICE_PIECE: usize = 1 << 20;
+
+/// yajna's `/api/notebooks` answer: `{"notebooks": [{namespace, path, shape, url}]}`.
+fn notebooks(node_id: &str, body: &[u8]) -> Result<Vec<NotebookInfo>, CoreError> {
+    let bad = |why: &str| CoreError::Refused {
+        reason: format!("yajna's notebook list is not what this app reads: {why}"),
+    };
+    let v: Value = serde_json::from_slice(body).map_err(|e| bad(&e.to_string()))?;
+    let list = v["notebooks"].as_array().ok_or_else(|| bad("no notebooks"))?;
+    let text = |n: &Value, k: &str| n[k].as_str().unwrap_or_default().to_string();
+    Ok(list
+        .iter()
+        .map(|n| NotebookInfo {
+            node_id: node_id.into(),
+            namespace: text(n, "namespace"),
+            shape: text(n, "shape"),
+            path: text(n, "path"),
+            url: text(n, "url"),
+        })
+        .filter(|n| !n.namespace.is_empty() && n.url.starts_with('/'))
+        .collect())
+}
+
 fn outcome(r: CommandResponse) -> Result<String, CoreError> {
     if r.ok {
         Ok(r.note)
@@ -725,6 +925,7 @@ fn node(n: Node) -> NodeInfo {
             })
             .collect(),
         default_claude_token: n.default_claude_token,
+        services: n.services,
     }
 }
 
@@ -835,6 +1036,17 @@ mod tests {
     fn a_call_an_older_hub_lacks_says_so_instead_of_nothing() {
         let e = CoreError::from(tonic::Status::unimplemented(""));
         assert!(matches!(&e, CoreError::Hub { reason } if reason.contains("older than this app")), "{e:?}");
+    }
+
+    #[test]
+    fn yajnas_notebook_list_is_read_and_a_broken_entry_left_out() {
+        let body = br#"{"notebooks":[
+            {"namespace":"lab","path":"/w/lab","shape":"lab","url":"/n/lab/"},
+            {"namespace":"","path":"/w/x","shape":"project","url":"/n/x/"}]}"#;
+        let n = notebooks("node", body).unwrap();
+        assert_eq!(n.len(), 1);
+        assert_eq!((n[0].node_id.as_str(), n[0].namespace.as_str(), n[0].url.as_str()), ("node", "lab", "/n/lab/"));
+        assert!(matches!(notebooks("node", b"<html>"), Err(CoreError::Refused { .. })));
     }
 
     fn user(seq: u64, content: serde_json::Value, meta: bool) -> ev::Event {

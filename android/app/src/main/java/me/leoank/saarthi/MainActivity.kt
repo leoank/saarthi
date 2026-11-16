@@ -52,6 +52,8 @@ sealed interface Screen {
     data object Tokens : Screen
     data class Health(val nodeId: String, val from: Screen) : Screen
     data object Settings : Screen
+    data object Notebooks : Screen
+    data class Notebook(val nodeId: String, val namespace: String, val url: String) : Screen
 }
 
 @Composable
@@ -125,6 +127,7 @@ fun App(requested: Pair<String, String>?, consumed: () -> Unit, model: HubModel 
     BackHandler(enabled = screen != Screen.Home && !(screen == Screen.Settings && model.hubs.isEmpty())) {
         screen = when (val s = screen) {
             is Screen.Health -> s.from
+            is Screen.Notebook -> Screen.Notebooks
             is Screen.Session -> { model.close(); s.from }
             else -> Screen.Home
         }
@@ -141,6 +144,16 @@ fun App(requested: Pair<String, String>?, consumed: () -> Unit, model: HubModel 
             openHistory = { screen = Screen.History },
             openTokens = { screen = Screen.Tokens },
             openSettings = { screen = Screen.Settings },
+            openNotebooks = { screen = Screen.Notebooks },
+        )
+        Screen.Notebooks -> NotebooksScreen(
+            model, snackbar,
+            back = { screen = Screen.Home },
+            open = { screen = Screen.Notebook(it.nodeId, it.namespace, it.url) },
+        )
+        is Screen.Notebook -> NotebookScreen(
+            model, snackbar, s.nodeId, s.namespace, s.url,
+            back = { screen = Screen.Notebooks },
         )
         Screen.History -> HistoryScreen(
             model, snackbar,

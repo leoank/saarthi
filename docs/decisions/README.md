@@ -70,8 +70,9 @@ spawns, with the owner's answers of 2026-11-07.
 | [ADR-0053](ADR-0053-notebooks-in-the-saarthi-app.md) | Notebooks in the saarthi app | accepted, amended by ADR-0056 |
 | [ADR-0054](ADR-0054-a-terminal-on-a-node-through-the-node.md) | A terminal on a node through the node | accepted |
 | [ADR-0055](ADR-0055-push-to-talk-and-spoken-replies-in-the-app.md) | Push to talk and spoken replies in the app | accepted |
-| [ADR-0056](ADR-0056-the-app-carries-a-web-view-s-event-streams-over-a-bridge.md) | The app carries a web view's event streams over a bridge | accepted |
+| [ADR-0056](ADR-0056-the-app-carries-a-web-view-s-event-streams-over-a-bridge.md) | The app carries a web view's event streams over a bridge | accepted, amended by ADR-0058 |
 | [ADR-0057](ADR-0057-the-hub-sends-the-request-s-head-with-open-service.md) | The hub sends the request's head with `OpenService` | accepted |
+| [ADR-0058](ADR-0058-the-web-view-bridge-carries-request-bodies-and-ranges-are-placed.md) | The web view bridge carries request bodies, and range answers are placed at their offset | accepted |
 
 Each record:
 

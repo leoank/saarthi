@@ -15,6 +15,7 @@ import androidx.compose.foundation.layout.width
 import androidx.compose.foundation.lazy.LazyColumn
 import androidx.compose.foundation.lazy.items
 import androidx.compose.material.icons.Icons
+import androidx.compose.material.icons.automirrored.filled.MenuBook
 import androidx.compose.material.icons.filled.Add
 import androidx.compose.material.icons.filled.ChevronRight
 import androidx.compose.material.icons.filled.ExpandMore
@@ -66,6 +67,7 @@ fun HomeScreen(
     openHistory: () -> Unit,
     openTokens: () -> Unit,
     openSettings: () -> Unit,
+    openNotebooks: () -> Unit,
 ) {
     var menu by remember { mutableStateOf(false) }
     var newSession by remember { mutableStateOf(false) }
@@ -100,6 +102,9 @@ fun HomeScreen(
                     }
                 },
                 actions = {
+                    if (model.nodes.any { NOTEBOOK_SERVICE in it.services }) {
+                        IconButton(onClick = openNotebooks) { Icon(Icons.AutoMirrored.Filled.MenuBook, "Notebooks") }
+                    }
                     IconButton(onClick = openHistory) { Icon(Icons.Filled.History, "History") }
                     IconButton(onClick = { refreshing = true }) { Icon(Icons.Filled.Refresh, "Refresh") }
                     Box {

@@ -3,6 +3,7 @@ package me.leoank.saarthi
 import android.app.Application
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableStateListOf
+import androidx.compose.runtime.mutableStateMapOf
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.setValue
 import androidx.lifecycle.AndroidViewModel
@@ -26,6 +27,7 @@ import uniffi.saarthi_core.Hub
 import uniffi.saarthi_core.Item
 import uniffi.saarthi_core.ModelTotals
 import uniffi.saarthi_core.NodeInfo
+import uniffi.saarthi_core.NotebookInfo
 import uniffi.saarthi_core.PendingInfo
 import uniffi.saarthi_core.Role
 import uniffi.saarthi_core.SessionInfo
@@ -185,6 +187,10 @@ class HubModel(app: Application) : AndroidViewModel(app) {
         private set
 
     private var hub: Hub? = null
+    /** The live connection, for the notebook's web view, which calls the core itself;
+     *  null while not connected. */
+    internal val connection: Hub?
+        get() = hub
     private var watch: Subscription? = null
     private var stream: Subscription? = null
     private var reconnect: Job? = null
@@ -266,6 +272,7 @@ class HubModel(app: Application) : AndroidViewModel(app) {
         hub?.close(); hub = null
         link = Link.Disconnected
         nodes.clear(); sessions.clear(); pending.clear()
+        notebooks.clear(); notebookErrors.clear()
         openSession = null
         conversation.clear()
     }
@@ -563,6 +570,32 @@ class HubModel(app: Application) : AndroidViewModel(app) {
         usage.clear()
     }
 
+    /** Each node's notebooks, by node id, from its `yajna` service (ADR-0053), and why a
+     *  node's did not load. */
+    val notebooks = mutableStateMapOf<String, List<NotebookInfo>>()
+    val notebookErrors = mutableStateMapOf<String, String>()
+    var notebooksLoading by mutableStateOf(0)
+        private set
+
+    /** Lists the notebooks of every connected node that offers yajna, each on its own:
+     *  a node whose service does not answer does not hold up the others. */
+    fun loadNotebooks() {
+        val h = hub ?: return
+        for (n in nodes.filter { it.connected && NOTEBOOK_SERVICE in it.services }) {
+            notebooksLoading++
+            viewModelScope.launch {
+                try {
+                    notebooks[n.id] = h.notebooks(n.id)
+                    notebookErrors.remove(n.id)
+                } catch (e: Exception) {
+                    notebookErrors[n.id] = describe(e)
+                } finally {
+                    notebooksLoading--
+                }
+            }
+        }
+    }
+
     fun loadHealth(nodeId: String, sinceMs: Long) = withHub {
         healthLoading = true
         try {
@@ -636,6 +669,9 @@ private fun <T> MutableList<T>.upsert(item: T, same: (T) -> Boolean) {
     val i = indexOfFirst(same)
     if (i >= 0) this[i] = item else add(item)
 }
+
+/** The node service that answers for a machine's notebooks: `yajna serve --socket`. */
+const val NOTEBOOK_SERVICE = "yajna"
 
 /** Sessions per history page. */
 private const val HISTORY_PAGE = 50
