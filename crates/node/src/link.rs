@@ -227,19 +227,27 @@ async fn stream(
     };
     buffer.ack(registered.last_seq);
     tracing::info!(node_id = %registered.node_id, resending = buffer.events.len(), "registered with the hub");
-    for e in &buffer.events {
-        tx.send(NodeMessage {
-            body: Some(Body::Event(e.clone())),
-        })
-        .await?;
-    }
     *backoff = MIN_BACKOFF;
 
+    // What is to go to the hub, in order: the buffer's events first, then whatever the
+    // outbox brings. It is sent while the hub's acks are read: a node that resent a large
+    // buffer before reading any let the acks pile up until the link broke, every time.
+    let mut queue: VecDeque<NodeMessage> = buffer
+        .events
+        .iter()
+        .map(|e| NodeMessage {
+            body: Some(Body::Event(e.clone())),
+        })
+        .collect();
     loop {
         tokio::select! {
+            permit = tx.reserve(), if !queue.is_empty() => {
+                let permit = permit.map_err(|_| anyhow!("the link closed"))?;
+                permit.send(queue.pop_front().expect("not empty"));
+            }
             msg = rx.recv() => {
                 let Some(msg) = msg else { return Ok(()) };
-                tx.send(buffer.keep(msg)).await.map_err(|_| anyhow!("the link closed"))?;
+                queue.push_back(buffer.keep(msg));
             }
             reply = inbound.message() => match reply?.and_then(|m| m.body) {
                 Some(hub_message::Body::Ack(ack)) => buffer.ack(ack.seq),
@@ -270,9 +278,7 @@ async fn stream(
                 }
                 Some(hub_message::Body::Command(cmd)) => {
                     let result = act(&cmd, parts).await;
-                    tx.send(NodeMessage { body: Some(Body::CommandResult(result)) })
-                        .await
-                        .map_err(|_| anyhow!("the link closed"))?;
+                    queue.push_back(NodeMessage { body: Some(Body::CommandResult(result)) });
                 }
                 // A client's request to a local service: answered over a stream of its own,
                 // so the link keeps flowing (ADR-0052).
