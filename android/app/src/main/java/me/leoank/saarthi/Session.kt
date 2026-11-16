@@ -120,7 +120,9 @@ fun SessionScreen(
     var menu by remember { mutableStateOf(false) }
     var confirmKill by remember { mutableStateOf(false) }
     var showUsage by remember { mutableStateOf(false) }
-    var text by remember(sessionId) { mutableStateOf("") }
+    // The session's unsent draft, kept by the model so it outlives this screen.
+    var text by remember(nodeId, sessionId) { mutableStateOf(model.draft(nodeId, sessionId)) }
+    LaunchedEffect(nodeId, sessionId, text) { model.setDraft(nodeId, sessionId, text) }
     val tokensIn = model.usage.sumOf { it.inputTokens }
     val tokensOut = model.usage.sumOf { it.outputTokens }
     val cost = model.usage.sumOf { it.costUsd }
@@ -523,8 +525,6 @@ private fun UserTurn(text: String, ticks: Int = 0, pending: Boolean = false, tim
             color = if (pending) MaterialTheme.colorScheme.onSurfaceVariant else MaterialTheme.colorScheme.onSurface,
             modifier = Modifier.weight(1f).padding(horizontal = 12.dp, vertical = 10.dp),
         )
-        if (ticks > 0 || pending) {
-            Icon(
         if (timeMs != null) {
             Text(
                 clockTime(timeMs),
@@ -533,6 +533,8 @@ private fun UserTurn(text: String, ticks: Int = 0, pending: Boolean = false, tim
                 modifier = Modifier.padding(end = if (ticks > 0 || pending) 4.dp else 10.dp, top = 14.dp),
             )
         }
+        if (ticks > 0 || pending) {
+            Icon(
                 when {
                     pending -> Icons.Filled.Schedule
                     ticks >= 2 -> Icons.Filled.DoneAll

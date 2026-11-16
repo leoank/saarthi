@@ -134,6 +134,21 @@ class HubModel(app: Application) : AndroidViewModel(app) {
     var collapsed by mutableStateOf(prefs.getStringSet("collapsed", emptySet())!!.toSet())
         private set
 
+    /** Unsent drafts by node and session, kept across screens and launches. */
+    private val drafts: MutableMap<String, String> = runCatching {
+        val o = JSONObject(prefs.getString("drafts", "{}")!!)
+        o.keys().asSequence().associateWith { o.getString(it) }.toMutableMap()
+    }.getOrDefault(mutableMapOf())
+
+    fun draft(nodeId: String, sessionId: String): String = drafts["$nodeId/$sessionId"].orEmpty()
+
+    fun setDraft(nodeId: String, sessionId: String, text: String) {
+        val key = "$nodeId/$sessionId"
+        if (drafts[key].orEmpty() == text) return
+        if (text.isEmpty()) drafts.remove(key) else drafts[key] = text
+        prefs.edit().putString("drafts", JSONObject(drafts.toMap()).toString()).apply()
+    }
+
     fun toggleCollapsed(nodeId: String) {
         collapsed = if (nodeId in collapsed) collapsed - nodeId else collapsed + nodeId
         prefs.edit().putStringSet("collapsed", collapsed).apply()

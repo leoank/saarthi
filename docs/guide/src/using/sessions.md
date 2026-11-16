@@ -89,7 +89,9 @@ for the whole app and is remembered.
 
 ## Prompting
 
-Type in the prompt bar at the bottom and tap send. What happens depends on the session:
+Type in the prompt bar at the bottom and tap send. What you type and do not send stays as
+that session's draft: leave the session, open others, and it is there when you come back,
+also after the app restarts. What happens when you send depends on the session:
 
 - **Under `saarthi run`**: the prompt is typed into the session's terminal, exactly as if
   you had typed it. If Claude is working, Claude Code queues it until the turn ends
