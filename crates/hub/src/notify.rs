@@ -26,6 +26,11 @@ pub struct Notifier {
     client: reqwest::Client,
     topic_url: Option<String>,
     db: Db,
+    /// How long a held request waits before its alert, which goes out only if it is still
+    /// open then: a person at the terminal answers first (phase PHS-20261117-f22kxe item 5).
+    hold_alerts: std::time::Duration,
+    /// How long a turn must have run for its end to be worth an alert.
+    long_turn: std::time::Duration,
 }
 
 /// One notification: ntfy's title, body and priority (1 to 5), and what the app receives.
@@ -46,7 +51,17 @@ impl Notifier {
             topic_url,
             db,
             off,
+            hold_alerts: std::time::Duration::from_secs(10),
+            long_turn: std::time::Duration::from_secs(60),
         }
+    }
+
+    /// Other delays than 10 s for a held request and a minute for a turn; zero for both
+    /// alerts at once, for every turn.
+    pub fn quiet(mut self, hold_alerts: std::time::Duration, long_turn: std::time::Duration) -> Self {
+        self.hold_alerts = hold_alerts;
+        self.long_turn = long_turn;
+        self
     }
 
     /// A session that ended, by exit or by a kill.
@@ -54,14 +69,38 @@ impl Notifier {
         self.send(for_ended(node, node_id, s));
     }
 
-    pub fn pending(&self, node: &str, node_id: &str, p: &PendingRequest) {
-        self.send(for_pending(node, node_id, p));
+    /// A held request, alerted after [`Notifier::hold_alerts`] if nobody answered it by then.
+    pub fn pending(self: &std::sync::Arc<Self>, node: &str, node_id: &str, p: &PendingRequest) {
+        let m = for_pending(node, node_id, p);
+        if self.hold_alerts.is_zero() {
+            return self.send(m);
+        }
+        let (this, node_id, id) = (self.clone(), node_id.to_string(), p.id.clone());
+        tokio::spawn(async move {
+            tokio::time::sleep(this.hold_alerts).await;
+            if matches!(this.db.open_pending(&node_id, &id).await, Ok(Some(_))) {
+                this.send(m);
+            }
+        });
     }
 
-    pub fn event(&self, node: &str, node_id: &str, e: &Event) {
-        if let Some(m) = for_event(node, node_id, e) {
-            self.send(m);
+    /// A finished turn, alerted when it ran for [`Notifier::long_turn`] or more, timed from
+    /// the session's last prompt; a turn whose start is unknown is alerted.
+    pub fn event(self: &std::sync::Arc<Self>, node: &str, node_id: &str, e: &Event) {
+        let Some(m) = for_event(node, node_id, e) else {
+            return;
+        };
+        if self.long_turn.is_zero() {
+            return self.send(m);
         }
+        let (this, node_id, e) = (self.clone(), node_id.to_string(), e.clone());
+        tokio::spawn(async move {
+            let started = this.db.turn_started(&node_id, &e.session_id, e.seq).await.ok().flatten();
+            let long = started.is_none_or(|t| e.time_ms - t >= this.long_turn.as_millis() as i64);
+            if long {
+                this.send(m);
+            }
+        });
     }
 
     /// Rate-limit alerts from a health sample, each sent once whichever node reports it.

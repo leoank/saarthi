@@ -110,7 +110,7 @@ impl HubProc {
                     .send(listener.local_addr().unwrap().to_string())
                     .unwrap();
                 let hub = Hub {
-                    notifier: Arc::new(saarthi_hub::notify::Notifier::new(ntfy, db.clone(), Vec::new())),
+                    notifier: Arc::new(saarthi_hub::notify::Notifier::new(ntfy, db.clone(), Vec::new()).quiet(Default::default(), Default::default())),
                     db,
                     node_tokens: Arc::new(Tokens::parse(TOKENS).unwrap()),
                     client_tokens: Arc::new(Tokens::parse(CLIENT_TOKENS).unwrap()),

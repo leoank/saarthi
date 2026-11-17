@@ -29,6 +29,31 @@ import uniffi.saarthi_core.Hub
 object Push {
     private const val TAG = "saarthi.push"
     private const val CHANNEL = "waiting"
+
+    /** Whether the app is in front: then it shows what a push would say, and stays quiet. */
+    @Volatile
+    var inFront = false
+
+    /** A push's channel, by its kind: something that needs the owner rises, something that
+     *  finished falls (android/sound/chimes.py); anything else keeps the default sound.
+     *  A channel's sound is fixed once it exists, so a new sound needs a new channel id. */
+    private fun channel(context: Context, kind: String): String {
+        val (id, name, sound) = when (kind) {
+            "permission", "question" -> Triple("needs_you", "Needs you", R.raw.chime_needs_you)
+            "turn", "ended" -> Triple("finished", "Finished", R.raw.chime_finished)
+            else -> Triple(CHANNEL, "Waiting for you", null)
+        }
+        val ch = NotificationChannel(id, name, NotificationManager.IMPORTANCE_HIGH)
+        if (sound != null) {
+            val attrs = android.media.AudioAttributes.Builder()
+                .setUsage(android.media.AudioAttributes.USAGE_NOTIFICATION)
+                .setContentType(android.media.AudioAttributes.CONTENT_TYPE_SONIFICATION)
+                .build()
+            ch.setSound(android.net.Uri.parse("android.resource://${context.packageName}/$sound"), attrs)
+        }
+        context.getSystemService(NotificationManager::class.java).createNotificationChannel(ch)
+        return id
+    }
     private val scope = CoroutineScope(SupervisorJob() + Dispatchers.IO)
 
     /** After connecting: ask for the notification permission and register with the
@@ -61,9 +86,7 @@ object Push {
     fun show(context: Context, json: String) {
         val m = JSONObject(json)
         val manager = context.getSystemService(NotificationManager::class.java)
-        manager.createNotificationChannel(
-            NotificationChannel(CHANNEL, "Waiting for you", NotificationManager.IMPORTANCE_HIGH)
-        )
+        val channel = channel(context, m.optString("kind"))
         // A usage alert has no session; its key tells it apart.
         val id = (m.optString("pending_id").ifEmpty { m.optString("session_id") }.ifEmpty { m.optString("key") }).hashCode()
         val open = PendingIntent.getActivity(
@@ -74,7 +97,7 @@ object Push {
                 .addFlags(Intent.FLAG_ACTIVITY_SINGLE_TOP),
             PendingIntent.FLAG_IMMUTABLE or PendingIntent.FLAG_UPDATE_CURRENT,
         )
-        val builder = android.app.Notification.Builder(context, CHANNEL)
+        val builder = android.app.Notification.Builder(context, channel)
             .setSmallIcon(R.drawable.ic_notification)
             .setContentTitle(m.optString("title"))
             .setContentText(m.optString("body"))
@@ -107,6 +130,7 @@ object Push {
         }
 
         override fun onMessage(message: PushMessage, instance: String) {
+            if (inFront) return
             show(this, String(message.content))
         }
 

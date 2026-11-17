@@ -288,6 +288,21 @@ impl Db {
         Ok(())
     }
 
+    /// When the turn ending at event `seq` began: the session's last prompt submitted before it.
+    pub async fn turn_started(&self, node_id: &str, session_id: &str, seq: u64) -> Result<Option<i64>> {
+        Ok(sqlx::query_scalar(
+            "SELECT time_ms FROM events
+             WHERE node_id = ?1 AND session_id = ?2 AND source = ?3 AND kind = 'UserPromptSubmit' AND seq < ?4
+             ORDER BY seq DESC LIMIT 1",
+        )
+        .bind(node_id)
+        .bind(session_id)
+        .bind(EventSource::Hook.as_str_name())
+        .bind(seq as i64)
+        .fetch_optional(&self.pool)
+        .await?)
+    }
+
     /// The open request `id` on a node, if there is one.
     pub async fn open_pending(&self, node_id: &str, id: &str) -> Result<Option<PendingRequest>> {
         let row = sqlx::query(
