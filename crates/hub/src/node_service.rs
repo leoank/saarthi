@@ -304,7 +304,7 @@ async fn serve_node(
     publish_node(hub, &node_id).await?;
     for s in register.sessions.into_iter().chain(gone_sessions) {
         let s = db.session(&node_id, &s.id).await?.unwrap_or(s);
-        publish_session(hub, &node_id, s);
+        publish_session(hub, &node_id, s).await?;
     }
     for request in register.pending {
         publish(
@@ -362,7 +362,7 @@ async fn serve_link(
                             .set_session_meta(node_id, &e.session_id, &text("title"), &text("title_source"), &text("git_branch"))
                             .await?
                         {
-                            publish_session(hub, node_id, s);
+                            publish_session(hub, node_id, s).await?;
                         }
                     }
                     hub.live.publish_event(node_id, e);
@@ -375,7 +375,7 @@ async fn serve_link(
                 }
                 // As stored: the node's copy lacks what the hub keeps of it, such as its title.
                 let s = db.session(node_id, &s.id).await?.unwrap_or(s);
-                publish_session(hub, node_id, s);
+                publish_session(hub, node_id, s).await?;
             }
             Some(Body::Health(h)) => {
                 db.store_health(node_id, &h).await?;
@@ -415,9 +415,12 @@ fn publish(hub: &Hub, body: update::Body) {
     hub.live.publish(Update { body: Some(body) });
 }
 
-fn publish_session(hub: &Hub, node_id: &str, mut session: Session) {
+/// A session to the clients watching, with its reply preview.
+async fn publish_session(hub: &Hub, node_id: &str, mut session: Session) -> Result<()> {
     session.node_id = node_id.to_string();
+    session.last_reply = hub.db.last_reply(node_id, &session.id).await?;
     publish(hub, update::Body::Session(session));
+    Ok(())
 }
 
 /// A node's change of state, as `ListNodes` shows it.

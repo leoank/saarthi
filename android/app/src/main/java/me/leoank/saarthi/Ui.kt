@@ -40,12 +40,16 @@ fun SessionInfo.title(): String = title.ifBlank { name() }
  *  the folder's parent, as before. */
 fun SessionInfo.place(): String {
     if (title.isBlank()) return parentPath()
-    // A worktree's folder is often named after its branch: the repository is the one above.
+    return listOf(repo(), gitBranch).filter { it.isNotBlank() }.joinToString(" · ")
+}
+
+/** The repository it works in, by its folder's name: a worktree's folder is often named after
+ *  its branch (or is `main`), and then the repository is the folder above. */
+fun SessionInfo.repo(): String {
     val parts = cwd.trimEnd('/').split('/').filter { it.isNotEmpty() }
     val folder = parts.lastOrNull().orEmpty()
-    val repo = if (folder == gitBranch || folder == gitBranch.substringAfterLast('/') || folder in setOf("main", "master"))
-        parts.getOrNull(parts.size - 2) ?: folder else folder
-    return listOf(repo, gitBranch).filter { it.isNotBlank() }.joinToString(" · ")
+    val branchy = gitBranch.isNotBlank() && (folder == gitBranch || folder == gitBranch.substringAfterLast('/'))
+    return if (branchy || folder in setOf("main", "master")) parts.getOrNull(parts.size - 2) ?: folder else folder
 }
 
 /** The state of a session at a glance: needs the person, Claude working, ready for a

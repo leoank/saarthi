@@ -571,6 +571,37 @@ impl Db {
         Ok(rows.iter().map(event_from).collect())
     }
 
+    /// The opening of Claude's latest reply in a session, from its latest assistant line that
+    /// has text; empty when there is none.
+    pub async fn last_reply(&self, node_id: &str, session_id: &str) -> Result<String> {
+        const PREVIEW: usize = 280;
+        let payload: Option<String> = sqlx::query_scalar(
+            "SELECT payload FROM events
+             WHERE node_id = ?1 AND session_id = ?2 AND source = ?3 AND kind = 'assistant'
+               AND payload LIKE '%\"type\":\"text\"%'
+             ORDER BY seq DESC LIMIT 1",
+        )
+        .bind(node_id)
+        .bind(session_id)
+        .bind(EventSource::Transcript.as_str_name())
+        .fetch_optional(&self.pool)
+        .await?;
+        let v: serde_json::Value = payload.and_then(|p| serde_json::from_str(&p).ok()).unwrap_or_default();
+        let text: String = v["message"]["content"]
+            .as_array()
+            .into_iter()
+            .flatten()
+            .filter(|b| b["type"] == "text")
+            .filter_map(|b| b["text"].as_str())
+            .collect::<Vec<_>>()
+            .join(" ");
+        let flat = text.split_whitespace().collect::<Vec<_>>().join(" ");
+        Ok(match flat.char_indices().nth(PREVIEW) {
+            Some((at, _)) => format!("{}…", &flat[..at]),
+            None => flat,
+        })
+    }
+
     /// A session's title, where it came from and its git branch, from a `meta` event; the
     /// session as it now stands, if the hub has it.
     pub async fn set_session_meta(
@@ -744,6 +775,7 @@ fn session_from(r: &sqlx::sqlite::SqliteRow) -> Session {
         title: r.get("title"),
         title_source: r.get("title_source"),
         git_branch: r.get("git_branch"),
+        last_reply: String::new(),
     }
 }
 

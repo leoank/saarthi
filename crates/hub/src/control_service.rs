@@ -122,11 +122,14 @@ impl ControlService for Hub {
     ) -> Result<Response<ListSessionsResponse>, Status> {
         self.client(&request)?;
         let r = request.into_inner();
-        let sessions = self
+        let mut sessions = self
             .db
             .sessions(&r.node_id, r.include_ended)
             .await
             .map_err(internal)?;
+        for s in &mut sessions {
+            s.last_reply = self.db.last_reply(&s.node_id, &s.id).await.map_err(internal)?;
+        }
         Ok(Response::new(ListSessionsResponse { sessions }))
     }
 
@@ -338,6 +341,7 @@ impl ControlService for Hub {
             session.ended_ms = Some(crate::node_service::now_ms());
             self.db.store_session(&r.node_id, &session).await.map_err(internal)?;
             session.node_id = r.node_id.clone();
+            session.last_reply = self.db.last_reply(&r.node_id, &r.session_id).await.map_err(internal)?;
             self.live.publish(Update { body: Some(update::Body::Session(session)) });
         }
         Ok(response(result))

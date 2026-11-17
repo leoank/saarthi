@@ -113,6 +113,7 @@ async fn a_session_carries_its_title_and_branch_from_its_transcript() {
             r#"{"type":"user","uuid":"u1","gitBranch":"feat/parser","message":{"role":"user","content":"fix it"}}"#, "\n",
             r#"{"type":"ai-title","aiTitle":"Fix the parser","sessionId":"titled"}"#, "\n",
             r#"{"type":"agent-name","agentName":"Parser rework","sessionId":"titled"}"#, "\n",
+            r#"{"type":"assistant","uuid":"a1","message":{"id":"m1","role":"assistant","content":[{"type":"text","text":"Fixed it:\n the parser   now handles tabs."}]}}"#, "\n",
         ),
     )
     .unwrap();
@@ -126,6 +127,7 @@ async fn a_session_carries_its_title_and_branch_from_its_transcript() {
         s = session(&addr, "titled", false).await;
     }
     assert_eq!((s.title.as_str(), s.title_source.as_str(), s.git_branch.as_str()), ("Parser rework", "name", "feat/parser"));
+    assert_eq!(s.last_reply, "Fixed it: the parser now handles tabs.");
     // The node's next report of the session, without a title, keeps the hub's.
     let mut busy = record("titled");
     busy.status = "busy".into();

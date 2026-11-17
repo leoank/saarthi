@@ -13,6 +13,8 @@ import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.size
 import androidx.compose.foundation.layout.width
 import androidx.compose.foundation.lazy.LazyColumn
+import androidx.compose.material3.FilterChip
+import androidx.compose.foundation.lazy.LazyRow
 import androidx.compose.foundation.lazy.items
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.automirrored.filled.MenuBook
@@ -141,44 +143,57 @@ fun HomeScreen(
             onRefresh = { refreshing = true },
             modifier = Modifier.fillMaxSize().padding(padding),
         ) {
+            // One list across machines, by what each session needs (phase PHS-20261117-f22kxe
+            // item 4): what waits on the person, then what works, then what is ready.
+            val live = model.sessions.filter { model.inScope(it.nodeId, it) }
+            val waiting = model.pending.filter { p ->
+                model.inScope(p.nodeId, model.sessions.firstOrNull { it.id == p.sessionId && it.nodeId == p.nodeId })
+            }
+            val asking = live.filter { model.pendingFor(it).isNotEmpty() }
+            val working = live.filter { it.busy && it !in asking }.sortedByDescending { it.startedMs }
+            val ready = live.filter { !it.busy && it !in asking }.sortedByDescending { it.startedMs }
+            val oneNode = model.scope.startsWith("node:") || model.nodes.size == 1
             LazyColumn(
                 contentPadding = PaddingValues(horizontal = 16.dp, vertical = 8.dp),
                 verticalArrangement = Arrangement.spacedBy(8.dp),
                 modifier = Modifier.fillMaxSize(),
             ) {
-                if (model.pending.isNotEmpty()) {
-                    item(key = "waiting") { SectionTitle("Waiting for you", Modifier.padding(top = 0.dp)) }
-                    items(model.pending, key = { "p" + it.id }) { p ->
+                item(key = "scope") { ScopeChips(model) }
+                if (waiting.isNotEmpty()) {
+                    item(key = "waiting") { SectionTitle("Needs you · ${waiting.size}", Modifier.padding(top = 0.dp)) }
+                    items(waiting, key = { "p" + it.id }) { p ->
                         val s = model.sessions.firstOrNull { it.id == p.sessionId && it.nodeId == p.nodeId }
                         val where = listOfNotNull(model.node(p.nodeId)?.name, s?.title()).joinToString(" / ")
                         PendingCard(model, p, where, Modifier.clickable(enabled = s != null) { s?.let(openSession) })
                     }
+                }
+                for ((name, list) in listOf("Working" to working, "Ready" to ready)) {
+                    if (list.isEmpty()) continue
+                    item(key = "t$name") { SectionTitle("$name · ${list.size}") }
+                    items(list, key = { "s" + it.nodeId + it.id }) { s ->
+                        SessionCard(s, model.pendingFor(s).size, if (oneNode) null else model.node(s.nodeId)?.name) { openSession(s) }
+                    }
+                }
+                if (live.isEmpty() && waiting.isEmpty() && model.nodes.isNotEmpty()) {
+                    item(key = "quiet") { Caption("No live sessions here") }
                 }
                 if (model.nodes.isEmpty()) {
                     item(key = "none") {
                         Empty("No nodes yet", "Start saarthi node on a machine with this hub's address and a node token.")
                     }
                 }
+                // The machines themselves: whether each is up, and its health.
+                item(key = "machines") { SectionTitle("Machines") }
                 for (node in model.nodes.sortedWith(compareByDescending<NodeInfo> { it.connected }.thenBy { it.name })) {
-                    val sessions = model.sessions.filter { it.nodeId == node.id }.sortedByDescending { it.startedMs }
-                    val folded = node.id in model.collapsed
+                    if (!model.inScope(node.id, null) && model.scope.startsWith("node:")) continue
+                    val sessions = model.sessions.filter { it.nodeId == node.id }
                     item(key = "n" + node.id) {
                         NodeHeader(
                             node,
                             sessions.size,
                             sessions.count { s -> model.pendingFor(s).isNotEmpty() },
-                            folded,
-                            toggle = { model.toggleCollapsed(node.id) },
+                            select = { model.changeScope(if (model.scope == "node:${node.id}") "" else "node:${node.id}") },
                         ) { openHealth(node) }
-                    }
-                    if (folded) continue
-                    if (sessions.isEmpty()) {
-                        item(key = "e" + node.id) {
-                            Caption(if (node.connected) "No live sessions" else "Offline, last seen ${relative(node.lastSeenMs)}")
-                        }
-                    }
-                    items(sessions, key = { "s" + it.nodeId + it.id }) { s ->
-                        SessionCard(s, model.pendingFor(s).size) { openSession(s) }
                     }
                 }
             }
@@ -193,25 +208,18 @@ fun HomeScreen(
 }
 
 @Composable
-private fun NodeHeader(node: NodeInfo, count: Int, waiting: Int, folded: Boolean, toggle: () -> Unit, onHealth: () -> Unit) {
+private fun NodeHeader(node: NodeInfo, count: Int, waiting: Int, select: () -> Unit, onHealth: () -> Unit) {
     Row(
         verticalAlignment = Alignment.CenterVertically,
-        modifier = Modifier.fillMaxWidth().padding(top = 12.dp).clickable(onClick = toggle),
+        modifier = Modifier.fillMaxWidth().clickable(onClick = select),
     ) {
-        Icon(
-            if (folded) Icons.Filled.ChevronRight else Icons.Filled.ExpandMore,
-            if (folded) "Show ${node.name}'s sessions" else "Hide ${node.name}'s sessions",
-            tint = MaterialTheme.colorScheme.onSurfaceVariant,
-            modifier = Modifier.size(20.dp),
-        )
-        Spacer(Modifier.width(6.dp))
         StatusDot(node.connected)
         Spacer(Modifier.width(10.dp))
         Column(Modifier.weight(1f)) {
             Text(node.name, style = MaterialTheme.typography.titleMedium)
             Text(
                 listOfNotNull(
-                    if (node.connected) "online" else "offline",
+                    if (node.connected) "online" else "offline · last seen ${relative(node.lastSeenMs)}",
                     "v${node.version}",
                     when (count) {
                         0 -> null
@@ -228,8 +236,35 @@ private fun NodeHeader(node: NodeInfo, count: Int, waiting: Int, folded: Boolean
     }
 }
 
+/** What Home lists: all, a machine, or a repository with a live session. */
 @Composable
-private fun SessionCard(s: SessionInfo, waiting: Int, onOpen: () -> Unit) {
+private fun ScopeChips(model: HubModel) {
+    val repos = model.sessions.map { it.repo() }.filter { it.isNotBlank() }.distinct().sorted()
+    if (model.nodes.size < 2 && repos.size < 2) return
+    LazyRow(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
+        item {
+            FilterChip(selected = model.scope.isEmpty(), onClick = { model.changeScope("") }, label = { Text("All") })
+        }
+        items(model.nodes.sortedBy { it.name }, key = { "n" + it.id }) { n ->
+            FilterChip(
+                selected = model.scope == "node:${n.id}",
+                onClick = { model.changeScope(if (model.scope == "node:${n.id}") "" else "node:${n.id}") },
+                label = { Text(n.name) },
+                leadingIcon = { StatusDot(n.connected, Modifier.size(8.dp)) },
+            )
+        }
+        items(repos, key = { "r$it" }) { r ->
+            FilterChip(
+                selected = model.scope == "repo:$r",
+                onClick = { model.changeScope(if (model.scope == "repo:$r") "" else "repo:$r") },
+                label = { Text(r) },
+            )
+        }
+    }
+}
+
+@Composable
+private fun SessionCard(s: SessionInfo, waiting: Int, machine: String?, onOpen: () -> Unit) {
     Card(
         Modifier.fillMaxWidth().clickable(onClick = onOpen),
         colors = CardDefaults.cardColors(containerColor = MaterialTheme.colorScheme.surfaceContainer),
@@ -238,7 +273,7 @@ private fun SessionCard(s: SessionInfo, waiting: Int, onOpen: () -> Unit) {
             Column(Modifier.weight(1f)) {
                 Text(s.title(), style = MaterialTheme.typography.titleMedium, maxLines = 1, overflow = TextOverflow.Ellipsis)
                 Text(
-                    s.place(),
+                    listOfNotNull(machine, s.place().ifBlank { null }).joinToString(" · "),
                     style = MaterialTheme.typography.bodySmall,
                     color = MaterialTheme.colorScheme.onSurfaceVariant,
                     maxLines = 1,
@@ -253,6 +288,16 @@ private fun SessionCard(s: SessionInfo, waiting: Int, onOpen: () -> Unit) {
                         color = MaterialTheme.colorScheme.onSurfaceVariant,
                         maxLines = 1,
                         overflow = TextOverflow.Ellipsis,
+                    )
+                }
+                if (s.lastReply.isNotBlank()) {
+                    Text(
+                        s.lastReply,
+                        style = MaterialTheme.typography.bodySmall,
+                        color = MaterialTheme.colorScheme.onSurfaceVariant,
+                        maxLines = 2,
+                        overflow = TextOverflow.Ellipsis,
+                        modifier = Modifier.padding(top = 4.dp),
                     )
                 }
             }

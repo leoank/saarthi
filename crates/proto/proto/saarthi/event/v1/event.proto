@@ -36,6 +36,9 @@ message Session {
   string title = 14;
   string title_source = 15;
   string git_branch = 16;
+  // The opening of Claude's latest reply, for a list's preview (phase PHS-20261117-f22kxe item
+  // 4); filled by the hub when it lists or reports the session, empty from the node.
+  string last_reply = 17;
 }
 
 // A way a node can start a session (`--profiles`, ADR-0038), as the app offers it.

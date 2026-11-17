@@ -214,6 +214,8 @@ pub struct SessionInfo {
     pub title_source: String,
     /// The git branch its transcript names; empty outside a repository.
     pub git_branch: String,
+    /// The opening of Claude's latest reply, for a preview in a list.
+    pub last_reply: String,
 }
 
 /// A session as a history list shows it (ADR-0036).
@@ -993,6 +995,7 @@ fn session(s: ev::Session) -> SessionInfo {
         title: s.title,
         title_source: s.title_source,
         git_branch: s.git_branch,
+        last_reply: s.last_reply,
     }
 }
 

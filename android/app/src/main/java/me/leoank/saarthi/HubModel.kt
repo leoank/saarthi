@@ -130,6 +130,22 @@ class HubModel(app: Application) : AndroidViewModel(app) {
         prefs.edit().putBoolean("wrap", wrap).apply()
     }
 
+    /** What Home lists: every machine (empty), one machine (`node:<id>`) or one repository
+     *  (`repo:<name>`), remembered across launches (phase PHS-20261117-f22kxe item 4). */
+    var scope by mutableStateOf(prefs.getString("scope", "")!!)
+        private set
+
+    fun changeScope(to: String) {
+        scope = to
+        prefs.edit().putString("scope", to).apply()
+    }
+
+    fun inScope(nodeId: String, s: SessionInfo?): Boolean = when {
+        scope.startsWith("node:") -> nodeId == scope.removePrefix("node:")
+        scope.startsWith("repo:") -> s?.repo() == scope.removePrefix("repo:")
+        else -> true
+    }
+
     /** Finished turns open with every step shown, instead of folded under their header. */
     var openTurns by mutableStateOf(prefs.getBoolean("open_turns", false))
         private set
