@@ -41,6 +41,15 @@ done ones. The project page's *Progress* lists this phase on one line.
 - [ ] 16. Deleting and keeping: a session deleted from the app stays deleted (the hub remembers it, so a node re-sending its lines cannot bring it back), and a retention setting for old transcripts; atuin's synced threads outgrew its shell history 25 times over (its issue 4434), and the hub keeps every line today. Hub and app; a design record first.
 - [ ] 17. A resume whose copies diverged: when the node's transcript and the hub's differ (the session went on elsewhere), catch up or fork, never merge, and never write to a session that is open, as atuin's resume does. Node and hub; a design record first.
 - [ ] 18. The model in the prompt bar, and a switch: a chip in the bar showing the session's current model and reasoning effort ("Opus 5.5 · High"), as ovis's prompt dialog does, read from the transcript (the last reply's `message.model` and its `effort`, and a `/model` or `/effort` answer at once, before the next reply); tapping it lists the models and efforts and switches the session: typed as `/model <name>` and `/effort <level>` into a `saarthi run` session, the SDK's `set_model` control request (and its effort setting, if it has one) for a spawned session, read-only for a plain `claude` the node cannot type into. Whether `set_model` and an effort change work in `-p` is an experiment first. Node, core, app.
+- [ ] 19. *About this session* in place of *Usage* in a session's menu: everything known about it on one sheet, the token usage among it.
+  - *Session*: its title, its id (copied with a tap), the agent (Claude Code, and its version, from the transcript's `version`; another agent's name once there are others), how it was started (at a terminal, under `saarthi run`, spawned from a client), the launch profile, the Claude account, the permission mode (`permissionMode`), the entry point (`entrypoint`).
+  - *Where*: the node, the folder, the git branch (`gitBranch`), the transcript's path on the node, and whether the node still has it or a resume would restore it from the hub (ADR-0059).
+  - *When*: started, last active, ended, how long it ran, how long Claude worked (the turns' durations summed).
+  - *Model*: the current model and effort (item 18), every model used with its share of the turns.
+  - *Usage*: tokens in, out and cached and the estimated cost per model, as *Usage* shows today; the context in use for a spawned session (ADR-0061); the account's rate-limit windows at the last report.
+  - *Activity*: turns, prompts, tool calls by kind, files edited, failed calls, questions and permission requests asked and how they were answered.
+  - *On the hub*: the lines kept for it and their size, so a large session shows before it matters (item 16).
+  Hub (a call that sums a session's events and their size), core and app.
 
 ## Notes
 What ovis looks like, from its screenshots: near-black warm neutrals, one amber accent, and
