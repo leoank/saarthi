@@ -130,6 +130,25 @@ class HubModel(app: Application) : AndroidViewModel(app) {
         prefs.edit().putBoolean("wrap", wrap).apply()
     }
 
+    /** Finished turns open with every step shown, instead of folded under their header. */
+    var openTurns by mutableStateOf(prefs.getBoolean("open_turns", false))
+        private set
+
+    fun toggleOpenTurns() {
+        openTurns = !openTurns
+        prefs.edit().putBoolean("open_turns", openTurns).apply()
+    }
+
+    /** Turns the person opened or folded by hand, by session and the turn's first item,
+     *  while the app runs; the rest follow [openTurns]. */
+    private val turnsOpened = mutableStateMapOf<String, Boolean>()
+
+    fun turnOpen(s: SessionInfo, turn: ULong): Boolean? = turnsOpened["${s.nodeId}/${s.id}/$turn"]
+
+    fun setTurnOpen(s: SessionInfo, turn: ULong, open: Boolean) {
+        turnsOpened["${s.nodeId}/${s.id}/$turn"] = open
+    }
+
     /** Nodes whose live sessions are folded away on the home screen, by node id, remembered
      *  across launches. */
     var collapsed by mutableStateOf(prefs.getStringSet("collapsed", emptySet())!!.toSet())

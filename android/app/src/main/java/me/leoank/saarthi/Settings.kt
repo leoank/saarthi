@@ -126,6 +126,24 @@ fun SettingsScreen(model: HubModel, snackbar: SnackbarHostState, back: (() -> Un
                     }
                     Switch(checked = model.wrap, onCheckedChange = { model.toggleWrap() })
                 }
+                Divider()
+                Row(
+                    verticalAlignment = Alignment.CenterVertically,
+                    modifier = Modifier
+                        .fillMaxWidth()
+                        .clickable { model.toggleOpenTurns() }
+                        .padding(start = 16.dp, end = 12.dp, top = 8.dp, bottom = 8.dp),
+                ) {
+                    Column(Modifier.weight(1f)) {
+                        Text("Show every step", style = MaterialTheme.typography.bodyLarge)
+                        Text(
+                            "Finished turns open with each tool call shown, instead of folded under one line",
+                            style = MaterialTheme.typography.bodySmall,
+                            color = MaterialTheme.colorScheme.onSurfaceVariant,
+                        )
+                    }
+                    Switch(checked = model.openTurns, onCheckedChange = { model.toggleOpenTurns() })
+                }
             }
 
             Heading("About")

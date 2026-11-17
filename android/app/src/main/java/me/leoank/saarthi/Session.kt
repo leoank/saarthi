@@ -4,6 +4,11 @@ import kotlin.math.roundToInt
 import androidx.compose.animation.AnimatedVisibility
 import androidx.compose.animation.core.LinearEasing
 import androidx.compose.animation.core.animateFloat
+import androidx.compose.material.icons.filled.ChevronRight
+import androidx.compose.ui.text.withStyle
+import androidx.compose.ui.text.buildAnnotatedString
+import androidx.compose.ui.text.SpanStyle
+import androidx.compose.animation.core.RepeatMode
 import androidx.compose.animation.core.infiniteRepeatable
 import androidx.compose.animation.core.rememberInfiniteTransition
 import androidx.compose.animation.core.tween
@@ -310,19 +315,76 @@ private fun entries(items: List<Item>): List<Entry> {
     return out
 }
 
+/** One prompt and what Claude did after it, up to the next prompt. [finished] once Claude
+ *  Code wrote its turn line, or another prompt followed (an interrupted turn). */
+private data class Turn(val prompt: Entry?, val body: List<Entry>, val finished: Boolean) {
+    val start: ULong = (prompt ?: body.first()).item.seq
+    /** Worth folding: a tool call, thinking, or more than one reply. */
+    val foldable = body.any { it.item.role == Role.TOOL || it.item.role == Role.THINKING } ||
+        body.count { it.item.role == Role.ASSISTANT } > 1
+}
+
+private fun turns(entries: List<Entry>): List<Turn> {
+    val out = ArrayList<Turn>()
+    var prompt: Entry? = null
+    var body = ArrayList<Entry>()
+    fun close(finished: Boolean) {
+        if (prompt != null || body.isNotEmpty()) out += Turn(prompt, body, finished || body.any { it.item.role == Role.TURN })
+    }
+    for (e in entries) {
+        if (e.item.role == Role.USER) {
+            close(true)
+            prompt = e
+            body = ArrayList()
+        } else {
+            body += e
+        }
+    }
+    close(false)
+    return out
+}
+
+/** What the list shows: an entry, or the header a turn folds under. */
+private sealed interface Line {
+    data class Shown(val entry: Entry) : Line
+    data class Header(val turn: Turn, val open: Boolean) : Line
+}
+
+/** A folded turn keeps its last reply, its turn line and its notices in view. */
+private fun folded(turn: Turn): List<Entry> {
+    val reply = turn.body.lastOrNull { it.item.role == Role.ASSISTANT }
+    return turn.body.filter {
+        it === reply || it.item.role in setOf(Role.TURN, Role.SYSTEM, Role.DAEMON)
+    }
+}
+
 @Composable
 private fun Conversation(model: HubModel, s: SessionInfo, modifier: Modifier) {
     val list = rememberLazyListState()
     val scope = rememberCoroutineScope()
     val items = model.conversation
-    // Every row: the list is lazy, so only what is on screen is composed.
-    val rows = remember(items.size) { entries(items) }
+    // Every row: the list is lazy, so only what is on screen is composed. A finished turn
+    // folds under its header unless opened (phase PHS-20261117-f22kxe item 1); the running
+    // one stays open.
+    val turns = remember(items.size) { turns(entries(items)) }
+    val rows: List<Line> = buildList {
+        for (t in turns) {
+            t.prompt?.let { add(Line.Shown(it)) }
+            if (!t.foldable) {
+                t.body.forEach { add(Line.Shown(it)) }
+                continue
+            }
+            val open = model.turnOpen(s, t.start) ?: (!t.finished || model.openTurns)
+            add(Line.Header(t, open))
+            (if (open) t.body else folded(t)).forEach { add(Line.Shown(it)) }
+        }
+    }
     val sent = model.sending
     val waiting = model.pendingFor(s)
     val ended = model.sessions.none { it.nodeId == s.nodeId && it.id == s.id }
     val working = s.busy && !ended && waiting.isEmpty()
     // The person's last prompt: one still being sent, else the last in the transcript.
-    val lastPrompt = if (sent.isNotEmpty()) rows.size + sent.size - 1 else rows.indexOfLast { it.item.role == Role.USER }
+    val lastPrompt = if (sent.isNotEmpty()) rows.size + sent.size - 1 else rows.indexOfLast { it is Line.Shown && it.entry.item.role == Role.USER }
     val promptShown by remember(lastPrompt) {
         derivedStateOf { lastPrompt < 0 || list.layoutInfo.visibleItemsInfo.any { it.index == lastPrompt } }
     }
@@ -357,12 +419,27 @@ private fun Conversation(model: HubModel, s: SessionInfo, modifier: Modifier) {
             verticalArrangement = Arrangement.spacedBy(4.dp),
             modifier = Modifier.fillMaxSize(),
         ) {
-            itemsIndexed(rows, key = { i, e -> "${e.item.seq}-$i" }) { i, e ->
-                val before = rows.getOrNull(i - 1)?.item
-                if (before == null || e.item.timeMs - before.timeMs > 10 * 60_000) {
-                    Caption(whenLabel(e.item.timeMs), Modifier.padding(top = if (before == null) 0.dp else 8.dp))
+            itemsIndexed(rows, key = { i, line ->
+                when (line) {
+                    is Line.Shown -> "${line.entry.item.seq}-$i"
+                    is Line.Header -> "turn-${line.turn.start}"
                 }
-                ConversationRow(e, s.cwd, delivered = e.item.role == Role.USER && e.item.text in model.delivered)
+            }) { i, line ->
+                when (line) {
+                    is Line.Header -> TurnHeader(
+                        line.turn,
+                        line.open,
+                        working = working && !line.turn.finished,
+                    ) { model.setTurnOpen(s, line.turn.start, !line.open) }
+                    is Line.Shown -> {
+                        val e = line.entry
+                        val before = (rows.getOrNull(i - 1) as? Line.Shown)?.entry?.item
+                        if (before != null && e.item.timeMs - before.timeMs > 10 * 60_000 || i == 0) {
+                            Caption(whenLabel(e.item.timeMs), Modifier.padding(top = if (i == 0) 0.dp else 8.dp))
+                        }
+                        ConversationRow(e, s.cwd, delivered = e.item.role == Role.USER && e.item.text in model.delivered)
+                    }
+                }
             }
             itemsIndexed(sent, key = { _, x -> "sent" + x.timeMs }) { _, x ->
                 SentTurn(x, retry = { model.retry(x) })
@@ -404,6 +481,89 @@ private fun Conversation(model: HubModel, s: SessionInfo, modifier: Modifier) {
                 Icon(Icons.Filled.KeyboardArrowDown, "Jump to latest")
             }
         }
+    }
+}
+
+/** A turn's one line: how long Claude worked and what it did, "Worked for 2m 36s · 2 edits ·
+ *  3 reads · 1 command", failures in red; *Working…* with a breathing dot while it runs. A
+ *  tap opens or folds it. */
+@Composable
+private fun TurnHeader(turn: Turn, open: Boolean, working: Boolean, toggle: () -> Unit) {
+    val calls = turn.body.filter { it.item.role == Role.TOOL }
+    val count = { names: Set<String> -> calls.count { it.item.tool in names } }
+    val edits = count(editTools)
+    val reads = count(setOf("Read"))
+    val commands = count(setOf("Bash"))
+    val searches = count(setOf("Grep", "Glob", "WebSearch", "WebFetch", "ToolSearch"))
+    val other = calls.size - edits - reads - commands - searches
+    val failed = calls.count { it.result?.error == true }
+    fun n(k: Int, one: String, many: String) = if (k == 0) null else "$k ${if (k == 1) one else many}"
+    val parts = listOfNotNull(
+        n(edits, "edit", "edits"),
+        n(reads, "read", "reads"),
+        n(commands, "command", "commands"),
+        n(searches, "search", "searches"),
+        n(other, "other tool", "other tools"),
+    )
+    val first = turn.prompt?.item?.timeMs ?: turn.body.first().item.timeMs
+    val last = (turn.body.lastOrNull { it.item.role == Role.TURN } ?: turn.body.last()).item.timeMs
+    val label = if (working) "Working…" else "Worked for ${span(last - first)}"
+    val pulse by rememberInfiniteTransition(label = "pulse").animateFloat(
+        initialValue = 0.3f,
+        targetValue = 1f,
+        animationSpec = infiniteRepeatable(tween(900), RepeatMode.Reverse),
+        label = "alpha",
+    )
+    Row(
+        verticalAlignment = Alignment.CenterVertically,
+        modifier = Modifier
+            .fillMaxWidth()
+            .clip(RoundedCornerShape(8.dp))
+            .clickable(onClick = toggle)
+            .padding(vertical = 6.dp),
+    ) {
+        Icon(
+            if (open) Icons.Filled.ExpandMore else Icons.Filled.ChevronRight,
+            if (open) "Fold this turn" else "Show every step of this turn",
+            tint = MaterialTheme.colorScheme.onSurfaceVariant,
+            modifier = Modifier.size(18.dp),
+        )
+        Spacer(Modifier.width(6.dp))
+        if (working) {
+            Box(
+                Modifier
+                    .size(8.dp)
+                    .graphicsLayer { alpha = pulse }
+                    .background(MaterialTheme.colorScheme.primary, CircleShape),
+            )
+            Spacer(Modifier.width(8.dp))
+        }
+        Text(
+            buildAnnotatedString {
+                withStyle(SpanStyle(color = if (working) MaterialTheme.colorScheme.primary else MaterialTheme.colorScheme.onSurface)) {
+                    append(label)
+                }
+                withStyle(SpanStyle(color = MaterialTheme.colorScheme.onSurfaceVariant)) {
+                    parts.forEach { append(" · $it") }
+                }
+                if (failed > 0) {
+                    withStyle(SpanStyle(color = MaterialTheme.colorScheme.error)) { append(" · $failed failed") }
+                }
+            },
+            style = MaterialTheme.typography.bodyMedium,
+            maxLines = 2,
+            overflow = TextOverflow.Ellipsis,
+        )
+    }
+}
+
+/** A duration as a turn header says it: "45s", "2m 36s", "1h 4m". */
+private fun span(ms: Long): String {
+    val s = (ms / 1000).coerceAtLeast(1)
+    return when {
+        s < 60 -> "${s}s"
+        s < 3600 -> "${s / 60}m ${s % 60}s"
+        else -> "${s / 3600}h ${(s % 3600) / 60}m"
     }
 }
 
@@ -568,6 +728,23 @@ private fun toolIcon(tool: String): ImageVector = when (tool) {
  *  error's first line; a tap opens the output and the call's detail. */
 private val editTools = setOf("Edit", "Write", "NotebookEdit", "MultiEdit")
 
+/** A tool call said as what it did: "Read", "Edited", "Ran"; an MCP tool as its server and
+ *  tool, `mcp__saarthi__ask_user_question` as "saarthi · ask_user_question". */
+private fun verb(tool: String): String = when (tool) {
+    "Edit", "MultiEdit" -> "Edited"
+    "Write" -> "Wrote"
+    "NotebookEdit" -> "Edited notebook"
+    "Bash" -> "Ran"
+    "Grep" -> "Searched"
+    "Glob" -> "Listed"
+    "WebSearch" -> "Searched the web"
+    "WebFetch" -> "Fetched"
+    "ToolSearch" -> "Loaded tools"
+    "TodoWrite" -> "Updated todos"
+    "Task", "Agent" -> "Agent"
+    else -> if (tool.startsWith("mcp__")) tool.removePrefix("mcp__").replace("__", " · ") else tool
+}
+
 @Composable
 private fun ToolCall(call: Item, result: Item?, cwd: String) {
     // The diff Claude Code computed for the files the call changed shows at once, as the
@@ -592,7 +769,7 @@ private fun ToolCall(call: Item, result: Item?, cwd: String) {
                 modifier = Modifier.padding(top = 2.dp).size(16.dp),
             )
             Spacer(Modifier.width(8.dp))
-            Text(call.tool, style = MaterialTheme.typography.labelLarge, color = MaterialTheme.colorScheme.secondary)
+            Text(verb(call.tool), style = MaterialTheme.typography.labelLarge, color = MaterialTheme.colorScheme.secondary)
             Spacer(Modifier.width(8.dp))
             Text(
                 headline,
