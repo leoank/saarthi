@@ -143,7 +143,7 @@ fun SessionScreen(
                 TopAppBar(
                     title = {
                         Column {
-                            Text(s.name(), maxLines = 1, overflow = TextOverflow.Ellipsis)
+                            Text(s.title(), maxLines = 1, overflow = TextOverflow.Ellipsis)
                             Text(
                                 listOf(
                                     node,

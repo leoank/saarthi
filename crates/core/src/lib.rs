@@ -207,6 +207,13 @@ pub struct SessionInfo {
     pub profile: String,
     /// The named Claude token it last ran under; empty for the node's own login.
     pub claude_token: String,
+    /// What it is about: a name given to it, else Claude Code's generated title, else its
+    /// summary; empty until the node reports one (phase PHS-20261117-f22kxe item 3).
+    pub title: String,
+    /// Where the title came from: `name`, `ai-title` or `summary`.
+    pub title_source: String,
+    /// The git branch its transcript names; empty outside a repository.
+    pub git_branch: String,
 }
 
 /// A session as a history list shows it (ADR-0036).
@@ -983,6 +990,9 @@ fn session(s: ev::Session) -> SessionInfo {
         ended_ms: s.ended_ms,
         profile: s.profile,
         claude_token: s.claude_token,
+        title: s.title,
+        title_source: s.title_source,
+        git_branch: s.git_branch,
     }
 }
 

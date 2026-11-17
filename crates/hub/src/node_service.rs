@@ -303,6 +303,7 @@ async fn serve_node(
         pending = register.pending.len(), "node registered");
     publish_node(hub, &node_id).await?;
     for s in register.sessions.into_iter().chain(gone_sessions) {
+        let s = db.session(&node_id, &s.id).await?.unwrap_or(s);
         publish_session(hub, &node_id, s);
     }
     for request in register.pending {
@@ -354,6 +355,16 @@ async fn serve_link(
                     if e.source() == EventSource::Daemon && e.kind == "rate_limit" {
                         token_usage(hub, node_id, &e).await?;
                     }
+                    if e.source() == EventSource::Daemon && e.kind == "meta" {
+                        let v: serde_json::Value = serde_json::from_str(&e.payload_json).unwrap_or_default();
+                        let text = |k: &str| v[k].as_str().unwrap_or_default().to_string();
+                        if let Some(s) = db
+                            .set_session_meta(node_id, &e.session_id, &text("title"), &text("title_source"), &text("git_branch"))
+                            .await?
+                        {
+                            publish_session(hub, node_id, s);
+                        }
+                    }
                     hub.live.publish_event(node_id, e);
                 }
                 send(tx, hub_message::Body::Ack(Ack { seq })).await?;
@@ -362,6 +373,8 @@ async fn serve_link(
                 if db.store_session(node_id, &s).await? {
                     hub.notifier.ended(name, node_id, &s);
                 }
+                // As stored: the node's copy lacks what the hub keeps of it, such as its title.
+                let s = db.session(node_id, &s.id).await?.unwrap_or(s);
                 publish_session(hub, node_id, s);
             }
             Some(Body::Health(h)) => {

@@ -32,6 +32,52 @@ import java.time.format.DateTimeFormatter
 /** The last path segment, which is how a session is named everywhere. */
 fun SessionInfo.name(): String = cwd.trimEnd('/').substringAfterLast('/').ifEmpty { cwd.ifEmpty { "session" } }
 
+/** What the session is about: the title Claude Code gave it or the person named it, else its
+ *  folder (phase PHS-20261117-f22kxe item 3). */
+fun SessionInfo.title(): String = title.ifBlank { name() }
+
+/** Where it runs, for the line under its title: "folder · branch" once it has a title, else
+ *  the folder's parent, as before. */
+fun SessionInfo.place(): String {
+    if (title.isBlank()) return parentPath()
+    // A worktree's folder is often named after its branch: the repository is the one above.
+    val parts = cwd.trimEnd('/').split('/').filter { it.isNotEmpty() }
+    val folder = parts.lastOrNull().orEmpty()
+    val repo = if (folder == gitBranch || folder == gitBranch.substringAfterLast('/') || folder in setOf("main", "master"))
+        parts.getOrNull(parts.size - 2) ?: folder else folder
+    return listOf(repo, gitBranch).filter { it.isNotBlank() }.joinToString(" · ")
+}
+
+/** The state of a session at a glance: needs the person, Claude working, ready for a
+ *  prompt, or done. */
+enum class SessionState(val label: String) { INPUT("INPUT"), RUN("RUN"), READY("READY"), DONE("DONE") }
+
+fun SessionInfo.state(waiting: Int): SessionState = when {
+    endedMs != null -> SessionState.DONE
+    waiting > 0 -> SessionState.INPUT
+    busy -> SessionState.RUN
+    else -> SessionState.READY
+}
+
+/** A session's state as a small pill: the only coloured thing on its row. */
+@Composable
+fun StatePill(state: SessionState, modifier: Modifier = Modifier) {
+    val (bg, fg) = when (state) {
+        SessionState.INPUT -> MaterialTheme.colorScheme.errorContainer to MaterialTheme.colorScheme.onErrorContainer
+        SessionState.RUN -> MaterialTheme.colorScheme.secondaryContainer to MaterialTheme.colorScheme.onSecondaryContainer
+        SessionState.READY, SessionState.DONE -> MaterialTheme.colorScheme.surfaceVariant to MaterialTheme.colorScheme.onSurfaceVariant
+    }
+    Text(
+        state.label,
+        style = MaterialTheme.typography.labelSmall,
+        fontWeight = androidx.compose.ui.text.font.FontWeight.Bold,
+        color = fg,
+        modifier = modifier
+            .background(bg, androidx.compose.foundation.shape.RoundedCornerShape(6.dp))
+            .padding(horizontal = 6.dp, vertical = 1.dp),
+    )
+}
+
 /** The directory above the name, with the home directory as `~`, for a second line. */
 fun SessionInfo.parentPath(): String {
     val parent = cwd.trimEnd('/').substringBeforeLast('/', "")

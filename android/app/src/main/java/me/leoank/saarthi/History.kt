@@ -120,7 +120,8 @@ private fun HistoryRow(h: HistoryItem, node: String, onOpen: () -> Unit) {
         Column(Modifier.padding(horizontal = 16.dp, vertical = 12.dp)) {
             Row(verticalAlignment = Alignment.CenterVertically) {
                 Text(
-                    h.title.ifEmpty { s.name() },
+                    // A name or Claude Code's title, else the first prompt, else the folder.
+                    s.title.ifBlank { h.title.ifEmpty { s.name() } },
                     style = MaterialTheme.typography.titleSmall,
                     maxLines = 2,
                     overflow = TextOverflow.Ellipsis,
@@ -136,7 +137,7 @@ private fun HistoryRow(h: HistoryItem, node: String, onOpen: () -> Unit) {
                 }
             }
             Text(
-                listOf(s.parentPath(), s.name()).filter { it.isNotEmpty() }.joinToString("/"),
+                if (s.title.isBlank()) listOf(s.parentPath(), s.name()).filter { it.isNotEmpty() }.joinToString("/") else s.place(),
                 style = MaterialTheme.typography.bodySmall,
                 color = MaterialTheme.colorScheme.onSurfaceVariant,
                 maxLines = 1,

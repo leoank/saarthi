@@ -98,3 +98,39 @@ async fn killing_a_session_its_node_no_longer_runs_ends_it() {
     session(&addr, "ghost", true).await;
     hub.stop();
 }
+
+#[tokio::test(flavor = "multi_thread")]
+async fn a_session_carries_its_title_and_branch_from_its_transcript() {
+    let dir = tempfile::tempdir().unwrap();
+    let (hub, addr) = HubProc::start(&dir.path().join("hub.db"), "127.0.0.1:0");
+    let claude_dir = dir.path().join(".claude");
+    let node = start_node(&addr, "t-node", &claude_dir, Duration::from_secs(30)).await;
+    let transcript = saarthi_node::sessions::transcript_path(&claude_dir, "/w", "titled");
+    std::fs::create_dir_all(transcript.parent().unwrap()).unwrap();
+    std::fs::write(
+        &transcript,
+        concat!(
+            r#"{"type":"user","uuid":"u1","gitBranch":"feat/parser","message":{"role":"user","content":"fix it"}}"#, "\n",
+            r#"{"type":"ai-title","aiTitle":"Fix the parser","sessionId":"titled"}"#, "\n",
+            r#"{"type":"agent-name","agentName":"Parser rework","sessionId":"titled"}"#, "\n",
+        ),
+    )
+    .unwrap();
+    node.sessions.apply_registry(&[record("titled")]).await;
+    let mut s = session(&addr, "titled", false).await;
+    for _ in 0..250 {
+        if !s.title.is_empty() {
+            break;
+        }
+        tokio::time::sleep(Duration::from_millis(20)).await;
+        s = session(&addr, "titled", false).await;
+    }
+    assert_eq!((s.title.as_str(), s.title_source.as_str(), s.git_branch.as_str()), ("Parser rework", "name", "feat/parser"));
+    // The node's next report of the session, without a title, keeps the hub's.
+    let mut busy = record("titled");
+    busy.status = "busy".into();
+    node.sessions.apply_registry(&[busy]).await;
+    tokio::time::sleep(Duration::from_millis(200)).await;
+    assert_eq!(session(&addr, "titled", false).await.title, "Parser rework");
+    hub.stop();
+}

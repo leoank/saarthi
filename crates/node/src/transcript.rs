@@ -12,6 +12,7 @@ use std::time::Duration;
 use saarthi_proto::event::v1::EventSource;
 use serde::Serialize;
 use serde_json::Value;
+use sha2::Digest;
 use tokio::io::{AsyncReadExt, AsyncSeekExt};
 use tokio::sync::watch;
 
@@ -161,6 +162,65 @@ struct Follow {
 pub struct TailState {
     usage: Usage,
     files: HashMap<PathBuf, Follow>,
+    meta: Meta,
+}
+
+/// What a session is about and where, from its main transcript: its titles by where they came
+/// from and its git branch, sent as a daemon `meta` event when the best of them changes (phase
+/// PHS-20261117-f22kxe item 3). A name given to the session (`agent-name`, `custom-title`)
+/// outranks Claude Code's generated `ai-title`, which outranks a `summary`, as atuin ranks a
+/// thread's title; a title cleared falls back to the next.
+#[derive(Default)]
+struct Meta {
+    titles: [String; 4],
+    branch: String,
+    sent: Option<(String, &'static str, String)>,
+}
+
+const TITLE_SOURCES: [(&str, &str, &str); 4] = [
+    ("agent-name", "agentName", "name"),
+    ("custom-title", "customTitle", "name"),
+    ("ai-title", "aiTitle", "ai-title"),
+    ("summary", "summary", "summary"),
+];
+
+impl Meta {
+    /// Takes what a raw line says, without parsing the large lines it does not concern.
+    fn observe(&mut self, raw: &str) {
+        for (i, (kind, field, _)) in TITLE_SOURCES.iter().enumerate() {
+            if raw.contains(&format!("\"type\":\"{kind}\"")) {
+                if let Ok(v) = serde_json::from_str::<Value>(raw) {
+                    self.titles[i] = v[*field].as_str().unwrap_or_default().trim().to_string();
+                }
+                return;
+            }
+        }
+        // Every message line names the branch; read it without parsing the line.
+        if let Some(at) = raw.find("\"gitBranch\":\"") {
+            let rest = &raw[at + 13..];
+            if let Some(end) = rest.find('"') {
+                self.branch = rest[..end].to_string();
+            }
+        }
+    }
+
+    /// The best title, its source, and the branch, when they differ from what was sent.
+    fn changed(&mut self) -> Option<String> {
+        let (title, source) = self
+            .titles
+            .iter()
+            .zip(TITLE_SOURCES)
+            .find(|(t, _)| !t.is_empty())
+            .map(|(t, (_, _, source))| (t.clone(), source))
+            .unwrap_or_default();
+        let now = (title, source, self.branch.clone());
+        if self.sent.as_ref() == Some(&now) || (now.0.is_empty() && now.2.is_empty()) {
+            return None;
+        }
+        let payload = serde_json::json!({"title": now.0, "title_source": now.1, "git_branch": now.2}).to_string();
+        self.sent = Some(now);
+        Some(payload)
+    }
 }
 
 /// Follows a session's transcripts until `stop` turns true, then reads once more and returns
@@ -177,6 +237,7 @@ pub async fn tail(
     let TailState {
         mut usage,
         mut files,
+        mut meta,
     } = state;
     loop {
         let stopping = *stop.borrow();
@@ -194,7 +255,11 @@ pub async fn tail(
                 offset: 0,
                 partial: Vec::new(),
             });
+            let main = path == transcript;
             for raw in read_new_lines(&path, follow).await {
+                if main {
+                    meta.observe(&raw);
+                }
                 match classify(&raw, &mut usage) {
                     Line::Dropped => {}
                     Line::Kept { kind, line, uuid } => {
@@ -220,8 +285,13 @@ pub async fn tail(
                 }
             }
         }
+        if let Some(payload) = meta.changed() {
+            // Once per distinct value: a node re-reading the transcript sends nothing new.
+            let id = format!("meta:{}", hex::encode(&sha2::Sha256::digest(payload.as_bytes())[..8]));
+            outbox.line(&session_id, EventSource::Daemon, "meta", payload, id).await;
+        }
         if stopping {
-            return TailState { usage, files };
+            return TailState { usage, files, meta };
         }
         tokio::select! {
             _ = tokio::time::sleep(poll) => {}
@@ -319,6 +389,25 @@ mod tests {
         assert_eq!(chain, [("a", None), ("b", Some("a")), ("c", Some("b"))]);
         // A line whose parent is there is written as it was read.
         assert_eq!(rebuild(&lines[..1]), format!("{}\n", lines[0]));
+    }
+
+    #[test]
+    fn a_session_is_titled_by_its_best_source_and_named_over_generated() {
+        let mut m = Meta::default();
+        assert_eq!(m.changed(), None, "nothing known yet");
+        m.observe(r#"{"type":"user","uuid":"a","gitBranch":"main","message":{"content":"hi"}}"#);
+        m.observe(r#"{"type":"ai-title","aiTitle":"Fix the parser","sessionId":"s"}"#);
+        let v: Value = serde_json::from_str(&m.changed().unwrap()).unwrap();
+        assert_eq!((v["title"].as_str(), v["title_source"].as_str(), v["git_branch"].as_str()), (Some("Fix the parser"), Some("ai-title"), Some("main")));
+        m.observe(r#"{"type":"ai-title","aiTitle":"Fix the parser","sessionId":"s"}"#);
+        assert_eq!(m.changed(), None, "the same again sends nothing");
+        m.observe(r#"{"type":"agent-name","agentName":"Parser rework","sessionId":"s"}"#);
+        let v: Value = serde_json::from_str(&m.changed().unwrap()).unwrap();
+        assert_eq!((v["title"].as_str(), v["title_source"].as_str()), (Some("Parser rework"), Some("name")));
+        // A name cleared falls back to the generated title.
+        m.observe(r#"{"type":"agent-name","agentName":"","sessionId":"s"}"#);
+        let v: Value = serde_json::from_str(&m.changed().unwrap()).unwrap();
+        assert_eq!(v["title"], "Fix the parser");
     }
 
     #[test]

@@ -30,6 +30,12 @@ message Session {
   // The named Claude token a spawned session runs under (ADR-0039); empty for the node's own
   // login, or for a session the node did not start.
   string claude_token = 13;
+  // What it is about and where, as the hub has it from the node's `meta` events: the best
+  // title, where it came from ("name", "ai-title", "summary"), and the git branch. The node
+  // sends them empty; the hub fills them.
+  string title = 14;
+  string title_source = 15;
+  string git_branch = 16;
 }
 
 // A way a node can start a session (`--profiles`, ADR-0038), as the app offers it.

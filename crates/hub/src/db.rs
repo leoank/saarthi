@@ -571,6 +571,27 @@ impl Db {
         Ok(rows.iter().map(event_from).collect())
     }
 
+    /// A session's title, where it came from and its git branch, from a `meta` event; the
+    /// session as it now stands, if the hub has it.
+    pub async fn set_session_meta(
+        &self,
+        node_id: &str,
+        session_id: &str,
+        title: &str,
+        source: &str,
+        branch: &str,
+    ) -> Result<Option<Session>> {
+        sqlx::query("UPDATE sessions SET title = ?3, title_source = ?4, git_branch = ?5 WHERE node_id = ?1 AND id = ?2")
+            .bind(node_id)
+            .bind(session_id)
+            .bind(title)
+            .bind(source)
+            .bind(branch)
+            .execute(&self.pool)
+            .await?;
+        self.session(node_id, session_id).await
+    }
+
     /// A page of a session's transcript lines as the node sent them, after `after_seq`, in
     /// order: each with its seq, to ask for the next page from.
     pub async fn transcript(
@@ -720,6 +741,9 @@ fn session_from(r: &sqlx::sqlite::SqliteRow) -> Session {
             .into(),
         profile: r.get("profile"),
         claude_token: r.get("claude_token"),
+        title: r.get("title"),
+        title_source: r.get("title_source"),
+        git_branch: r.get("git_branch"),
     }
 }
 

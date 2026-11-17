@@ -150,7 +150,7 @@ fun HomeScreen(
                     item(key = "waiting") { SectionTitle("Waiting for you", Modifier.padding(top = 0.dp)) }
                     items(model.pending, key = { "p" + it.id }) { p ->
                         val s = model.sessions.firstOrNull { it.id == p.sessionId && it.nodeId == p.nodeId }
-                        val where = listOfNotNull(model.node(p.nodeId)?.name, s?.name()).joinToString(" / ")
+                        val where = listOfNotNull(model.node(p.nodeId)?.name, s?.title()).joinToString(" / ")
                         PendingCard(model, p, where, Modifier.clickable(enabled = s != null) { s?.let(openSession) })
                     }
                 }
@@ -235,31 +235,26 @@ private fun SessionCard(s: SessionInfo, waiting: Int, onOpen: () -> Unit) {
         colors = CardDefaults.cardColors(containerColor = MaterialTheme.colorScheme.surfaceContainer),
     ) {
         Row(verticalAlignment = Alignment.CenterVertically, modifier = Modifier.padding(horizontal = 16.dp, vertical = 12.dp)) {
-            if (s.busy) CircularProgressIndicator(Modifier.size(14.dp), strokeWidth = 2.dp)
-            else StatusDot(false, Modifier.size(14.dp).padding(2.dp))
-            Spacer(Modifier.width(14.dp))
             Column(Modifier.weight(1f)) {
-                Text(s.name(), style = MaterialTheme.typography.titleMedium, maxLines = 1, overflow = TextOverflow.Ellipsis)
+                Text(s.title(), style = MaterialTheme.typography.titleMedium, maxLines = 1, overflow = TextOverflow.Ellipsis)
                 Text(
-                    s.parentPath(),
+                    s.place(),
                     style = MaterialTheme.typography.bodySmall,
                     color = MaterialTheme.colorScheme.onSurfaceVariant,
                     maxLines = 1,
                     overflow = TextOverflow.StartEllipsis,
                 )
-                Text(
-                    listOf(
-                        when {
-                            waiting > 0 -> "waiting for you"
-                            s.busy -> "working"
-                            else -> "idle"
-                        },
-                        "started ${relative(s.startedMs)}",
-                        s.profile.ifEmpty { null },
-                    ).filterNotNull().joinToString(" · "),
-                    style = MaterialTheme.typography.bodySmall,
-                    color = MaterialTheme.colorScheme.onSurfaceVariant,
-                )
+                Row(verticalAlignment = Alignment.CenterVertically, modifier = Modifier.padding(top = 2.dp)) {
+                    StatePill(s.state(waiting))
+                    Spacer(Modifier.width(8.dp))
+                    Text(
+                        listOfNotNull("started ${relative(s.startedMs)}", s.profile.ifEmpty { null }).joinToString(" · "),
+                        style = MaterialTheme.typography.bodySmall,
+                        color = MaterialTheme.colorScheme.onSurfaceVariant,
+                        maxLines = 1,
+                        overflow = TextOverflow.Ellipsis,
+                    )
+                }
             }
             if (waiting > 0) Badge(Modifier.padding(end = 8.dp)) { Text("$waiting") }
             if (s.wrapped || s.spawned) {
