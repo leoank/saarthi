@@ -273,9 +273,10 @@ exec "$@"
 
         sessions.apply_registry(&[record("busy")]).await;
         until("held while busy", || held.load(Ordering::Relaxed)).await;
+        // The hold counts as taken once the stand-in starts; its log line can come later.
+        until("the hold logged", || holds() == 1).await;
         let line = std::fs::read_to_string(&log).unwrap();
         assert!(line.contains("--what=idle:sleep --who=saarthi --mode=block"), "{line}");
-        assert_eq!(holds(), 1);
 
         sessions.apply_registry(&[record("idle")]).await;
         until("released when idle", || !held.load(Ordering::Relaxed)).await;
