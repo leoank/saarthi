@@ -50,6 +50,7 @@ done ones. The project page's *Progress* lists this phase on one line.
   - *Activity*: turns, prompts, tool calls by kind, files edited, failed calls, questions and permission requests asked and how they were answered.
   - *On the hub*: the lines kept for it and their size, so a large session shows before it matters (item 16).
   Hub (a call that sums a session's events and their size), core and app.
+- [ ] 20. Push without the ntfy app, and only through the tailnet: today the hub posts each notification to a push server (public `ntfy.sh` or the owner's) and the ntfy app on the phone holds the connection to it (ADR-0008, ADR-0025, ADR-0026), neither of them over the hub's tailnet. Instead the app keeps its own connection to the hub, through its own tailnet identity (ADR-0049), in a foreground service, and the hub delivers notifications on it: no push server, no second app, nothing on the public internet. The notifications stay as they are (Allow and Deny buttons, a tap opening the session); UnifiedPush stays as a fallback for phones that would rather not keep a connection. First an experiment on the phone: does a held stream over libtailscale survive Doze and network changes, how quickly does a notification arrive with the screen off, and what does it cost in battery; then a design record. Hub, core, app.
 
 ## Notes
 What ovis looks like, from its screenshots: near-black warm neutrals, one amber accent, and
