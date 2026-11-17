@@ -126,6 +126,10 @@ ends that terminal's session too. The transcript stays; nothing else is saved.
 It leaves the home screen's live list, and its screen says *This session has ended*.
 With the `ended` notification on, you get a push.
 
+A session whose machine went away while it ran (a reboot, a live disk restarted, a crash)
+ends when that machine's node connects again and no longer has it, without a push; it
+can then be resumed, from the hub's copy of its transcript if the machine lost it.
+
 ## History
 
 The clock icon in the home screen's top bar opens **History**: every session the hub

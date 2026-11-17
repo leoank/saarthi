@@ -357,6 +357,12 @@ async fn serve(args: Serve) -> Result<()> {
     let keep_awake = Arc::new(std::sync::atomic::AtomicBool::new(args.keep_awake));
     let mut hold = None;
     let mut asking = None;
+    // The sessions running now, read before the hub link starts: the hub ends any session it
+    // has as live that the registration does not report.
+    let registry_dir = claude_dir.join("sessions");
+    sessions
+        .apply_registry(&scan_registry(&registry_dir, &profile_dirs).await)
+        .await;
     let drain = match (args.hub, args.token_file) {
         (Some(hub), Some(token_file)) => {
             let token = std::fs::read_to_string(&token_file)
@@ -454,28 +460,14 @@ async fn serve(args: Serve) -> Result<()> {
         tokio::spawn(async move { axum::serve(listener, app).await });
     }
 
-    let registry_dir = claude_dir.join("sessions");
     let scan = sessions.clone();
     tokio::spawn(async move {
         let mut tick = tokio::time::interval(Duration::from_secs(args.registry_secs));
+        // The first scan ran before the link started.
+        tick.tick().await;
         loop {
             tick.tick().await;
-            let dir = registry_dir.clone();
-            let others = profile_dirs.clone();
-            let live = tokio::task::spawn_blocking(move || {
-                let mut live = registry::live(&dir);
-                for (profile, claude_dir) in others {
-                    live.extend(registry::live(&claude_dir.join("sessions")).into_iter().map(|mut r| {
-                        r.claude_dir = Some(claude_dir.clone());
-                        r.profile = profile.clone();
-                        r
-                    }));
-                }
-                live
-            })
-            .await
-            .unwrap_or_default();
-            scan.apply_registry(&live).await;
+            scan.apply_registry(&scan_registry(&registry_dir, &profile_dirs).await).await;
         }
     });
 
@@ -564,4 +556,25 @@ async fn serve(args: Serve) -> Result<()> {
         _ = drain => {}
     }
     Ok(())
+}
+
+/// The live sessions in Claude Code's registry, the host's and each launch profile's.
+async fn scan_registry(
+    dir: &std::path::Path,
+    profile_dirs: &[(String, std::path::PathBuf)],
+) -> Vec<registry::Record> {
+    let (dir, others) = (dir.to_path_buf(), profile_dirs.to_vec());
+    tokio::task::spawn_blocking(move || {
+        let mut live = registry::live(&dir);
+        for (profile, claude_dir) in others {
+            live.extend(registry::live(&claude_dir.join("sessions")).into_iter().map(|mut r| {
+                r.claude_dir = Some(claude_dir.clone());
+                r.profile = profile.clone();
+                r
+            }));
+        }
+        live
+    })
+    .await
+    .unwrap_or_default()
 }

@@ -263,6 +263,21 @@ async fn serve_node(
     for s in &register.sessions {
         db.store_session(&node_id, s).await?;
     }
+    // A session the hub has as live that the node no longer has ended while it was away (a
+    // reboot, a wiped disk, a crash): it ends now, quietly, so it can be resumed. The node
+    // reads its session registry before it registers, so a running session is reported.
+    let reported: std::collections::HashSet<&str> = register.sessions.iter().map(|s| s.id.as_str()).collect();
+    let mut gone_sessions = Vec::new();
+    for mut session in db.sessions(&node_id, false).await? {
+        if !reported.contains(session.id.as_str()) {
+            session.ended_ms = Some(now_ms());
+            db.store_session(&node_id, &session).await?;
+            gone_sessions.push(session);
+        }
+    }
+    if !gone_sessions.is_empty() {
+        tracing::info!(node = %name, ended = gone_sessions.len(), "ended sessions the node no longer has");
+    }
     let gone = db
         .sync_pending(&node_id, &register.pending, now_ms())
         .await?;
@@ -287,7 +302,7 @@ async fn serve_node(
     tracing::info!(node = %name, %node_id, last_seq, sessions = register.sessions.len(),
         pending = register.pending.len(), "node registered");
     publish_node(hub, &node_id).await?;
-    for s in register.sessions {
+    for s in register.sessions.into_iter().chain(gone_sessions) {
         publish_session(hub, &node_id, s);
     }
     for request in register.pending {
