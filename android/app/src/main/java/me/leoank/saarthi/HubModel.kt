@@ -12,6 +12,9 @@ import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.Job
 import kotlinx.coroutines.channels.Channel
 import kotlinx.coroutines.delay
+import kotlinx.coroutines.flow.first
+import kotlinx.coroutines.withTimeoutOrNull
+import androidx.compose.runtime.snapshotFlow
 import kotlinx.coroutines.flow.receiveAsFlow
 import org.json.JSONArray
 import org.json.JSONObject
@@ -95,14 +98,18 @@ class SessionCache(val items: ArrayList<Item>, val usage: ArrayList<ModelTotals>
     }
 }
 
-/** A prompt sent from this phone, until the transcript echoes it. */
+/** A prompt the hub took from this phone, until the transcript echoes it. */
 data class Sent(
     val text: String,
     val timeMs: Long,
-    val accepted: Boolean = false,
     val note: String? = null,
-    val failed: String? = null,
 )
+
+/** How long a prompt waits in the bar for the hub to take it, the link's return included. */
+private const val SEND_WAIT_MS = 45_000L
+
+/** How long a dropped link goes unmentioned while nothing waits on it. */
+private const val QUIET_RECONNECT_MS = 4_000L
 
 /** Where the connection to the hub stands. */
 enum class Link { Disconnected, Connecting, Connected, Reconnecting }
@@ -214,6 +221,21 @@ class HubModel(app: Application) : AndroidViewModel(app) {
     private val cacheDir = File(app.filesDir, "sessions").apply { mkdirs() }
     /** Prompts sent from here that the transcript has not echoed yet, newest last. */
     val sending = mutableStateListOf<Sent>()
+
+    /** A prompt on its way to the hub, by "node/session": it stays in the bar, and the bar
+     *  takes no other, until the hub has it (phase PHS-20261117-f22kxe item 6). */
+    val outgoing = mutableStateMapOf<String, String>()
+
+    /** Why a session's last prompt was not taken, by "node/session", shown over its bar. */
+    val notSent = mutableStateMapOf<String, String>()
+
+    /** A reconnect that has gone on long enough to mention. */
+    private var reconnectLong by mutableStateOf(false)
+
+    /** Whether to say the link is down: a drop is often over within a second or two, so
+     *  only after [QUIET_RECONNECT_MS], or at once while a prompt waits on the link. */
+    val reconnecting: Boolean
+        get() = link == Link.Reconnecting && (reconnectLong || outgoing.isNotEmpty())
     /** Texts the transcript echoed after being sent from here: shown with two ticks. */
     val delivered = mutableStateListOf<String>()
     /** The open session's token totals by model, from the daemon's count. */
@@ -347,6 +369,7 @@ class HubModel(app: Application) : AndroidViewModel(app) {
         })
         openSession?.let { startStream(h, it, lastSeq) }
         link = Link.Connected
+        reconnectLong = false
     }
 
     /** The watch ended: try again until it holds, with a short backoff. The core's
@@ -355,6 +378,10 @@ class HubModel(app: Application) : AndroidViewModel(app) {
     private fun lost(message: String) {
         if (link == Link.Disconnected || reconnect?.isActive == true) return
         link = Link.Reconnecting
+        viewModelScope.launch {
+            delay(QUIET_RECONNECT_MS)
+            if (link == Link.Reconnecting) reconnectLong = true
+        }
         reconnect = viewModelScope.launch {
             var wait = 1_000L
             while (isActive) {
@@ -432,39 +459,49 @@ class HubModel(app: Application) : AndroidViewModel(app) {
     fun answer(p: PendingInfo, answers: Map<String, List<String>>) =
         withHub { noted(it.answer(p.nodeId, p.id, answers)) }
 
-    fun prompt(s: SessionInfo, text: String) = send(s, text) { it.prompt(s.nodeId, s.id, text) }
-    fun interrupt(s: SessionInfo, then: String?) {
+    /** [sent]: the hub took it, so the bar may let it go. */
+    fun prompt(s: SessionInfo, text: String, sent: () -> Unit) = send(s, text, sent) { it.prompt(s.nodeId, s.id, text) }
+    fun interrupt(s: SessionInfo, then: String?, sent: () -> Unit = {}) {
         val follow = then?.takeIf { t -> t.isNotBlank() }
         if (follow == null) withHub { done(it.interrupt(s.nodeId, s.id, null), "Interrupted") }
-        else send(s, follow) { it.interrupt(s.nodeId, s.id, follow) }
+        else send(s, follow, sent) { it.interrupt(s.nodeId, s.id, follow) }
     }
 
-    /** A failed send, sent again as a new attempt. */
-    fun retry(x: Sent) {
-        val s = openSession ?: return
-        sending.remove(x)
-        prompt(s, x.text)
-    }
-
-    /** A prompt from here appears at once with one tick; the hub's answer sets the note or
-     *  the failure; the transcript's echo turns it into the real turn with two ticks. */
-    private fun send(s: SessionInfo, text: String, call: suspend (Hub) -> String) {
-        val sent = Sent(text, System.currentTimeMillis())
-        sending.add(sent)
+    /** A prompt stays in the bar until the hub takes it, waiting out a reconnect for up to
+     *  [SEND_WAIT_MS]; then it shows with one tick, and the transcript's echo turns it into
+     *  the real turn with two. It is sent once: a failure or no answer leaves it in the bar
+     *  with the reason, for the person to send again, since a call that got no answer may
+     *  still have arrived. */
+    private fun send(s: SessionInfo, text: String, sent: () -> Unit, call: suspend (Hub) -> String) {
+        val key = "${s.nodeId}/${s.id}"
+        if (key in outgoing) return
+        outgoing[key] = text
+        notSent.remove(key)
         viewModelScope.launch {
-            val h = hub
-            val i = sending.indexOf(sent)
-            if (h == null) {
-                if (i >= 0) sending[i] = sent.copy(failed = "not connected")
-                return@launch
+            var called = false
+            val outcome: Result<String>? = withTimeoutOrNull(SEND_WAIT_MS) {
+                snapshotFlow { link }.first { it == Link.Connected || it == Link.Disconnected }
+                val h = hub ?: return@withTimeoutOrNull Result.failure(IllegalStateException("not connected to the hub"))
+                called = true
+                try {
+                    Result.success(call(h))
+                } catch (e: kotlinx.coroutines.CancellationException) {
+                    throw e
+                } catch (e: Exception) {
+                    Result.failure(e)
+                }
             }
-            try {
-                val note = call(h)
-                val j = sending.indexOf(sent)
-                if (j >= 0) sending[j] = sent.copy(accepted = true, note = note.ifEmpty { null })
-            } catch (e: Exception) {
-                val j = sending.indexOf(sent)
-                if (j >= 0) sending[j] = sent.copy(failed = describe(e))
+            outgoing.remove(key)
+            val error = outcome?.exceptionOrNull()
+            when {
+                outcome == null && called -> notSent[key] = "No answer from the hub in 45 s · it may still arrive, so look before sending again"
+                outcome == null -> notSent[key] = "Not sent · no connection to the hub for 45 s"
+                error != null -> notSent[key] = "Not sent · ${if (error is Exception) describe(error) else error.toString()}"
+                else -> {
+                    sending.add(Sent(text, System.currentTimeMillis(), outcome.getOrNull()?.ifEmpty { null }))
+                    if (draft(s.nodeId, s.id) == text) setDraft(s.nodeId, s.id, "")
+                    sent()
+                }
             }
         }
     }
@@ -607,7 +644,14 @@ class HubModel(app: Application) : AndroidViewModel(app) {
                 usage.addAll(totals)
             }
             override fun onError(message: String) = onMain {
-                if (openSession?.id == s.id) say("Conversation stream ended: $message")
+                // A stream that broke with the link comes back with it: say so only when,
+                // a moment later, the link holds and this stream was not started again.
+                val mine = stream
+                viewModelScope.launch {
+                    delay(QUIET_RECONNECT_MS)
+                    if (openSession?.id == s.id && link == Link.Connected && stream === mine)
+                        say("Conversation stream ended: $message")
+                }
             }
         })
     }

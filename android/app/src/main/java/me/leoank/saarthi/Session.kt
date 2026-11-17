@@ -51,7 +51,6 @@ import androidx.compose.material.icons.filled.KeyboardArrowDown
 import androidx.compose.material.icons.filled.KeyboardArrowUp
 import androidx.compose.material.icons.filled.Language
 import androidx.compose.material.icons.filled.MoreVert
-import androidx.compose.material.icons.filled.Schedule
 import androidx.compose.material.icons.filled.Search
 import androidx.compose.material.icons.filled.Stop
 import androidx.compose.material.icons.filled.Terminal
@@ -231,13 +230,20 @@ fun SessionScreen(
                             busy = s.busy,
                             waiting = waiting.isNotEmpty(),
                             answering = asked != null,
+                            outgoing = "${s.nodeId}/${s.id}" in model.outgoing,
+                            reconnecting = model.reconnecting,
+                            notSent = model.notSent["${s.nodeId}/${s.id}"],
                             send = {
                                 val answer = asked?.let { typedAnswer(it, text) }
-                                if (asked != null && answer != null) model.answer(asked, answer)
-                                else model.prompt(s, text.trim())
-                                text = ""
+                                if (asked != null && answer != null) {
+                                    model.answer(asked, answer)
+                                    text = ""
+                                } else model.prompt(s, text.trim()) { text = "" }
                             },
-                            stop = { model.interrupt(s, text.trim()); text = "" },
+                            stop = {
+                                if (text.isBlank()) model.interrupt(s, null)
+                                else model.interrupt(s, text.trim()) { text = "" }
+                            },
                         )
                     }
                 } else if (model.resumable(s)) {
@@ -255,7 +261,7 @@ fun SessionScreen(
             },
         ) { padding ->
             Column(Modifier.fillMaxSize().padding(padding)) {
-                if (model.link == Link.Reconnecting) {
+                if (model.reconnecting) {
                     Surface(color = MaterialTheme.colorScheme.errorContainer, modifier = Modifier.fillMaxWidth()) {
                         Caption("Reconnecting to ${model.hubName}…", color = MaterialTheme.colorScheme.onErrorContainer)
                     }
@@ -473,7 +479,7 @@ private fun Conversation(model: HubModel, s: SessionInfo, modifier: Modifier) {
                 }
             }
             itemsIndexed(sent, key = { _, x -> "sent" + x.timeMs }) { _, x ->
-                SentTurn(x, retry = { model.retry(x) })
+                SentTurn(x)
             }
             if (working) item(key = "working") { Working() }
         }
@@ -677,17 +683,17 @@ private fun Working() {
     }
 }
 
-/** A prompt sent from here, before the transcript echoes it: one tick once the hub took it,
- *  the node's note or the failure under it. */
+/** A prompt the hub took from here, before the transcript echoes it: one tick, and the
+ *  node's note under it. */
 @Composable
-private fun SentTurn(x: Sent, retry: () -> Unit) {
-    Column(Modifier.fillMaxWidth().clickable(enabled = x.failed != null, onClick = retry)) {
-        UserTurn(x.text, ticks = if (x.accepted) 1 else 0, pending = !x.accepted && x.failed == null, timeMs = x.timeMs)
-        (x.failed?.let { "$it · tap to retry" } ?: x.note)?.let {
+private fun SentTurn(x: Sent) {
+    Column(Modifier.fillMaxWidth()) {
+        UserTurn(x.text, ticks = 1, timeMs = x.timeMs)
+        x.note?.let {
             Text(
                 it,
                 style = MaterialTheme.typography.labelSmall,
-                color = if (x.failed != null) MaterialTheme.colorScheme.error else MaterialTheme.colorScheme.onSurfaceVariant,
+                color = MaterialTheme.colorScheme.onSurfaceVariant,
                 textAlign = TextAlign.End,
                 modifier = Modifier.fillMaxWidth().padding(end = 8.dp, bottom = 4.dp),
             )
@@ -696,7 +702,7 @@ private fun SentTurn(x: Sent, retry: () -> Unit) {
 }
 
 @Composable
-private fun UserTurn(text: String, ticks: Int = 0, pending: Boolean = false, timeMs: Long? = null) {
+private fun UserTurn(text: String, ticks: Int = 0, timeMs: Long? = null) {
     Row(
         Modifier
             .fillMaxWidth()
@@ -714,7 +720,7 @@ private fun UserTurn(text: String, ticks: Int = 0, pending: Boolean = false, tim
             text,
             style = MaterialTheme.typography.bodyLarge,
             fontFamily = if (text.startsWith("! ")) FontFamily.Monospace else FontFamily.Default,
-            color = if (pending) MaterialTheme.colorScheme.onSurfaceVariant else MaterialTheme.colorScheme.onSurface,
+            color = MaterialTheme.colorScheme.onSurface,
             modifier = Modifier.weight(1f).padding(horizontal = 12.dp, vertical = 10.dp),
         )
         if (timeMs != null) {
@@ -722,21 +728,13 @@ private fun UserTurn(text: String, ticks: Int = 0, pending: Boolean = false, tim
                 clockTime(timeMs),
                 style = MaterialTheme.typography.labelSmall,
                 color = MaterialTheme.colorScheme.onSurfaceVariant.copy(alpha = 0.7f),
-                modifier = Modifier.padding(end = if (ticks > 0 || pending) 4.dp else 10.dp, top = 14.dp),
+                modifier = Modifier.padding(end = if (ticks > 0) 4.dp else 10.dp, top = 14.dp),
             )
         }
-        if (ticks > 0 || pending) {
+        if (ticks > 0) {
             Icon(
-                when {
-                    pending -> Icons.Filled.Schedule
-                    ticks >= 2 -> Icons.Filled.DoneAll
-                    else -> Icons.Filled.Done
-                },
-                contentDescription = when {
-                    pending -> "Sending"
-                    ticks >= 2 -> "In the transcript"
-                    else -> "Sent"
-                },
+                if (ticks >= 2) Icons.Filled.DoneAll else Icons.Filled.Done,
+                contentDescription = if (ticks >= 2) "In the transcript" else "Sent",
                 tint = MaterialTheme.colorScheme.onSurfaceVariant.copy(alpha = 0.7f),
                 modifier = Modifier.padding(end = 10.dp, top = 14.dp).size(14.dp),
             )
@@ -1017,6 +1015,9 @@ private fun PromptBar(
     waiting: Boolean,
     resuming: Boolean = false,
     answering: Boolean = false,
+    outgoing: Boolean = false,
+    reconnecting: Boolean = false,
+    notSent: String? = null,
     send: () -> Unit,
     stop: () -> Unit,
 ) {
@@ -1025,6 +1026,9 @@ private fun PromptBar(
         Column(Modifier.navigationBarsPadding().imePadding().padding(horizontal = 12.dp, vertical = 8.dp)) {
             // One line on the session's state, where it changes what Send does.
             val (state, tint) = when {
+                outgoing && reconnecting -> "Waiting for the hub · sent once it is back, or left here after 45 s" to MaterialTheme.colorScheme.onSurfaceVariant
+                outgoing -> "Sending…" to MaterialTheme.colorScheme.onSurfaceVariant
+                notSent != null -> notSent to MaterialTheme.colorScheme.error
                 resuming -> "Ended · Send resumes it headless on its node, in place" to MaterialTheme.colorScheme.onSurfaceVariant
                 answering -> "Claude asks · tap an option, or type its number or your own answer" to MaterialTheme.colorScheme.tertiary
                 waiting -> "Waiting for you · answer the card above" to MaterialTheme.colorScheme.tertiary
@@ -1060,6 +1064,7 @@ private fun PromptBar(
                 BasicTextField(
                     value = text,
                     onValueChange = onText,
+                    readOnly = outgoing,
                     textStyle = MaterialTheme.typography.bodyLarge.copy(color = MaterialTheme.colorScheme.onSurface),
                     cursorBrush = SolidColor(MaterialTheme.colorScheme.primary),
                     maxLines = 6,
@@ -1095,7 +1100,7 @@ private fun PromptBar(
                 }
                 RoundButton(
                     onClick = send,
-                    enabled = text.isNotBlank(),
+                    enabled = text.isNotBlank() && !outgoing,
                     container = MaterialTheme.colorScheme.primary,
                     content = MaterialTheme.colorScheme.onPrimary,
                 ) {

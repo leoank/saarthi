@@ -92,11 +92,11 @@ fun HomeScreen(
                             when (model.link) {
                                 Link.Connected -> model.hubName
                                 Link.Connecting -> "Connecting to ${model.hubName}…"
-                                Link.Reconnecting -> "Reconnecting to ${model.hubName}…"
+                                Link.Reconnecting -> if (model.reconnecting) "Reconnecting to ${model.hubName}…" else model.hubName
                                 Link.Disconnected -> "Not connected to ${model.hubName}"
                             },
                             style = MaterialTheme.typography.bodySmall,
-                            color = if (model.link == Link.Connected || model.link == Link.Connecting)
+                            color = if (model.link == Link.Connected || model.link == Link.Connecting || !model.reconnecting && model.link == Link.Reconnecting)
                                 MaterialTheme.colorScheme.onSurfaceVariant
                             else MaterialTheme.colorScheme.error,
                             modifier = Modifier.clickable(enabled = model.link == Link.Disconnected, onClick = openSettings),

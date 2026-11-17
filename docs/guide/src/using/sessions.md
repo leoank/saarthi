@@ -12,8 +12,9 @@ The home screen lists, from the top:
   icon next to a node opens its [health](health.md).
 
 Pull down or tap refresh to reload. The app keeps one stream open to the hub and
-reconnects on its own with backoff when it breaks; the subtitle says
-*Reconnecting to …* while it does.
+reconnects on its own with backoff when it breaks. A phone's link often drops for a
+second or two, so the subtitle says *Reconnecting to …* only after about 4 seconds, or at
+once when a prompt you sent is waiting on it.
 
 ## Starting a session
 
@@ -74,9 +75,13 @@ to read and a *Jump to latest* button brings you back. When your last prompt is 
 screen, *Your last prompt* at the top scrolls to it. Long-press any text to select and
 copy it.
 
-Your prompts and Claude's replies show the time Claude Code wrote them. A prompt you sent
-shows a clock while it goes out, one tick once the hub has it and two once it is in the
-transcript. Allowing, denying or answering a request shows no
+Your prompts and Claude's replies show the time Claude Code wrote them. A prompt you send
+stays in the bar, *Sending…* above it, until the hub has it; it then shows with one tick,
+and two once it is in the transcript. If the link is down it waits in the bar for the hub
+to come back, up to 45 seconds. It is sent once and never again by itself: if the hub
+refuses it, or does not answer in time, it stays in the bar with the reason, for you to
+send again (when the hub took it but did not answer, look at the conversation first: it
+may have arrived). Allowing, denying or answering a request shows no
 confirmation: the card leaving is the confirmation, and a message appears only when the
 node has something to say.
 
