@@ -49,7 +49,10 @@ profile's token), as `claude -p` with its input and output owned by the node, so
   session's (`--wrapped-hold-secs`); one left unanswered is denied, and Claude carries on
   without the tool. The node gives the session its hooks itself, so this works even if
   your `~/.claude/settings.json` has lost them;
-- it cannot ask you questions: AskUserQuestion does not exist in that mode;
+- it asks you its questions as any session does, as question cards: AskUserQuestion does
+  not exist in that mode, so the node gives the session a question tool of its own that
+  waits for your answer (in a sandbox profile it has none, and asks in its messages);
+- after each turn the header shows how full its context is (*context 12%*);
 - it ends if the node daemon stops, and you cannot attach a terminal to it while it
   runs. Afterwards `claude --resume <session id>` in its directory continues it.
 

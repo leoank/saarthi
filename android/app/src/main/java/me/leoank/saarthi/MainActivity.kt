@@ -115,12 +115,15 @@ fun App(requested: Pair<String, String>?, consumed: () -> Unit, model: HubModel 
 
     // A session just spawned from here opens once the watch has listed it.
     var spawned by remember { mutableStateOf<Pair<String, String>?>(null) }
+    // Where back from it goes: home, or the notebooks for a new project.
+    var spawnedFrom by remember { mutableStateOf<Screen>(Screen.Home) }
     LaunchedEffect(spawned, model.sessions.size) {
         val (node, id) = spawned ?: return@LaunchedEffect
         val s = model.sessions.firstOrNull { it.nodeId == node && it.id == id } ?: return@LaunchedEffect
         model.open(s)
-        screen = Screen.Session(node, id)
+        screen = Screen.Session(node, id, spawnedFrom)
         spawned = null
+        spawnedFrom = Screen.Home
     }
 
     // From Settings with no hub there is nowhere to go back to: back leaves the app.
@@ -150,6 +153,7 @@ fun App(requested: Pair<String, String>?, consumed: () -> Unit, model: HubModel 
             model, snackbar,
             back = { screen = Screen.Home },
             open = { screen = Screen.Notebook(it.nodeId, it.namespace, it.url) },
+            spawned = { node, id -> spawnedFrom = Screen.Notebooks; spawned = node to id },
         )
         is Screen.Notebook -> NotebookScreen(
             model, snackbar, s.nodeId, s.namespace, s.url,

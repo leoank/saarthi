@@ -413,6 +413,11 @@ fn user_text(s: &str, meta: bool) -> Option<(Role, String)> {
     if t.starts_with("<command-name>") {
         return slash_command(t).map(|c| (Role::System, c));
     }
+    // A command that prompts the model (a plugin's or the person's own, such as
+    // `/yajna:project <brief>`) is written message first: it is what the person typed.
+    if t.starts_with("<command-message>") {
+        return slash_command(t).map(|c| (Role::User, c));
+    }
     if let Some(inner) = tagged(t, "local-command-stdout") {
         let shown = strip_ansi(inner.trim());
         return (!shown.is_empty() && shown != "(no content)")
@@ -803,6 +808,8 @@ mod tests {
         assert_eq!(shown(user(note.into())), [(Role::System, "Background task: Agent \"Verify hooks\" finished".into())]);
         let cmd = "<command-name>/model</command-name>\n            <command-message>model</command-message>\n            <command-args>haiku</command-args>";
         assert_eq!(shown(user(cmd.into())), [(Role::System, "/model haiku".into())]);
+        let prompted = "<command-message>yajna:project</command-message>\n<command-name>/yajna:project</command-name>\n<command-args>green tea steeping</command-args>";
+        assert_eq!(shown(user(prompted.into())), [(Role::User, "/yajna:project green tea steeping".into())]);
         assert!(shown(user("<local-command-stdout>(no content)</local-command-stdout>".into())).is_empty());
         assert_eq!(
             shown(user("<local-command-stdout>\u{1b}[2mCompacted\u{1b}[22m</local-command-stdout>".into())),

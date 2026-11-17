@@ -1,0 +1,7 @@
+TOOL Skill {"skill": "yajna"}
+TOOL Bash {"command": "pwd && ls -la && test -f yajna.toml && cat yajna.toml; echo \"---\"; yajna tree 2>&1 | head -100", "description": "Check notebook root and list pro
+TOOL Bash {"command": "export YAJNA_AUTHOR=agent:claude; yajna --version; echo \"---projects\"; ls notes/projects 2>&1; echo \"---notes\"; ls notes; echo \"---log\"; ls -
+TOOL Bash {"command": "cat references/library.bib | head -60; echo \"---\"; cat notes/README.md | head -40; echo \"---counters\"; cat notes/counters.yaml; echo \"---agent
+TOOL ToolSearch {"query": "select:mcp__saarthi__ask_user_question", "max_results": 1}
+TOOL mcp__saarthi__ask_user_question {"questions": [{"question": "The notebook is empty: no projects, no experiments, no references yet, so this starts a new project rather than an experiment insid
+TOOL mcp__saarthi__ask_user_question {"questions": [{"question": "You chose \"best steep time, one tea\". Why does this matter, and who is it for?", "header": "Why", "multiSelect": false, "options"

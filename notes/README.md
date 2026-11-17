@@ -129,3 +129,4 @@ touching the code:
 - [[EXP-20261114-raqjf0]] Does libghostty-vt build for Android arm64 under Nix and render a node's shell on the phone at a usable speed; active, it builds unpatched for Android ([[RUN-20261114-s2jk7j]]), rendering on the phone to run, for ADR-0054
 - [[EXP-20261114-raqk9b]] Which speech recognition transcribes short coding and lab commands well enough, on the phone or on the node, in a quiet room and at the bench; planned, for ADR-0055
 - [[EXP-20261114-raqkym]] Do the app's bench timers fire on time with the screen off for hours, and do checklist ticks made out of reach arrive once each when back in reach; planned, for ADR-0053
+- [[EXP-20261117-de4f82]] /yajna:project spawned from the app runs, but `-p` has no AskUserQuestion: its interview came as plain text, and with the node's question tool (ADR-0061) as question cards

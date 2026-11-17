@@ -12,6 +12,22 @@ import android.webkit.WebView
 import android.webkit.WebViewClient
 import androidx.activity.compose.BackHandler
 import androidx.compose.foundation.clickable
+import androidx.compose.foundation.background
+import androidx.compose.foundation.layout.Spacer
+import androidx.compose.foundation.layout.height
+import androidx.compose.foundation.layout.imePadding
+import androidx.compose.foundation.layout.navigationBarsPadding
+import androidx.compose.foundation.rememberScrollState
+import androidx.compose.foundation.shape.RoundedCornerShape
+import androidx.compose.foundation.verticalScroll
+import androidx.compose.material.icons.filled.Add
+import androidx.compose.material.icons.filled.Close
+import androidx.compose.material3.Button
+import androidx.compose.material3.ExtendedFloatingActionButton
+import androidx.compose.material3.OutlinedTextField
+import androidx.compose.material3.OutlinedTextFieldDefaults
+import androidx.compose.ui.window.Dialog
+import androidx.compose.ui.window.DialogProperties
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.PaddingValues
@@ -75,9 +91,18 @@ fun NotebooksScreen(
     snackbar: SnackbarHostState,
     back: () -> Unit,
     open: (NotebookInfo) -> Unit,
+    spawned: (nodeId: String, sessionId: String) -> Unit,
 ) {
     LaunchedEffect(model.link) { if (model.link == Link.Connected) model.loadNotebooks() }
     val offering = model.nodes.filter { NOTEBOOK_SERVICE in it.services }.sortedBy { it.name }
+    val labs = model.projectNotebooks()
+    var newProject by remember { mutableStateOf(false) }
+    if (newProject && labs.isNotEmpty()) {
+        NewProjectDialog(model, labs, dismiss = { newProject = false }) { book, prompt, chosen, token ->
+            newProject = false
+            model.spawn(book.nodeId, book.path, prompt, chosen, false, "", "", token) { id -> spawned(book.nodeId, id) }
+        }
+    }
     Scaffold(
         topBar = {
             TopAppBar(
@@ -89,6 +114,15 @@ fun NotebooksScreen(
             )
         },
         snackbarHost = { SnackbarHost(snackbar) },
+        floatingActionButton = {
+            if (labs.isNotEmpty()) {
+                ExtendedFloatingActionButton(
+                    onClick = { newProject = true },
+                    icon = { Icon(Icons.Filled.Add, null) },
+                    text = { Text("New project") },
+                )
+            }
+        },
     ) { padding ->
         Column(Modifier.fillMaxSize().padding(padding)) {
             if (model.notebooksLoading > 0) LinearProgressIndicator(Modifier.fillMaxWidth())
@@ -117,6 +151,145 @@ fun NotebooksScreen(
                         else -> items(books, key = { "b" + node.id + it.namespace }) { b -> NotebookCard(b) { open(b) } }
                     }
                 }
+            }
+        }
+    }
+}
+
+/** The yajna commands that start a project, by the kind of project (yajna's plugin). */
+private val projectKinds = listOf(
+    Triple("General", "project", "A question to study, with its first experiments"),
+    Triple("Software", "code-project", "Code with its design, decisions and first spikes"),
+    Triple("Wet lab", "bio-project", "System, readouts, protocols, materials and safety"),
+    Triple("Machine learning", "ml-project", "Data, baseline, metric and the sweep plan"),
+    Triple("Hardware", "hardware-project", "A build: parts, design sources and characterization"),
+)
+
+/** A new project in a lab notebook (ADR-0053, ADR-0060): a session spawned in the notebook
+ *  on `/yajna:<kind> <brief>`, which reads the notebook and then interviews the person, its
+ *  questions held as question cards through the node's question tool (ADR-0061). */
+@OptIn(ExperimentalMaterial3Api::class)
+@Composable
+private fun NewProjectDialog(
+    model: HubModel,
+    labs: List<NotebookInfo>,
+    dismiss: () -> Unit,
+    start: (book: NotebookInfo, prompt: String, model: String, token: String?) -> Unit,
+) {
+    val key = { b: NotebookInfo -> b.nodeId + "/" + b.namespace }
+    var bookKey by remember { mutableStateOf(key(labs.first())) }
+    val book = labs.firstOrNull { key(it) == bookKey } ?: labs.first()
+    val node = model.node(book.nodeId)
+    var kind by remember { mutableStateOf(projectKinds.first().second) }
+    var brief by remember { mutableStateOf("") }
+    var chosen by remember { mutableStateOf("") }
+    var token by remember(book.nodeId) { mutableStateOf<String?>(null) }
+    val effective = token ?: node?.defaultClaudeToken.orEmpty()
+    Dialog(
+        onDismissRequest = dismiss,
+        properties = DialogProperties(usePlatformDefaultWidth = false, decorFitsSystemWindows = false),
+    ) {
+        Scaffold(
+            topBar = {
+                TopAppBar(
+                    title = { Text("New project") },
+                    navigationIcon = { IconButton(onClick = dismiss) { Icon(Icons.Filled.Close, "Cancel") } },
+                )
+            },
+            bottomBar = {
+                Column(
+                    Modifier
+                        .fillMaxWidth()
+                        .background(MaterialTheme.colorScheme.surface)
+                        .navigationBarsPadding()
+                        .imePadding()
+                        .padding(horizontal = 16.dp, vertical = 12.dp),
+                ) {
+                    Button(
+                        enabled = brief.isNotBlank(),
+                        onClick = {
+                            // One line: the command takes the rest of the line as its brief.
+                            val text = brief.trim().replace(Regex("\\s+"), " ")
+                            start(book, "/yajna:$kind $text", chosen, token)
+                        },
+                        contentPadding = PaddingValues(vertical = 14.dp),
+                        modifier = Modifier.fillMaxWidth(),
+                    ) { Text("Start the interview") }
+                }
+            },
+        ) { padding ->
+            Column(
+                Modifier
+                    .fillMaxSize()
+                    .padding(padding)
+                    .verticalScroll(rememberScrollState())
+                    .padding(horizontal = 16.dp),
+            ) {
+                OutlinedTextField(
+                    value = brief,
+                    onValueChange = { brief = it },
+                    minLines = 4,
+                    maxLines = 10,
+                    placeholder = { Text("What is the project about?") },
+                    supportingText = { Text("A sentence or two; the interview asks for the rest.") },
+                    shape = RoundedCornerShape(16.dp),
+                    colors = OutlinedTextFieldDefaults.colors(
+                        unfocusedContainerColor = MaterialTheme.colorScheme.surfaceContainerLow,
+                        focusedContainerColor = MaterialTheme.colorScheme.surfaceContainerLow,
+                        unfocusedBorderColor = MaterialTheme.colorScheme.surfaceContainerLow,
+                    ),
+                    modifier = Modifier.fillMaxWidth().padding(top = 8.dp),
+                )
+                Heading("Where")
+                Group {
+                    Choice(
+                        "Notebook",
+                        book.namespace,
+                        labs.map { "${it.namespace} on ${model.node(it.nodeId)?.name ?: "?"}" to key(it) },
+                        bookKey,
+                        details = labs.associate { key(it) to short(it.path) },
+                    ) { bookKey = it }
+                }
+                Heading("Kind")
+                Group {
+                    Choice(
+                        "Project",
+                        projectKinds.first { it.second == kind }.first,
+                        projectKinds.map { it.first to it.second },
+                        kind,
+                        details = projectKinds.associate { it.second to it.third },
+                    ) { kind = it }
+                }
+                Heading("Options")
+                Group {
+                    Choice("Model", models.first { it.second == chosen }.first, models, chosen) { chosen = it }
+                    if (model.claudeTokens.isNotEmpty() && node != null) {
+                        Divider()
+                        val default = "Node default (${node.defaultClaudeToken.ifEmpty { "own login" }})"
+                        val options = listOf(default to "\u0000") + model.claudeTokens.map { it.name to it.name } +
+                            if (node.defaultClaudeToken.isEmpty()) emptyList() else listOf("Node's own login" to "")
+                        Choice(
+                            "Claude account",
+                            when (val t = token) {
+                                null -> node.defaultClaudeToken.ifEmpty { "Node's login" }
+                                "" -> "Node's login"
+                                else -> t
+                            },
+                            options,
+                            token ?: "\u0000",
+                        ) { token = if (it == "\u0000") null else it }
+                    }
+                }
+                Text(
+                    "Claude reads ${book.namespace} first, then interviews you about the project one " +
+                        "question at a time, as questions to answer here; nothing is created " +
+                        "until you agree. Runs on ${node?.name ?: "the node"}" +
+                        (if (effective.isNotEmpty()) " under the $effective account." else " with its own Claude login."),
+                    style = MaterialTheme.typography.bodySmall,
+                    color = MaterialTheme.colorScheme.onSurfaceVariant,
+                    modifier = Modifier.padding(top = 12.dp, start = 4.dp, end = 4.dp),
+                )
+                Spacer(Modifier.height(24.dp))
             }
         }
     }

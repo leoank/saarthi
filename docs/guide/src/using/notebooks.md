@@ -24,6 +24,19 @@ icon opens its files viewer, which follows open files as they grow, as it does i
 Back goes back through the pages you visited, then to the list. Links that leave the
 notebook open in your browser.
 
+## Starting a project
+
+*New project* on the notebooks screen starts one in a lab notebook (a project-shaped
+notebook is a single project already). Pick the notebook, the kind of project (general,
+software, wet lab, machine learning or hardware, each with its own yajna command), write a
+sentence or two about it, and start the interview. The node starts a session in the
+notebook on `/yajna:project` (or the kind's command) with your brief, and the app opens it.
+
+Claude reads the notebook first, then interviews you one topic at a time. Its questions
+come as question cards, as in any session: pick an option, or answer in your own words. Nothing is written until the interview has settled the project. The notebook
+must be under one of the node's spawn roots, and the yajna plugin must be installed for
+the `claude` the node starts.
+
 ## When it does not work
 
 - **No book icon**: no connected node lists `yajna`; `saarthi ctl nodes` shows each node's

@@ -356,6 +356,7 @@ async fn serve(args: Serve) -> Result<()> {
     }
     let keep_awake = Arc::new(std::sync::atomic::AtomicBool::new(args.keep_awake));
     let mut hold = None;
+    let mut asking = None;
     let drain = match (args.hub, args.token_file) {
         (Some(hub), Some(token_file)) => {
             let token = std::fs::read_to_string(&token_file)
@@ -415,6 +416,10 @@ async fn serve(args: Serve) -> Result<()> {
                 duration: Duration::from_secs(args.hold_secs),
                 wrapped_duration: Duration::from_secs(args.wrapped_hold_secs),
             });
+            // Spawned sessions ask their questions through the hook port (ADR-0061).
+            let questions = spawner.questions();
+            questions.set_url(format!("http://{}/mcp", args.hook_addr));
+            asking = Some((questions, pending.clone()));
             let parts = link::Parts {
                 sessions: sessions.clone(),
                 pending,
@@ -432,7 +437,10 @@ async fn serve(args: Serve) -> Result<()> {
         .await
         .with_context(|| format!("binding the hook endpoint on {}", args.hook_addr))?;
     tracing::info!(addr = %args.hook_addr, claude_dir = %claude_dir.display(), "node serving");
-    let app = hooks::router(outbox.clone(), sessions.clone(), hold.clone());
+    let mut app = hooks::router(outbox.clone(), sessions.clone(), hold.clone());
+    if let Some((questions, pending)) = asking {
+        app = app.merge(saarthi_node::questions::router(questions, pending));
+    }
     tokio::spawn(async move { axum::serve(listener, app).await });
     if sandboxed {
         if let Some(dir) = hook_socket.parent() {

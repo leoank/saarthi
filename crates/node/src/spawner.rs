@@ -58,6 +58,8 @@ pub struct Spawner {
     /// The hub, through which a session under one of its tokens reaches the Claude API
     /// (ADR-0051); set when the node links to a hub.
     hub_api: std::sync::OnceLock<Arc<crate::claude_api::HubApi>>,
+    /// The question tool its sessions are given (ADR-0061).
+    questions: Arc<crate::questions::Questions>,
 }
 
 /// What sandboxed sessions need besides their profile.
@@ -120,7 +122,13 @@ impl Spawner {
             sessions,
             procs: Mutex::new(HashMap::new()),
             hub_api: std::sync::OnceLock::new(),
+            questions: Default::default(),
         })
+    }
+
+    /// The question tool its sessions are given (ADR-0061); it works once it has a URL.
+    pub fn questions(&self) -> Arc<crate::questions::Questions> {
+        self.questions.clone()
     }
 
     /// The hub that relays the Claude API for sessions under its tokens.
@@ -396,6 +404,22 @@ impl Spawner {
         if !model.is_empty() {
             args.extend(["--model", model]);
         }
+        // A question tool in place of the AskUserQuestion `-p` lacks (ADR-0061); on the host
+        // only, where the hook port is in reach.
+        let mcp = match contained {
+            None => self.questions.register(id).await,
+            Some(_) => None,
+        };
+        if let Some(config) = &mcp {
+            args.extend([
+                "--mcp-config",
+                config,
+                "--allowedTools",
+                crate::questions::TOOL,
+                "--append-system-prompt",
+                crate::questions::PROMPT,
+            ]);
+        }
         let child = match contained {
             // Inside, claude is found on the profile's PATH; no login shell runs there.
             Some(p) => containment::spawn_seatbelt(
@@ -407,7 +431,7 @@ impl Spawner {
                 &self.contained.user_claude,
                 &self.contained.deny,
             )?,
-            None => self.host(&args, dir, hub)?,
+            None => self.host(&args, dir, hub, mcp.is_some())?,
         };
         let Child {
             pid,
@@ -510,6 +534,7 @@ impl Spawner {
             let status = child.wait().await;
             tracing::info!(session = %sid, ?status, "spawned session exited");
             this.procs.lock().await.remove(&sid);
+            this.questions.forget(&sid).await;
             this.sessions.finish(&sid).await;
         });
         Ok(())
@@ -605,8 +630,11 @@ impl Spawner {
     /// Starts claude on the host through the user's login shell, for a terminal's PATH;
     /// under one of the hub's tokens with a dummy and a proxy to the hub, which the
     /// returned process holds.
-    fn host(&self, args: &[&str], dir: &Path, hub: Option<crate::claude_api::Upstream>) -> Result<Child, String> {
+    fn host(&self, args: &[&str], dir: &Path, hub: Option<crate::claude_api::Upstream>, asks: bool) -> Result<Child, String> {
         let mut command = tokio::process::Command::new(&self.shell);
+        if asks {
+            command.envs(crate::questions::env());
+        }
         let proxy = match hub {
             Some(hub) => {
                 let socket =

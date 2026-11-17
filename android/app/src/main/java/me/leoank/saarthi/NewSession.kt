@@ -58,7 +58,7 @@ import uniffi.saarthi_core.ClaudeTokenInfo
 import uniffi.saarthi_core.NodeInfo
 
 /** Models offered for a new session: claude's `--model` aliases, empty for its default. */
-private val models = listOf("Default" to "", "Fable" to "fable", "Opus" to "opus", "Sonnet" to "sonnet", "Haiku" to "haiku")
+internal val models = listOf("Default" to "", "Fable" to "fable", "Opus" to "opus", "Sonnet" to "sonnet", "Haiku" to "haiku")
 
 /** Permission modes offered: claude's `--permission-mode` values, empty for the user's
  *  default, each with a line saying what it means. */
@@ -70,7 +70,7 @@ private val modes = listOf(
 )
 
 /** A path with the home directory as `~`. */
-private fun short(path: String): String = path.replace(Regex("^/(Users|home)/[^/]+"), "~")
+internal fun short(path: String): String = path.replace(Regex("^/(Users|home)/[^/]+"), "~")
 
 /** A new headless session (ADR-0034), as a full-screen sheet: the first prompt on top, then
  *  where it runs (a node that allows spawning, a directory under one of its roots, made if
@@ -267,7 +267,7 @@ fun NewSessionDialog(
                     }
                 } else {
                     Text(
-                        "Runs headless $login. It cannot ask you questions; its permission requests come here.",
+                        "Runs headless $login. Its questions and permission requests come here" + (if (profile?.sandboxed == true) "; in a sandbox it cannot ask questions." else "."),
                         style = MaterialTheme.typography.bodySmall,
                         color = MaterialTheme.colorScheme.onSurfaceVariant,
                         modifier = Modifier.padding(top = 12.dp, start = 4.dp, end = 4.dp),
@@ -308,7 +308,7 @@ internal fun Divider() {
 /** A row showing a setting and its value; a tap opens a menu of `options` (label to value),
  *  each with an optional line under it from `details`. */
 @Composable
-private fun Choice(
+internal fun Choice(
     label: String,
     value: String,
     options: List<Pair<String, String>>,

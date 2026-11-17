@@ -1,0 +1,27 @@
+TOOL Skill {"skill": "yajna"}
+TOOL Bash {"command": "pwd && ls -la && cat yajna.toml 2>/dev/null; echo \"---\"; yajna tree 2>&1 | head -100", "description": "Locate notebook, read config, and print pr
+TOOL Bash {"command": "export YAJNA_AUTHOR=agent:claude && yajna --version; echo \"--- notes\"; find notes references -maxdepth 3 | sort | head -150; echo \"--- projects\
+TOOL Bash {"command": "yajna tasks 2>&1 | head -40; echo \"--- log\"; ls notes/log 2>/dev/null; find notes/log -name '*.md' 2>/dev/null | sort | tail -15; echo \"--- bib\
+TOOL Bash {"command": "cat notes/README.md; echo \"--- counters\"; cat notes/counters.yaml; echo \"--- agents\"; find notes/agents notes/references notes/protocols notes/
+TOOL ToolSearch {"query": "select:AskUserQuestion", "max_results": 1}
+TEXT I read the notebook before asking anything. Nothing has been written yet.
+
+**What the notebook already has**
+- `yajna.toml`: a `lab` notebook, author `ank`, timezone Europe/London. `yajna validate` passes on the empty vault.
+- No projects, experiments, protocols, materials or equipment. The ID counters are all at 0.
+- No open tasks, no log entries, no reading notes, and `references/library.bib` is empty.
+
+So this brief is a new project, not an experiment inside an existing one. There is no prior work to cite or avoid yet.
+
+**Note:** the AskUserQuestion tool is not available in this session, so I'm asking in plain text, one topic at a time. Answer in as much or as little detail as you like, and say "open" for anything you want left undecided.
+
+**Topic 1: the question.** The brief is "how long green tea should steep for the best taste." That is broad. Here is a sharper version to agree or edit:
+
+> *What steeping time gives the best-tasting cup of a given green tea, and how does that time trade off between sweetness/umami and bitterness/astringency?*
+
+Options for how to scope it:
+1. **One tea, time only.** Vary steeping time at fixed water temperature and leaf weight. Simplest, and it answers the literal brief.
+2. **One tea, time × temperature.** Adds water temperature as a second factor. Better answer, roughly twice the cups.
+3. **Several teas.** Sencha, gyokuro, Longjing and so on, to see whether the best time depends on leaf type. My recommendation for a first study is option 1 with one tea, and this as a follow-up.
+
+Which one fits, or do you have a different question in mind? Then tell me the measure of "best taste." It could be a blinded panel score, your own rating, or a chemical proxy such as catechin or caffeine content measured by HPLC. The sensory and chemical routes need very different experiments, so I'll ask about that next, after the question is settled.

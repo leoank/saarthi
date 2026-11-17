@@ -48,7 +48,7 @@ spawns, with the owner's answers of 2026-11-07.
 | [ADR-0031](ADR-0031-the-node-keeps-the-machine-awake-while-a-session-is-busy.md) | The node keeps the machine from idle-sleeping while a session is busy, when asked | accepted |
 | [ADR-0032](ADR-0032-the-hub-alerts-when-a-rate-limit-runs-out-early.md) | The hub pushes an alert when a rate-limit window is used too fast, nearly used up or used up | accepted |
 | [ADR-0033](ADR-0033-a-user-guide-on-github-pages.md) | A user guide on GitHub Pages, built by Nix with mdBook in yajna's theme | accepted |
-| [ADR-0034](ADR-0034-phase-2-spawns-headless-sessions-under-the-node-s-own-login-first.md) | Phase 2 spawns headless sessions under the node's own login first, leases last | accepted |
+| [ADR-0034](ADR-0034-phase-2-spawns-headless-sessions-under-the-node-s-own-login-first.md) | Phase 2 spawns headless sessions under the node's own login first, leases last | accepted, amended by ADR-0061 |
 | [ADR-0035](ADR-0035-a-spawned-session-may-start-idle-and-in-a-new-directory.md) | A spawned session may start idle, and in a directory the spawn creates | accepted |
 | [ADR-0036](ADR-0036-history-and-resume-in-place.md) | Session history on one screen, and finished sessions resumed in place | accepted, amended by ADR-0059 |
 | [ADR-0037](ADR-0037-spawned-sessions-carry-the-node-hooks-and-a-permission-mode.md) | Spawned sessions carry the node's hooks, and a spawn picks a permission mode | accepted |
@@ -67,13 +67,15 @@ spawns, with the owner's answers of 2026-11-07.
 | [ADR-0050](ADR-0050-a-sandbox-reaches-the-claude-api-through-the-node-holding-a-dummy.md) | A sandbox reaches the Claude API through the node, holding a dummy token | accepted |
 | [ADR-0051](ADR-0051-the-hub-adds-its-claude-tokens-and-never-hands-them-out.md) | The hub adds its Claude tokens and never hands them out | accepted |
 | [ADR-0052](ADR-0052-the-hub-relays-a-client-s-requests-to-a-node-s-local-services.md) | The hub relays a client's requests to a node's local services | accepted, amended by ADR-0057 |
-| [ADR-0053](ADR-0053-notebooks-in-the-saarthi-app.md) | Notebooks in the saarthi app | accepted, amended by ADR-0056 |
+| [ADR-0053](ADR-0053-notebooks-in-the-saarthi-app.md) | Notebooks in the saarthi app | accepted, amended by ADR-0056 and ADR-0060 |
 | [ADR-0054](ADR-0054-a-terminal-on-a-node-through-the-node.md) | A terminal on a node through the node | accepted |
 | [ADR-0055](ADR-0055-push-to-talk-and-spoken-replies-in-the-app.md) | Push to talk and spoken replies in the app | accepted |
 | [ADR-0056](ADR-0056-the-app-carries-a-web-view-s-event-streams-over-a-bridge.md) | The app carries a web view's event streams over a bridge | accepted, amended by ADR-0058 |
 | [ADR-0057](ADR-0057-the-hub-sends-the-request-s-head-with-open-service.md) | The hub sends the request's head with `OpenService` | accepted |
 | [ADR-0058](ADR-0058-the-web-view-bridge-carries-request-bodies-and-ranges-are-placed.md) | The web view bridge carries request bodies, and range answers are placed at their offset | accepted |
 | [ADR-0059](ADR-0059-a-node-restores-a-transcript-from-the-hub-to-resume.md) | A node restores a transcript from the hub to resume a session | accepted |
+| [ADR-0060](ADR-0060-a-new-project-is-a-spawned-interview-in-messages.md) | A new project from the app is a spawned interview, asked in messages | accepted, amended by ADR-0061 |
+| [ADR-0061](ADR-0061-spawned-sessions-ask-through-a-question-tool-the-node-serves.md) | Spawned sessions ask through a question tool the node serves | accepted |
 
 Each record:
 

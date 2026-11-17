@@ -9,6 +9,7 @@ pub mod link;
 pub mod outbox;
 pub mod pending;
 pub mod prompt;
+pub mod questions;
 pub mod registry;
 pub mod run;
 pub mod services;

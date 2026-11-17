@@ -616,7 +616,10 @@ request (ADR-0052); yajna's per-user `yajna serve` is the first. The app shows n
 in a web view over that relay, with native screens for new projects, reviews and bench
 work (ADR-0053); the web view's event streams go over a bridge the app supplies, an
 `EventSource` carried over a message port (ADR-0056), which also carries requests with a
-body; an answer to a range request is handed to the web view at its offset (ADR-0058). A node started with `--terminal` opens a login shell under a PTY for a
+body; an answer to a range request is handed to the web view at its offset (ADR-0058). *New project*
+spawns yajna's interview command in a lab notebook (ADR-0060). A spawned session asks its questions
+through a tool the node serves it over MCP, held as pending questions like `AskUserQuestion`'s, and
+reports how full its context is after each turn (ADR-0061). A node started with `--terminal` opens a login shell under a PTY for a
 client's terminal stream (ADR-0054). Push to talk and spoken replies work in every
 session (ADR-0055).
 

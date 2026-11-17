@@ -616,6 +616,14 @@ class HubModel(app: Application) : AndroidViewModel(app) {
         }
     }
 
+    /** The notebooks a new project can start in (ADR-0053): labs, since a project-shaped
+     *  notebook is one project, on connected nodes that may spawn in them. */
+    fun projectNotebooks(): List<NotebookInfo> = notebooks.values.flatten().filter { b ->
+        val n = node(b.nodeId)
+        b.shape == "lab" && n != null && n.connected &&
+            n.spawnRoots.any { b.path == it || b.path.startsWith(it.trimEnd('/') + "/") }
+    }.sortedWith(compareBy({ it.namespace }, { node(it.nodeId)?.name }))
+
     fun loadHealth(nodeId: String, sinceMs: Long) = withHub {
         healthLoading = true
         try {
