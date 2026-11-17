@@ -70,3 +70,31 @@ async fn a_session_the_node_lost_ends_when_it_registers_again() {
     session(&addr, "kept", false).await;
     hub.stop();
 }
+
+#[tokio::test(flavor = "multi_thread")]
+async fn killing_a_session_its_node_no_longer_runs_ends_it() {
+    let dir = tempfile::tempdir().unwrap();
+    let db_path = dir.path().join("hub.db");
+    let (hub, addr) = HubProc::start(&db_path, "127.0.0.1:0");
+    let _node = start_node(&addr, "t-node", &dir.path().join(".claude"), Duration::from_secs(30)).await;
+    let mut c = ControlServiceClient::connect(format!("http://{addr}")).await.unwrap();
+    let node_id = loop {
+        let nodes = c.list_nodes(req(saarthi_proto::control::v1::ListNodesRequest {})).await.unwrap().into_inner().nodes;
+        if let Some(n) = nodes.into_iter().find(|n| n.connected) {
+            break n.id;
+        }
+        tokio::time::sleep(Duration::from_millis(20)).await;
+    };
+    // The hub has it live, as after a node restarted on 0.12.0 or older.
+    let db = saarthi_hub::db::Db::open(&db_path).await.unwrap();
+    let ghost = Session { id: "ghost".into(), cwd: "/w".into(), started_ms: 1, pid: 99, ..Default::default() };
+    db.store_session(&node_id, &ghost).await.unwrap();
+    session(&addr, "ghost", false).await;
+
+    let kill = saarthi_proto::control::v1::KillRequest { node_id: node_id.clone(), session_id: "ghost".into() };
+    let r = c.kill(req(kill)).await.unwrap().into_inner();
+    assert!(r.ok, "{}", r.error);
+    assert!(r.note.contains("not running"), "{}", r.note);
+    session(&addr, "ghost", true).await;
+    hub.stop();
+}

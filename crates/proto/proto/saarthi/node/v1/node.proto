@@ -236,4 +236,7 @@ message CommandResult {
   string note = 4;              // a caveat on a command carried out, such as a prompt held
                                 // for approval at the terminal; shown as is
   string probe_json = 5;        // Probe only: the turn's rate_limit_info, as claude streamed it
+  // Kill only: the session is not running on this node (it went away with a reboot, a crash or
+  // a wipe); the hub ends it.
+  bool gone = 6;
 }

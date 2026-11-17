@@ -272,6 +272,7 @@ async fn stream(
                                 error,
                                 note: String::new(),
                                 probe_json,
+                                gone: false,
                             })
                             .await;
                     });
@@ -294,6 +295,7 @@ async fn stream(
 
 /// Carries out one command from the hub. Ok carries a note for the person, if any.
 async fn act(cmd: &Command, parts: &Parts) -> CommandResult {
+    let mut gone = false;
     let Parts {
         sessions,
         pending,
@@ -342,6 +344,11 @@ async fn act(cmd: &Command, parts: &Parts) -> CommandResult {
             .command(id, ToWrapper::Kill)
             .await
             .map(|()| String::new()),
+        // Nothing of it runs here: the node restarted since, or it was never this node's.
+        Some(command::Action::Kill(_)) if sessions.pid(id).await.is_none() => {
+            gone = true;
+            Ok("it was not running on this node any more; it is marked ended".into())
+        }
         Some(command::Action::Kill(_)) => terminate(sessions, id).await,
         Some(command::Action::Spawn(s)) => spawner
             .spawn(
@@ -381,6 +388,7 @@ async fn act(cmd: &Command, parts: &Parts) -> CommandResult {
         error,
         note,
         probe_json: String::new(),
+        gone,
     }
 }
 

@@ -156,6 +156,11 @@ with its start time and duration from the latest run.
 
 A session that is still running somewhere cannot be resumed; end it first.
 
+A session started from the app can be continued at a terminal on its machine too: end it
+here (*Kill session*), take its id with *Copy session id* in the menu, then run
+`claude --resume <id>` in its directory. Killing a session whose process is already gone
+(its machine restarted) just marks it ended.
+
 A node that no longer has the session's transcript (a reinstalled machine, a live disk
 after a reboot, a deleted `~/.claude`) gets it back from the hub when you resume: the hub
 keeps every line of the conversation, and the node writes them where Claude Code looks,

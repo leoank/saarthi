@@ -329,9 +329,18 @@ impl ControlService for Hub {
         self.client(&request)?;
         let r = request.into_inner();
         let action = command::Action::Kill(Kill {});
-        Ok(response(
-            self.live.command(&r.node_id, &r.session_id, action).await?,
-        ))
+        let result = self.live.command(&r.node_id, &r.session_id, action).await?;
+        // The node has nothing of it running: it ends here, so it can be resumed.
+        if result.gone
+            && let Some(mut session) = self.db.session(&r.node_id, &r.session_id).await.map_err(internal)?
+            && session.ended_ms.is_none()
+        {
+            session.ended_ms = Some(crate::node_service::now_ms());
+            self.db.store_session(&r.node_id, &session).await.map_err(internal)?;
+            session.node_id = r.node_id.clone();
+            self.live.publish(Update { body: Some(update::Body::Session(session)) });
+        }
+        Ok(response(result))
     }
 
     async fn spawn(

@@ -90,6 +90,8 @@ import androidx.compose.ui.draw.clip
 import androidx.compose.ui.draw.shadow
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
+import androidx.compose.ui.text.AnnotatedString
+import androidx.compose.ui.platform.LocalClipboardManager
 import androidx.compose.ui.platform.LocalConfiguration
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.graphics.SolidColor
@@ -127,6 +129,7 @@ fun SessionScreen(
     var menu by remember { mutableStateOf(false) }
     var confirmKill by remember { mutableStateOf(false) }
     var showUsage by remember { mutableStateOf(false) }
+    val clipboard = LocalClipboardManager.current
     // The session's unsent draft, kept by the model so it outlives this screen.
     var text by remember(nodeId, sessionId) { mutableStateOf(model.draft(nodeId, sessionId)) }
     LaunchedEffect(nodeId, sessionId, text) { model.setDraft(nodeId, sessionId, text) }
@@ -176,6 +179,16 @@ fun SessionScreen(
                             DropdownMenu(expanded = menu, onDismissRequest = { menu = false }) {
                                 DropdownMenuItem(text = { Text("Usage") }, onClick = { menu = false; showUsage = true })
                                 DropdownMenuItem(text = { Text("Node health") }, onClick = { menu = false; openHealth() })
+                                // For `claude --resume <id>` at a terminal; the rest of the session's
+                                // facts come with About (phase PHS-20261117-f22kxe item 19).
+                                DropdownMenuItem(
+                                    text = { Text("Copy session id") },
+                                    onClick = {
+                                        menu = false
+                                        clipboard.setText(AnnotatedString(s.id))
+                                        model.say("Session id copied: ${s.id}")
+                                    },
+                                )
                                 if ((s.wrapped || s.spawned) && !ended) {
                                     DropdownMenuItem(
                                         text = { Text("Interrupt") },
