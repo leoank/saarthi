@@ -1,5 +1,6 @@
 package me.leoank.saarthi
 
+import kotlin.math.roundToInt
 import androidx.compose.animation.AnimatedVisibility
 import androidx.compose.animation.core.LinearEasing
 import androidx.compose.animation.core.animateFloat
@@ -148,6 +149,9 @@ fun SessionScreen(
                                         s.spawned && s.profile.isNotEmpty() -> "spawned in ${s.profile}"
                                         s.spawned -> "spawned"
                                         else -> "started outside saarthi"
+                                    },
+                                    model.contextOf(s)?.takeIf { it.maxTokens > 0uL }?.let {
+                                        "context ${(it.usedTokens.toDouble() * 100 / it.maxTokens.toDouble()).roundToInt()}%"
                                     },
                                     if (tokensIn + tokensOut > 0uL) "${thousands(tokensIn)} in · ${thousands(tokensOut)} out" + (if (cost > 0.0) " · ${dollars(cost)}" else "") else null,
                                 ).filterNotNull().joinToString(" · "),

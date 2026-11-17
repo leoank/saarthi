@@ -19,6 +19,7 @@ import java.io.File
 import kotlinx.coroutines.isActive
 import kotlinx.coroutines.launch
 import uniffi.saarthi_core.Change
+import uniffi.saarthi_core.ContextUsage
 import uniffi.saarthi_core.ClaudeTokenInfo
 import uniffi.saarthi_core.CoreException
 import uniffi.saarthi_core.HealthPoint
@@ -182,6 +183,9 @@ class HubModel(app: Application) : AndroidViewModel(app) {
     val delivered = mutableStateListOf<String>()
     /** The open session's token totals by model, from the daemon's count. */
     val usage = mutableStateListOf<ModelTotals>()
+    /** How full each spawned session's context was after its last turn, while the app runs. */
+    private val contexts = mutableStateMapOf<String, ContextUsage>()
+    fun contextOf(s: SessionInfo): ContextUsage? = contexts[key(s)]
     private var lastSeq = 0uL
 
     val health = mutableStateListOf<HealthPoint>()
@@ -560,6 +564,7 @@ class HubModel(app: Application) : AndroidViewModel(app) {
                 this@HubModel.lastSeq = lastSeq
                 if (loading) backlog.addAll(items) else conversation.addAll(items)
             }
+            override fun onContext(context: ContextUsage) = onMain { contexts[key(s)] = context }
             override fun onUsage(totals: List<ModelTotals>) = onMain {
                 cache?.let { c -> c.usage.clear(); c.usage.addAll(totals) }
                 if (openSession?.id != s.id) return@onMain

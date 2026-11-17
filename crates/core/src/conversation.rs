@@ -135,6 +135,16 @@ pub struct Conversation {
     turn_start: BTreeMap<String, ModelTotals>,
     /// Whether `totals` changed since the last time they were taken.
     changed: bool,
+    /// How full the context was when the node last asked, not yet taken (ADR-0061).
+    context: Option<ContextUsage>,
+}
+
+/// How full a spawned session's context is, as Claude Code reports it after a turn: the
+/// tokens in use and the window before it compacts.
+#[derive(Debug, Clone, PartialEq, uniffi::Record)]
+pub struct ContextUsage {
+    pub used_tokens: u64,
+    pub max_tokens: u64,
 }
 
 impl Conversation {
@@ -146,11 +156,19 @@ impl Conversation {
             turn_start: map.clone(),
             totals: map,
             changed: false,
+            context: None,
         }
     }
 
     /// The items one event shows as, with the turn and usage state applied.
     pub fn push(&mut self, e: &Event) -> Vec<Item> {
+        if e.source() == EventSource::Daemon && e.kind == "context" {
+            let v: Value = serde_json::from_str(&e.payload_json).unwrap_or_default();
+            if let (Some(used), Some(max)) = (v["total_tokens"].as_u64(), v["max_tokens"].as_u64()) {
+                self.context = Some(ContextUsage { used_tokens: used, max_tokens: max });
+            }
+            return Vec::new();
+        }
         if e.source() == EventSource::Daemon && e.kind == "usage" {
             let v: Value = serde_json::from_str(&e.payload_json).unwrap_or_default();
             if let Some(map) = v.as_object() {
@@ -186,6 +204,11 @@ impl Conversation {
             }
         }
         items(e)
+    }
+
+    /// How full the context is, when the node reported it since the last call.
+    pub fn take_context(&mut self) -> Option<ContextUsage> {
+        self.context.take()
     }
 
     /// The session's totals by model when they changed since the last call.
@@ -824,6 +847,13 @@ mod tests {
         assert_eq!((totals[0].input_tokens, totals[0].output_tokens), (2000, 400));
         assert!((totals[0].cost_usd - (2000.0 * 1.0 + 400.0 * 5.0 + 1000.0 * 0.1) / 1e6).abs() < 1e-9);
         assert!(c.take_totals().is_none(), "unchanged since");
+        let context = Event {
+            payload_json: r#"{"total_tokens":16804,"max_tokens":1000000,"percentage":2.0}"#.into(),
+            ..event(EventSource::Daemon, "context", serde_json::json!({}))
+        };
+        assert!(c.push(&context).is_empty());
+        assert_eq!(c.take_context(), Some(ContextUsage { used_tokens: 16804, max_tokens: 1_000_000 }));
+        assert_eq!(c.take_context(), None);
         let turn = c.push(&Event {
             seq: 2,
             ..event(EventSource::Transcript, "system", serde_json::json!({"subtype": "turn_duration", "durationMs": 14_200}))

@@ -17,7 +17,7 @@ use serde_json::Value;
 use tokio::sync::watch;
 use tonic::transport::Channel;
 
-pub use conversation::{Conversation, Item, ModelTotals, Role};
+pub use conversation::{ContextUsage, Conversation, Item, ModelTotals, Role};
 pub use tailnet::TailnetLogin;
 
 uniffi::setup_scaffolding!();
@@ -294,6 +294,8 @@ pub trait SessionListener: Send + Sync {
     fn on_items(&self, items: Vec<Item>, last_seq: u64);
     /// The session's token totals by model, whenever they change.
     fn on_usage(&self, totals: Vec<ModelTotals>);
+    /// How full a spawned session's context is, after each of its turns.
+    fn on_context(&self, context: ContextUsage);
     fn on_error(&self, message: String);
 }
 
@@ -832,6 +834,9 @@ impl Hub {
                             }
                             if let Some(totals) = conversation.take_totals() {
                                 listener.on_usage(totals);
+                            }
+                            if let Some(context) = conversation.take_context() {
+                                listener.on_context(context);
                             }
                         }
                         Ok(None) => return listener.on_error("the hub closed the stream".into()),

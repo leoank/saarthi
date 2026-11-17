@@ -429,6 +429,8 @@ impl Spawner {
         if first {
             tx.send(user_line(prompt)).await.expect("just made");
         }
+        // Weak, so the input still closes when every other sender is gone.
+        let control = tx.downgrade();
         self.procs.lock().await.insert(id.to_string(), tx);
         self.sessions
             .add_spawned(
@@ -470,8 +472,18 @@ impl Spawner {
                     let Ok(msg) = serde_json::from_str::<Value>(&line) else {
                         continue;
                     };
+                    // The end of a turn is its `result`; a stream retry's `message_stop`
+                    // only comes with partial messages, which are not asked for.
                     if msg["type"] == "result" {
                         this.sessions.set_status(&sid, SessionStatus::Idle).await;
+                        // How full the context is now, for the person (ADR-0061).
+                        if let Some(tx) = control.upgrade() {
+                            let _ = tx.send(context_line()).await;
+                        }
+                    } else if msg["type"] == "control_response" {
+                        if let Some(usage) = context_usage(&msg) {
+                            this.sessions.daemon_event(&sid, "context", usage.to_string()).await;
+                        }
                     } else if msg["type"] == "rate_limit_event" {
                         // The account's windows, from the API's response headers: the hub
                         // keeps them per Claude token (ADR-0042).
@@ -684,6 +696,44 @@ fn interrupt_line() -> String {
     format!("{request}\n")
 }
 
+/// Asks claude how full the session's context is (the SDK's `get_context_usage`, its
+/// summary); the answer is a `control_response` read by [`context_usage`].
+fn context_line() -> String {
+    let request = json!({
+        "type": "control_request",
+        "request_id": format!("{CONTEXT_REQUEST}{}", uuid::Uuid::new_v4().simple()),
+        "request": {"subtype": "get_context_usage", "detail": "summary"},
+    });
+    format!("{request}\n")
+}
+
+const CONTEXT_REQUEST: &str = "context-";
+
+/// The context in use, its size before auto-compaction and the share used, from the answer
+/// to [`context_line`]; anything else is not ours.
+fn context_usage(msg: &Value) -> Option<Value> {
+    let r = &msg["response"];
+    if !r["request_id"].as_str()?.starts_with(CONTEXT_REQUEST) || r["subtype"] != "success" {
+        return None;
+    }
+    let body = &r["response"];
+    let (used, max) = (body["totalTokens"].as_u64()?, body["maxTokens"].as_u64()?);
+    Some(json!({"total_tokens": used, "max_tokens": max, "percentage": body["percentage"].as_f64().unwrap_or(0.0)}))
+}
+
+#[cfg(test)]
+#[test]
+fn claudes_context_answer_is_read_and_others_are_not() {
+    let ours = json!({"type": "control_response", "response": {"subtype": "success", "request_id": "context-1",
+        "response": {"totalTokens": 16804, "maxTokens": 1_000_000, "percentage": 2}}});
+    assert_eq!(
+        context_usage(&ours),
+        Some(json!({"total_tokens": 16804, "max_tokens": 1_000_000, "percentage": 2.0}))
+    );
+    let other = json!({"type": "control_response", "response": {"subtype": "success", "request_id": "x", "response": {}}});
+    assert_eq!(context_usage(&other), None);
+}
+
 fn user_line(text: &str) -> String {
     let line = json!({"type": "user", "message": {"role": "user", "content": text}});
     format!("{line}\n")
@@ -824,14 +874,17 @@ echo closed >> LOG
         f.spawner.prompt(&id, "second").await.unwrap();
         f.spawner.interrupt(&id, Some("third")).await.unwrap();
         let log = log_has(&f.log, "third").await;
-        let interrupt = log.lines().find(|l| l.contains("control_request")).unwrap();
+        // After each turn's result the node asks how full the context is.
+        assert!(log.contains("get_context_usage"), "{log}");
+        let context = log.lines().filter(|l| !l.contains("get_context_usage"));
+        let interrupt = context.clone().find(|l| l.contains("control_request")).unwrap();
         let v: Value = serde_json::from_str(interrupt).unwrap();
         assert_eq!(v["request"]["subtype"], "interrupt");
-        assert!(log.find("second").unwrap() < log.find("control_request").unwrap());
+        assert!(log.find("second").unwrap() < log.find(interrupt).unwrap());
 
         f.spawner.kill(&id).await.unwrap();
         let log = log_has(&f.log, "closed").await;
-        let last_two: Vec<_> = log.lines().rev().take(2).collect();
+        let last_two: Vec<_> = log.lines().filter(|l| !l.contains("get_context_usage")).rev().take(2).collect();
         assert!(last_two[1].contains("interrupt"), "a kill interrupts first: {last_two:?}");
         for _ in 0..100 {
             if status_of(&f.sessions, &id).await.1 {

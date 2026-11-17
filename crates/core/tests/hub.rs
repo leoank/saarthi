@@ -30,6 +30,7 @@ impl WatchListener for Changes {
 struct Conversation(Mutex<Vec<Item>>);
 impl SessionListener for Conversation {
     fn on_usage(&self, _totals: Vec<saarthi_core::ModelTotals>) {}
+    fn on_context(&self, _context: saarthi_core::ContextUsage) {}
     fn on_items(&self, items: Vec<Item>, _last_seq: u64) {
         self.0.lock().unwrap().extend(items);
     }
