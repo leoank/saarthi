@@ -31,6 +31,7 @@ landed and links the pages with the detail.
 - [ ] [[PHS-20261106-3702q3]] Phase 3: confinement and many networks
 - [ ] [[PHS-20261106-37024q]] Phase 4: autonomous starts and more clients
 - [ ] [[PHS-20261114-rbv2fs]] Notebooks, a terminal and voice: yajna through a service relay, a node terminal, push to talk
+- [ ] [[PHS-20261117-f22kxe]] The app at a glance: lessons from ovis's design and UX
 
 ## Open questions
 - Idle sessions were reported as missing from the app until the owner typed in them
