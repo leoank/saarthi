@@ -219,7 +219,10 @@ the wrapper prints which before Claude Code starts. A change in the app applies 
 session you start. The session holds a dummy token and sends its API requests through the
 daemon to the hub, which adds the token (ADR-0051), so Claude Code shows a warning at start
 that remote managed settings could not be loaded. It starts in auto permission mode, the
-default the dummy cannot read from the account, unless you pass a mode of your own. To
+default the dummy cannot read from the account, unless you pass a mode of your own. On a
+machine where Claude Code never ran, or whose home was wiped, the wrapper marks Claude
+Code's first-run setup done in `~/.claude.json`, which would otherwise ask for a theme and
+then how to sign in although the account is already there. To
 pick another account, or the machine's own login:
 
 ```console

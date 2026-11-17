@@ -123,6 +123,9 @@ pub fn run(opts: Options) -> Result<i32> {
                 cmd.env(k, v);
             }
             eprintln!("saarthi run: Claude account {name}\r");
+            if let Some(home) = std::env::var_os("HOME") {
+                skip_first_run(&PathBuf::from(home).join(".claude.json"));
+            }
             (name.clone(), api.clone())
         }
         None => {
@@ -211,6 +214,40 @@ pub fn run(opts: Options) -> Result<i32> {
 /// when the daemon goes away (a restart, an upgrade) the wrapper says hello again to the
 /// next one, which otherwise would take the session for one started by hand. Without a
 /// daemon the session runs anyway, unreachable until one appears.
+/// Marks Claude Code's first-run setup done in `.claude.json` (creating it if need be), as
+/// it is not on a machine whose home was wiped: interactive claude otherwise asks for a
+/// theme and then how to sign in, though the account's token is in its environment.
+/// Headless sessions never ask. A failure is only reported: claude then asks as before.
+fn skip_first_run(config: &std::path::Path) {
+    // A link (one a configuration manager keeps) is not replaced by a file.
+    if std::fs::symlink_metadata(config).is_ok_and(|m| m.file_type().is_symlink()) {
+        return;
+    }
+    let mut doc: serde_json::Value = match std::fs::read(config) {
+        Ok(bytes) => match serde_json::from_slice(&bytes) {
+            Ok(v) => v,
+            Err(_) => return, // not ours to repair
+        },
+        Err(e) if e.kind() == std::io::ErrorKind::NotFound => serde_json::json!({}),
+        Err(_) => return,
+    };
+    let Some(obj) = doc.as_object_mut() else { return };
+    if obj.get("hasCompletedOnboarding") == Some(&serde_json::Value::Bool(true)) {
+        return;
+    }
+    obj.insert("hasCompletedOnboarding".into(), true.into());
+    let write = || -> std::io::Result<()> {
+        use std::os::unix::fs::OpenOptionsExt;
+        let tmp = config.with_extension("json.saarthi");
+        let mut f = std::fs::OpenOptions::new().write(true).create(true).truncate(true).mode(0o600).open(&tmp)?;
+        f.write_all(serde_json::to_string_pretty(&doc)?.as_bytes())?;
+        std::fs::rename(&tmp, config)
+    };
+    if let Err(e) = write() {
+        eprintln!("saarthi run: could not mark Claude Code's first-run setup done in {}: {e}\r", config.display());
+    }
+}
+
 fn follow_daemon(
     socket: &std::path::Path,
     pid: u32,
@@ -408,7 +445,23 @@ impl Drop for RawMode {
 
 #[cfg(test)]
 mod tests {
-    use super::{is_human, wants_auto};
+    use super::{is_human, skip_first_run, wants_auto};
+
+    #[test]
+    fn first_run_setup_is_marked_done_and_the_rest_kept() {
+        let dir = tempfile::tempdir().unwrap();
+        let config = dir.path().join(".claude.json");
+        let read = || serde_json::from_slice::<serde_json::Value>(&std::fs::read(&config).unwrap()).unwrap();
+        skip_first_run(&config);
+        assert_eq!(read(), serde_json::json!({"hasCompletedOnboarding": true}));
+        std::fs::write(&config, r#"{"projects": {"/w": {}}, "hasCompletedOnboarding": false}"#).unwrap();
+        skip_first_run(&config);
+        assert_eq!(read(), serde_json::json!({"projects": {"/w": {}}, "hasCompletedOnboarding": true}));
+        // A file claude would not read either is left alone.
+        std::fs::write(&config, "not json").unwrap();
+        skip_first_run(&config);
+        assert_eq!(std::fs::read_to_string(&config).unwrap(), "not json");
+    }
 
     #[test]
     fn claude_starts_in_auto_unless_its_arguments_choose_a_mode() {
