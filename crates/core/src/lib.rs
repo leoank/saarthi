@@ -226,7 +226,10 @@ pub struct Question {
     pub question: String,
     pub header: String,
     pub multi_select: bool,
+    /// The options' labels, which an answer names.
     pub options: Vec<String>,
+    /// What each option means, as Claude described it, one per option; empty where none.
+    pub descriptions: Vec<String>,
 }
 
 #[derive(Debug, Clone, PartialEq, uniffi::Record)]
@@ -998,6 +1001,13 @@ fn pending(node_id: String, p: ev::PendingRequest) -> PendingInfo {
                 .into_iter()
                 .flatten()
                 .filter_map(|o| o["label"].as_str().map(str::to_string))
+                .collect(),
+            descriptions: q["options"]
+                .as_array()
+                .into_iter()
+                .flatten()
+                .filter(|o| o["label"].is_string())
+                .map(|o| o["description"].as_str().unwrap_or_default().to_string())
                 .collect(),
         })
         .collect();

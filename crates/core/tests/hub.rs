@@ -151,7 +151,7 @@ async fn the_core_lists_watches_answers_and_streams() {
     let question = serde_json::json!({"hook_event_name": "PermissionRequest", "session_id": "s1",
         "cwd": "/w", "tool_name": "AskUserQuestion", "tool_input": {"questions": [
             {"question": "Which db?", "header": "DB", "multiSelect": false,
-             "options": [{"label": "sqlite"}, {"label": "postgres"}]}]}});
+             "options": [{"label": "sqlite", "description": "One file"}, {"label": "postgres"}]}]}});
     let hook = tokio::spawn(post_hook(hooks, question.to_string()));
     let held = until("the question", || {
         changes.0.lock().unwrap().iter().find_map(|c| match c {
@@ -162,6 +162,7 @@ async fn the_core_lists_watches_answers_and_streams() {
     .await;
     assert_eq!(held.summary, "Which db?");
     assert_eq!(held.questions[0].options, ["sqlite", "postgres"]);
+    assert_eq!(held.questions[0].descriptions, ["One file", ""]);
     assert_eq!(core.pending().await.unwrap(), std::slice::from_ref(&held));
     let answers = [("Which db?".to_string(), vec!["sqlite".to_string()])].into();
     core.answer(node_id.clone(), held.id.clone(), answers)

@@ -1,25 +1,25 @@
 package me.leoank.saarthi
 
 import androidx.compose.foundation.background
+import androidx.compose.ui.unit.Dp
+import androidx.compose.material3.Surface
+import androidx.compose.material3.Checkbox
+import androidx.compose.foundation.verticalScroll
+import androidx.compose.foundation.rememberScrollState
+import androidx.compose.foundation.layout.size
+import androidx.compose.foundation.layout.heightIn
+import androidx.compose.foundation.layout.PaddingValues
+import androidx.compose.foundation.BorderStroke
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Column
-import androidx.compose.foundation.layout.ExperimentalLayoutApi
-import androidx.compose.foundation.layout.FlowRow
 import androidx.compose.foundation.layout.Row
 import androidx.compose.foundation.layout.Spacer
 import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.width
 import androidx.compose.foundation.shape.RoundedCornerShape
-import androidx.compose.material.icons.Icons
-import androidx.compose.material.icons.automirrored.outlined.HelpOutline
-import androidx.compose.material.icons.outlined.Lock
 import androidx.compose.material3.AlertDialog
 import androidx.compose.material3.Button
-import androidx.compose.material3.Card
-import androidx.compose.material3.CardDefaults
-import androidx.compose.material3.FilterChip
-import androidx.compose.material3.Icon
 import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.OutlinedButton
 import androidx.compose.material3.OutlinedTextField
@@ -35,56 +35,66 @@ import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.text.font.FontFamily
 import androidx.compose.ui.text.font.FontWeight
-import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.unit.dp
 import uniffi.saarthi_core.PendingInfo
 import uniffi.saarthi_core.Question
 
 /** A request waiting on the person: a permission to allow or deny, or questions to answer.
- *  [where] names the session when the card is shown away from it. */
+ *  [where] names the session when the card is shown away from it. Its body scrolls within
+ *  [maxBody], so a long command or many options never push its buttons out of reach. */
 @Composable
-fun PendingCard(model: HubModel, p: PendingInfo, where: String?, modifier: Modifier = Modifier) {
+fun PendingCard(
+    model: HubModel,
+    p: PendingInfo,
+    where: String?,
+    modifier: Modifier = Modifier,
+    maxBody: Dp = Dp.Unspecified,
+) {
     val question = p.questions.isNotEmpty()
-    Card(
+    Surface(
         modifier.fillMaxWidth(),
-        colors = CardDefaults.cardColors(containerColor = MaterialTheme.colorScheme.tertiaryContainer),
+        shape = RoundedCornerShape(16.dp),
+        color = MaterialTheme.colorScheme.surfaceContainerHigh,
+        border = BorderStroke(1.dp, MaterialTheme.colorScheme.tertiary.copy(alpha = 0.6f)),
     ) {
         Column(Modifier.padding(16.dp)) {
             Row(verticalAlignment = Alignment.CenterVertically) {
-                Icon(
-                    if (question) Icons.AutoMirrored.Outlined.HelpOutline else Icons.Outlined.Lock,
-                    contentDescription = null,
-                    tint = MaterialTheme.colorScheme.onTertiaryContainer,
+                Text(
+                    "NEEDS YOU",
+                    style = MaterialTheme.typography.labelSmall,
+                    fontWeight = FontWeight.Bold,
+                    color = MaterialTheme.colorScheme.onTertiaryContainer,
+                    modifier = Modifier
+                        .background(MaterialTheme.colorScheme.tertiaryContainer, RoundedCornerShape(6.dp))
+                        .padding(horizontal = 6.dp, vertical = 2.dp),
                 )
-                Spacer(Modifier.width(8.dp))
-                Column(Modifier.weight(1f)) {
-                    Text(
-                        if (question) "Claude asks" else "Allow ${p.toolName}?",
-                        style = MaterialTheme.typography.titleMedium,
-                    )
-                    val sub = listOfNotNull(where, relative(p.createdMs)).joinToString(" · ")
-                    Text(sub, style = MaterialTheme.typography.bodySmall, color = MaterialTheme.colorScheme.onSurfaceVariant)
-                }
+                Spacer(Modifier.width(10.dp))
+                Text(
+                    if (question) "Claude asks" else "Allow ${p.toolName}?",
+                    style = MaterialTheme.typography.titleMedium,
+                    modifier = Modifier.weight(1f),
+                )
             }
-            if (question) QuestionForm(p.questions) { answers -> model.answer(p, answers) }
-            else PermissionForm(p, allow = { model.allow(p) }, deny = { model.deny(p, it) })
+            val sub = listOfNotNull(where, relative(p.createdMs)).joinToString(" · ")
+            Text(sub, style = MaterialTheme.typography.bodySmall, color = MaterialTheme.colorScheme.onSurfaceVariant)
+            if (question) QuestionForm(p.questions, maxBody) { answers -> model.answer(p, answers) }
+            else PermissionForm(p, maxBody, allow = { model.allow(p) }, deny = { model.deny(p, it) })
         }
     }
 }
 
 @Composable
-private fun PermissionForm(p: PendingInfo, allow: () -> Unit, deny: (String) -> Unit) {
+private fun PermissionForm(p: PendingInfo, maxBody: Dp, allow: () -> Unit, deny: (String) -> Unit) {
     var asking by remember(p.id) { mutableStateOf(false) }
     Text(
         p.summary.ifBlank { p.toolInputJson },
         fontFamily = FontFamily.Monospace,
         style = MaterialTheme.typography.bodyMedium,
         color = MaterialTheme.colorScheme.onSurface,
-        maxLines = 12,
-        overflow = TextOverflow.Ellipsis,
         modifier = Modifier
             .fillMaxWidth()
             .padding(vertical = 12.dp)
+            .capped(maxBody)
             .background(MaterialTheme.colorScheme.surface, RoundedCornerShape(8.dp))
             .padding(10.dp),
     )
@@ -113,55 +123,143 @@ private fun PermissionForm(p: PendingInfo, allow: () -> Unit, deny: (String) -> 
     }
 }
 
-/** One block per question: its options as chips, or an answer of the person's own. */
-@OptIn(ExperimentalLayoutApi::class)
+/** At most [max] tall, scrolling within; unchanged without a cap, as in a list that scrolls
+ *  itself (a scroll inside one has no height to scroll within). */
 @Composable
-private fun QuestionForm(questions: List<Question>, submit: (Map<String, List<String>>) -> Unit) {
+private fun Modifier.capped(max: Dp): Modifier =
+    if (max == Dp.Unspecified) this else heightIn(max = max).verticalScroll(rememberScrollState())
+
+/** Claude marks the option it recommends with this, as Claude Code's dialog shows it. */
+private const val RECOMMENDED = "(Recommended)"
+
+/** One block per question: numbered option rows with their descriptions, a *Recommended*
+ *  pill where Claude marked one, checkboxes and *Submit (n)* for a multi-select, and an
+ *  answer of the person's own. A single question with a single answer goes with one tap. */
+@Composable
+private fun QuestionForm(questions: List<Question>, maxBody: Dp, submit: (Map<String, List<String>>) -> Unit) {
     val chosen = remember(questions) { mutableStateMapOf<String, List<String>>() }
     val own = remember(questions) { mutableStateMapOf<String, String>() }
-    for (q in questions) {
-        if (q.header.isNotBlank()) {
-            Text(
-                q.header.uppercase(),
-                style = MaterialTheme.typography.labelSmall,
-                color = MaterialTheme.colorScheme.onSurfaceVariant,
-                modifier = Modifier.padding(top = 12.dp),
-            )
-        }
-        Text(q.question, fontWeight = FontWeight.SemiBold, modifier = Modifier.padding(top = 4.dp, bottom = 4.dp))
-        if (q.multiSelect) Caption("Pick any that apply", Modifier.padding(0.dp))
-        FlowRow(horizontalArrangement = Arrangement.spacedBy(6.dp)) {
-            for (option in q.options) {
-                val picked = chosen[q.question].orEmpty()
-                FilterChip(
-                    selected = option in picked,
-                    onClick = {
-                        chosen[q.question] = when {
-                            option in picked -> picked - option
-                            q.multiSelect -> picked + option
-                            else -> listOf(option)
-                        }
-                        own[q.question] = ""
-                    },
-                    label = { Text(option) },
+    var typing by remember(questions) { mutableStateOf(false) }
+    val oneTap = questions.size == 1 && !questions[0].multiSelect
+    Column(
+        Modifier
+            .padding(top = 8.dp)
+            .capped(maxBody),
+    ) {
+        for (q in questions) {
+            if (q.header.isNotBlank()) {
+                Text(
+                    q.header.uppercase(),
+                    style = MaterialTheme.typography.labelSmall,
+                    color = MaterialTheme.colorScheme.onSurfaceVariant,
+                    modifier = Modifier.padding(top = 8.dp),
+                )
+            }
+            Text(q.question, fontWeight = FontWeight.SemiBold, modifier = Modifier.padding(top = 2.dp, bottom = 6.dp))
+            q.options.forEachIndexed { i, option ->
+                val picked = option in chosen[q.question].orEmpty()
+                OptionRow(
+                    number = i + 1,
+                    option = option,
+                    description = q.descriptions.getOrNull(i).orEmpty(),
+                    picked = picked,
+                    multi = q.multiSelect,
+                ) {
+                    own[q.question] = ""
+                    if (oneTap) {
+                        submit(mapOf(q.question to listOf(option)))
+                        return@OptionRow
+                    }
+                    val now = chosen[q.question].orEmpty()
+                    chosen[q.question] = when {
+                        picked -> now - option
+                        q.multiSelect -> now + option
+                        else -> listOf(option)
+                    }
+                }
+            }
+            if (typing) {
+                OutlinedTextField(
+                    own[q.question].orEmpty(), { own[q.question] = it; if (it.isNotBlank()) chosen.remove(q.question) },
+                    label = { Text("Your answer") },
+                    modifier = Modifier.fillMaxWidth().padding(top = 6.dp),
                 )
             }
         }
-        OutlinedTextField(
-            own[q.question].orEmpty(), { own[q.question] = it; if (it.isNotBlank()) chosen.remove(q.question) },
-            label = { Text("Or answer in your own words") },
-            modifier = Modifier.fillMaxWidth().padding(top = 4.dp),
-        )
+    }
+    if (!typing) {
+        TextButton(onClick = { typing = true }, contentPadding = PaddingValues(horizontal = 4.dp)) {
+            Text("Or type your own answer")
+        }
     }
     val answered = questions.all { q -> own[q.question].orEmpty().isNotBlank() || chosen[q.question].orEmpty().isNotEmpty() }
-    Button(
-        onClick = {
-            submit(questions.associate { q ->
-                val typed = own[q.question].orEmpty().trim()
-                q.question to if (typed.isNotEmpty()) listOf(typed) else chosen[q.question].orEmpty()
-            })
-        },
-        enabled = answered,
-        modifier = Modifier.fillMaxWidth().padding(top = 12.dp),
-    ) { Text("Answer") }
+    if (!oneTap || typing) {
+        val count = questions.sumOf { q -> if (own[q.question].orEmpty().isNotBlank()) 1 else chosen[q.question].orEmpty().size }
+        Button(
+            onClick = {
+                submit(questions.associate { q ->
+                    val typed = own[q.question].orEmpty().trim()
+                    q.question to if (typed.isNotEmpty()) listOf(typed) else chosen[q.question].orEmpty()
+                })
+            },
+            enabled = answered,
+            modifier = Modifier.fillMaxWidth().padding(top = 4.dp),
+        ) { Text(if (questions.size == 1 && questions[0].multiSelect) "Submit ($count)" else "Answer") }
+    }
+}
+
+/** One option: its number, its label, a *Recommended* pill, and what it means beneath. */
+@Composable
+private fun OptionRow(number: Int, option: String, description: String, picked: Boolean, multi: Boolean, onClick: () -> Unit) {
+    val recommended = option.trimEnd().endsWith(RECOMMENDED)
+    val label = if (recommended) option.trimEnd().removeSuffix(RECOMMENDED).trimEnd() else option
+    Surface(
+        onClick = onClick,
+        shape = RoundedCornerShape(10.dp),
+        color = if (picked) MaterialTheme.colorScheme.secondaryContainer else MaterialTheme.colorScheme.surface,
+        border = BorderStroke(1.dp, if (picked) MaterialTheme.colorScheme.secondary else MaterialTheme.colorScheme.outlineVariant),
+        modifier = Modifier.fillMaxWidth().padding(vertical = 3.dp),
+    ) {
+        Row(verticalAlignment = Alignment.Top, modifier = Modifier.padding(horizontal = 12.dp, vertical = 10.dp)) {
+            if (multi) {
+                Checkbox(checked = picked, onCheckedChange = { onClick() }, modifier = Modifier.size(20.dp).padding(top = 2.dp))
+                Spacer(Modifier.width(10.dp))
+            }
+            Text(
+                "$number.",
+                fontFamily = FontFamily.Monospace,
+                color = MaterialTheme.colorScheme.secondary,
+                modifier = Modifier.width(28.dp),
+            )
+            Column(Modifier.weight(1f)) {
+                Row(verticalAlignment = Alignment.CenterVertically) {
+                    Text(label, style = MaterialTheme.typography.bodyLarge, modifier = Modifier.weight(1f, fill = false))
+                    if (recommended) {
+                        Spacer(Modifier.width(8.dp))
+                        Text(
+                            "Recommended",
+                            style = MaterialTheme.typography.labelSmall,
+                            color = MaterialTheme.colorScheme.onPrimaryContainer,
+                            modifier = Modifier
+                                .background(MaterialTheme.colorScheme.primaryContainer, RoundedCornerShape(6.dp))
+                                .padding(horizontal = 6.dp, vertical = 1.dp),
+                        )
+                    }
+                }
+                if (description.isNotBlank()) {
+                    Text(description, style = MaterialTheme.typography.bodySmall, color = MaterialTheme.colorScheme.onSurfaceVariant)
+                }
+            }
+        }
+    }
+}
+
+/** An option chosen by its number, as typed in the prompt bar: the single question of [p]
+ *  answered with option [text], or in the person's own words when [text] is not a number of
+ *  one. Null when [p] is not one question with a single answer. */
+fun typedAnswer(p: PendingInfo, text: String): Map<String, List<String>>? {
+    val q = p.questions.singleOrNull()?.takeIf { !it.multiSelect } ?: return null
+    val n = text.trim().removeSuffix(".").toIntOrNull()
+    val option = n?.let { q.options.getOrNull(it - 1) }
+    return mapOf(q.question to listOf(option ?: text.trim()))
 }

@@ -90,6 +90,7 @@ import androidx.compose.ui.draw.clip
 import androidx.compose.ui.draw.shadow
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
+import androidx.compose.ui.platform.LocalConfiguration
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.graphics.SolidColor
 import androidx.compose.ui.graphics.graphicsLayer
@@ -201,14 +202,31 @@ fun SessionScreen(
             snackbarHost = { SnackbarHost(snackbar) },
             bottomBar = {
                 if (!ended) {
-                    PromptBar(
-                        text, { text = it },
-                        stoppable = s.wrapped || s.spawned,
-                        busy = s.busy,
-                        waiting = model.pendingFor(s).isNotEmpty(),
-                        send = { model.prompt(s, text.trim()); text = "" },
-                        stop = { model.interrupt(s, text.trim()); text = "" },
-                    )
+                    val waiting = model.pendingFor(s)
+                    // A single question waiting takes what is typed as its answer: an option's
+                    // number, or the person's own words (phase PHS-20261117-f22kxe item 2).
+                    val asked = waiting.singleOrNull()?.takeIf { typedAnswer(it, "1") != null }
+                    Column {
+                        // What waits on the person sits above the bar, not in the scroll.
+                        val maxBody = (LocalConfiguration.current.screenHeightDp * 0.35f).dp
+                        for (p in waiting) {
+                            PendingCard(model, p, null, Modifier.padding(horizontal = 12.dp, vertical = 4.dp), maxBody = maxBody)
+                        }
+                        PromptBar(
+                            text, { text = it },
+                            stoppable = s.wrapped || s.spawned,
+                            busy = s.busy,
+                            waiting = waiting.isNotEmpty(),
+                            answering = asked != null,
+                            send = {
+                                val answer = asked?.let { typedAnswer(it, text) }
+                                if (asked != null && answer != null) model.answer(asked, answer)
+                                else model.prompt(s, text.trim())
+                                text = ""
+                            },
+                            stop = { model.interrupt(s, text.trim()); text = "" },
+                        )
+                    }
                 } else if (model.resumable(s)) {
                     // Sending resumes the session in place with the text as its next turn.
                     PromptBar(
@@ -403,7 +421,7 @@ private fun Conversation(model: HubModel, s: SessionInfo, modifier: Modifier) {
             stick = !list.canScrollForward
         }
     }
-    val count = rows.size + sent.size + waiting.size + (if (working) 1 else 0)
+    val count = rows.size + sent.size + (if (working) 1 else 0)
     LaunchedEffect(count) {
         if (count > 0 && stick) list.scrollToItem(count - 1, Int.MAX_VALUE)
     }
@@ -443,9 +461,6 @@ private fun Conversation(model: HubModel, s: SessionInfo, modifier: Modifier) {
             }
             itemsIndexed(sent, key = { _, x -> "sent" + x.timeMs }) { _, x ->
                 SentTurn(x, retry = { model.retry(x) })
-            }
-            itemsIndexed(waiting, key = { _, p -> "p" + p.id }) { _, p ->
-                PendingCard(model, p, null, Modifier.padding(top = 8.dp))
             }
             if (working) item(key = "working") { Working() }
         }
@@ -988,6 +1003,7 @@ private fun PromptBar(
     busy: Boolean,
     waiting: Boolean,
     resuming: Boolean = false,
+    answering: Boolean = false,
     send: () -> Unit,
     stop: () -> Unit,
 ) {
@@ -997,6 +1013,7 @@ private fun PromptBar(
             // One line on the session's state, where it changes what Send does.
             val (state, tint) = when {
                 resuming -> "Ended · Send resumes it headless on its node, in place" to MaterialTheme.colorScheme.onSurfaceVariant
+                answering -> "Claude asks · tap an option, or type its number or your own answer" to MaterialTheme.colorScheme.tertiary
                 waiting -> "Waiting for you · answer the card above" to MaterialTheme.colorScheme.tertiary
                 !stoppable -> "Started outside saarthi run · Claude sees this as a message from another session · no stop from here" to MaterialTheme.colorScheme.onSurfaceVariant
                 busy -> "Claude is working · Send queues after this turn · the stop button interrupts" to MaterialTheme.colorScheme.onSurfaceVariant
@@ -1040,6 +1057,7 @@ private fun PromptBar(
                                 Text(
                                     when {
                                         resuming -> "Resume with a prompt"
+                                        answering -> "An option's number, or your answer"
                                         busy -> "Queue a prompt"
                                         else -> "Prompt Claude"
                                     },
