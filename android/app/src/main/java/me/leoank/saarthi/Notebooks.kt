@@ -329,7 +329,7 @@ fun NotebookScreen(
     val context = LocalContext.current
     var canGoBack by remember { mutableStateOf(false) }
     var loading by remember { mutableStateOf(true) }
-    val relay = remember(nodeId) { Relay(nodeId) { model.connection } }
+    val relay = remember(nodeId) { Relay(nodeId, NOTEBOOK_SERVICE) { model.connection } }
     val view = remember(nodeId, url) {
         relay.webView(
             context,
@@ -376,15 +376,16 @@ fun NotebookScreen(
 }
 
 /**
- * Feeds a web view from one node's `yajna` service through the hub (ADR-0056): every
+ * Feeds a web view from one node's local service, `yajna` or `changes`, through the hub
+ * (ADR-0056, ADR-0067): every
  * request at [origin] is answered by `shouldInterceptRequest` over the core's
  * `service_request`; every HTML page gets [BRIDGE] at the top of its head, which carries
  * the page's event streams and its requests with a body, both of which interception
  * cannot, over a message port.
  */
-private class Relay(private val nodeId: String, private val hub: () -> Hub?) {
+class Relay(private val nodeId: String, private val service: String, private val hub: () -> Hub?) {
     /** A host of its own per node, so one machine's pages never share storage with another's. */
-    val origin = "https://$nodeId.$NOTEBOOK_SERVICE.saarthi"
+    val origin = "https://$nodeId.$service.saarthi"
     private val host = Uri.parse(origin).host
     private val scope = CoroutineScope(SupervisorJob() + Dispatchers.IO)
     /** The current page's event streams, by the page's id for each. */
@@ -462,7 +463,7 @@ private class Relay(private val nodeId: String, private val hub: () -> Hub?) {
             // Interception cannot pass a redirect: one for the page itself becomes a page
             // that goes there, one for anything else is followed here.
             repeat(MAX_REDIRECTS) {
-                val r = runBlocking { h.serviceRequest(nodeId, NOTEBOOK_SERVICE, req.method, path, headers, null) }
+                val r = runBlocking { h.serviceRequest(nodeId, service, req.method, path, headers, null) }
                 val status = r.status().toInt()
                 val location = header(r, "location")
                 if (status !in 300..399) return response(r, status)
@@ -560,7 +561,7 @@ private class Relay(private val nodeId: String, private val hub: () -> Hub?) {
             try {
                 val h = hub() ?: throw IOException("not connected")
                 r = h.serviceRequest(
-                    nodeId, NOTEBOOK_SERVICE, "GET", path,
+                    nodeId, service, "GET", path,
                     listOf(HeaderInfo("accept", "text/event-stream"), HeaderInfo("cache-control", "no-cache")),
                     null,
                 )
@@ -596,7 +597,7 @@ private class Relay(private val nodeId: String, private val hub: () -> Hub?) {
                 val sent = m.optJSONObject("headers")
                 val headers = sent?.keys()?.asSequence()?.map { HeaderInfo(it, sent.getString(it)) }?.toList() ?: emptyList()
                 val r = h.serviceRequest(
-                    nodeId, NOTEBOOK_SERVICE, m.optString("method", "POST"), path, headers,
+                    nodeId, service, m.optString("method", "POST"), path, headers,
                     m.optString("body").toByteArray(),
                 )
                 val out = JSONObject()

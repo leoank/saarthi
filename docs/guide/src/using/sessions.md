@@ -116,6 +116,18 @@ Code, diffs and command output scroll sideways by default. The wrap button in th
 bar (also in the full-screen viewer) wraps them to the screen instead. It is one setting
 for the whole app and is remembered.
 
+### What it changed
+
+*Changes* in a session's menu shows what is uncommitted in the repository the session works
+in, and its recent commits: the changed, staged and untracked files, each opening its diff
+in one column, and each commit with the files it touched. *Open* on a diff opens the whole
+file in a viewer that follows it as it changes, with the repository's files beside it. It
+works for an ended session too, as long as its directory is still there, and shows the
+repository as it is now, not as the session left it. It is read-only.
+
+The node serves it itself, with the same viewer as yajna's notebooks; it needs a hub and node at
+0.17.0 or later, and nothing installed on the machine.
+
 ## Prompting
 
 Type in the prompt bar at the bottom and tap send. What you type and do not send stays as

@@ -634,7 +634,11 @@ work (ADR-0053); the web view's event streams go over a bridge the app supplies,
 body; an answer to a range request is handed to the web view at its offset (ADR-0058). *New project*
 spawns yajna's interview command in a lab notebook (ADR-0060). A spawned session asks its questions
 through a tool the node serves it over MCP, held as pending questions like `AskUserQuestion`'s, and
-reports how full its context is after each turn (ADR-0061). A node started with `--terminal` opens a login shell under a PTY for a
+reports how full its context is after each turn (ADR-0061). A node also serves what a session changed as the local service `changes`, on a socket of
+its own, by linking yajna's `yajna-serve` (ADR-0067): `/s/<session id>/` is that crate's
+`dir_router`, its files viewer, changes view and read-only git API, over the git worktree
+the session's directory is in, the directory taken from the session or, for one the node
+has not seen, from its transcript. A node started with `--terminal` opens a login shell under a PTY for a
 client's terminal stream (ADR-0054); the hub joins the client's `Terminal` stream to the
 `TerminalStream` the node dials back. The app keeps the screen in libghostty-vt behind a
 JNI shim, statically linked, and draws its cells on a canvas each frame it changed

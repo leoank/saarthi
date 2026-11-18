@@ -169,6 +169,10 @@ struct Serve {
     /// The unix socket `saarthi run` wrappers connect to.
     #[arg(long)]
     wrapper_socket: Option<PathBuf>,
+    /// The unix socket the node serves its sessions' changes on, the local service `changes`
+    /// (ADR-0067). Defaults to `~/.local/state/saarthi/changes.sock`.
+    #[arg(long)]
+    changes_socket: Option<PathBuf>,
     /// A glob over working directories whose sessions are not tracked at all: not listed,
     /// not tailed, their dialogs not held (ADR-0028). Repeatable.
     #[arg(long = "ignore-cwd")]
@@ -310,14 +314,27 @@ async fn serve(args: Serve) -> Result<()> {
         }),
         None => Profiles::default(),
     };
-    let services = Arc::new(match &args.services {
+    let mut services = match &args.services {
         // A bad services file costs the services, not the node (ADR-0044).
         Some(path) => saarthi_node::services::Services::load(path, &home).unwrap_or_else(|e| {
             tracing::error!(path = %path.display(), error = %format!("{e:#}"), "local services left out");
             Default::default()
         }),
         None => Default::default(),
-    });
+    };
+    // A session's changes, served by the node itself (ADR-0067).
+    let changes_socket = args.changes_socket.clone().unwrap_or_else(|| saarthi_node::changes::socket(&home));
+    if services.add_builtin(saarthi_node::changes::NAME, changes_socket.clone()) {
+        let sessions = sessions.clone();
+        tokio::spawn(async move {
+            if let Err(e) = saarthi_node::changes::serve(changes_socket, sessions).await {
+                tracing::error!(error = %format!("{e:#}"), "a session's changes cannot be served");
+            }
+        });
+    } else {
+        tracing::warn!("the services file names a service changes; it is served instead of the sessions' changes");
+    }
+    let services = Arc::new(services);
     for name in services.names() {
         tracing::info!(service = %name, "local service offered through the hub");
     }

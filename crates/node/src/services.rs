@@ -139,6 +139,27 @@ impl Services {
         Ok(Self { by_name })
     }
 
+    /// Adds a service the node serves itself on `socket`, such as `changes` (ADR-0067),
+    /// unless the services file already names one so; false then.
+    pub fn add_builtin(&mut self, name: &str, socket: PathBuf) -> bool {
+        if self.by_name.contains_key(name) {
+            return false;
+        }
+        self.by_name.insert(
+            name.to_string(),
+            Arc::new(Service {
+                name: name.to_string(),
+                socket,
+                start: Vec::new(),
+                idle: None,
+                child: Mutex::new(None),
+                active: AtomicUsize::new(0),
+                last: std::sync::Mutex::new(tokio::time::Instant::now()),
+            }),
+        );
+        true
+    }
+
     pub fn names(&self) -> Vec<String> {
         self.by_name.keys().cloned().collect()
     }

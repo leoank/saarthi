@@ -160,6 +160,12 @@
             root = ./.;
             fileset = lib.fileset.unions [ ./Cargo.toml ./Cargo.lock ./crates ./android/app/src/main/assets/demo.json ];
           };
+          # A git dependency needs its hash: the node links yajna-serve at a yajna commit
+          # (ADR-0067); bump it with that pin in crates/node/Cargo.toml.
+          cargoLock = {
+            lockFile = ./Cargo.lock;
+            outputHashes."yajna-serve-0.1.0" = "sha256-uohkxXSVNToB6n4kbyx/w9RlvUmzdWsXu/sgpFEdY7Q=";
+          };
           # One release binary of the workspace. `bin` is the binary name; the
           # node's `saarthi` and the hub's `saarthi-hub` are each built on their own so
           # the closure holds only that binary's dependency graph (the uniffi core
@@ -170,7 +176,7 @@
             inherit pname;
             version = "0.16.2";
             src = saarthiSrc;
-            cargoLock.lockFile = ./Cargo.lock;
+            inherit cargoLock;
             nativeBuildInputs = [ pkgs.protobuf ];
             # sqlx's query macros link the system sqlite on the build host (the hub's
             # own copy is bundled); the macOS SDK stopped providing it in nixpkgs.
@@ -283,8 +289,10 @@
               root = ./.;
               fileset = lib.fileset.unions [ ./Cargo.toml ./Cargo.lock ./crates ./android/app/src/main/assets/demo.json ];
             };
-            cargoLock.lockFile = ./Cargo.lock;
+            inherit cargoLock;
             nativeBuildInputs = [ pkgs.protobuf ];
+            # The node's changes tests make a repository (ADR-0067).
+            nativeCheckInputs = [ pkgs.git ];
             buildInputs = [ pkgs.sqlite ];
             PROTOC = "${pkgs.protobuf}/bin/protoc";
             LIBTAILSCALE_LIB_DIR = "${libtailscale}/lib";

@@ -1004,6 +1004,8 @@ private fun <T> MutableList<T>.upsert(item: T, same: (T) -> Boolean) {
 
 /** The node service that answers for a machine's notebooks: `yajna serve --socket`. */
 const val NOTEBOOK_SERVICE = "yajna"
+/** The node's own service of what a session changed (ADR-0067). */
+const val CHANGES_SERVICE = "changes"
 
 /** Sessions per history page. */
 private const val HISTORY_PAGE = 50

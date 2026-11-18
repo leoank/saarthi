@@ -145,6 +145,8 @@ fun SessionScreen(
     findFirst: String?,
     back: () -> Unit,
     openHealth: () -> Unit,
+    /** Opens what the session changed, from its node (ADR-0067). */
+    openChanges: () -> Unit = {},
     /** Opens another session of the same node, by id: one a resume forked into. */
     openSession: (String) -> Unit = {},
 ) {
@@ -253,6 +255,9 @@ fun SessionScreen(
                             IconButton(onClick = { menu = true }) { Icon(Icons.Filled.MoreVert, "More") }
                             DropdownMenu(expanded = menu, onDismissRequest = { menu = false }) {
                                 DropdownMenuItem(text = { Text("About this session") }, onClick = { menu = false; model.loadAbout(s); showUsage = true })
+                                if (model.node(nodeId)?.let { it.connected && CHANGES_SERVICE in it.services } == true) {
+                                    DropdownMenuItem(text = { Text("Changes") }, onClick = { menu = false; openChanges() })
+                                }
                                 DropdownMenuItem(text = { Text("Node health") }, onClick = { menu = false; openHealth() })
                                 // For `claude --resume <id>` at a terminal; the rest of the session's
                                 // facts come with About (phase PHS-20261117-f22kxe item 19).

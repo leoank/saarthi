@@ -247,6 +247,34 @@ impl Sessions {
         &self.claude_dir
     }
 
+    /// The directory a session works in: from the session while the node tracks it, else
+    /// from its transcript, whose lines record it (a session that ended before the node
+    /// started). None for an id that is not a session's.
+    pub async fn directory(&self, id: &str) -> Option<PathBuf> {
+        if id.is_empty() || !id.chars().all(|c| c.is_ascii_alphanumeric() || c == '-') {
+            return None;
+        }
+        if let Some(e) = self.entries.lock().await.get(id).filter(|e| !e.session.cwd.is_empty()) {
+            return Some(PathBuf::from(&e.session.cwd));
+        }
+        let projects = self.claude_dir.join("projects");
+        let name = format!("{id}.jsonl");
+        tokio::task::spawn_blocking(move || {
+            for dir in std::fs::read_dir(projects).ok()?.flatten() {
+                let Ok(f) = std::fs::File::open(dir.path().join(&name)) else { continue };
+                for line in std::io::BufRead::lines(std::io::BufReader::new(f)).take(50).map_while(Result::ok) {
+                    if let Some(cwd) = serde_json::from_str::<Value>(&line).ok().and_then(|v| v["cwd"].as_str().map(PathBuf::from)) {
+                        return Some(cwd);
+                    }
+                }
+            }
+            None
+        })
+        .await
+        .ok()
+        .flatten()
+    }
+
     /// Where to deliver a prompt to a session, or why it cannot be prompted.
     pub async fn prompt_target(&self, id: &str) -> Result<PromptTarget, String> {
         let entries = self.entries.lock().await;

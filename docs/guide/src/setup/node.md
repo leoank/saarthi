@@ -36,6 +36,7 @@ Useful flags (all of them are in the [command line reference](../reference/cli.m
 | `--profiles <file>` | Launch profiles a started session may run under, such as a sandbox. A file that does not parse is left out, with an error in the log, and sessions run on the host. See [Sandboxed sessions](#sandboxed-sessions). |
 | `--services <file>` | Local HTTP services on unix sockets, such as yajna's notebook server, that your clients reach through the hub. A file that does not parse is left out, with an error in the log. See [Local services](#local-services). |
 | `--terminal` | Let your clients open a shell on this machine: your login shell, in your home directory, through the hub. Off by default; a shell is your whole account. See [The terminal](../using/terminal.md). |
+| `--changes-socket <path>` | Where the node serves its sessions' changes, the local service `changes` (see [What it changed](../using/sessions.md#what-it-changed)). Default `~/.local/state/saarthi/changes.sock`. |
 | `--hook-socket <path>` | Where sandboxed sessions send their hooks. Default `~/.local/state/saarthi/hook.sock`. |
 | `--ignore-cwd <glob>` | Do not track sessions whose working directory matches, for example throwaway test sessions. Repeatable. |
 | `--hold-secs` | How long a permission dialog of a plain `claude` session waits for the phone before falling through to the terminal. Default 120. |
@@ -327,6 +328,8 @@ idle = "10m"
 - `idle`, optional, stops a service the node started after that long without requests
   (`90s`, `10m`, `1h`).
 
+Besides those, every node offers `changes`, which it serves itself: what a session changed
+in its repository, for the app's *Changes* (a file naming a service `changes` replaces it).
 The node lists the services' names to the hub, and `saarthi ctl nodes` shows them. Any of
 your clients may reach any of them, as it may start a session, so list only services that
 need no more protection than that; sandboxed sessions are denied their sockets. With
