@@ -12,6 +12,11 @@ CC="$ANDROID_NDK_HOME/toolchains/llvm/prebuilt/$(ls "$ANDROID_NDK_HOME/toolchain
 "$CC" -O2 -fPIC -shared -o android/app/src/main/jniLibs/arm64-v8a/libvtjni.so android/vt/vtjni.c \
   -I"$LIBGHOSTTY_VT_ANDROID/include" "$LIBGHOSTTY_VT_ANDROID/lib/libghostty-vt.a" \
   -lc++_static -lc++abi -lm -llog -Wl,-z,max-page-size=16384 -Wl,--gc-sections -s
+# The app's monospace face (ADR-0069), from the dev shell's JetBrains Mono.
+mkdir -p android/app/src/main/res/font
+for w in Regular Medium SemiBold Bold; do
+  install -m 644 "$JETBRAINS_MONO/JetBrainsMono-$w.ttf" "android/app/src/main/res/font/jetbrains_mono_$(echo $w | tr A-Z a-z).ttf"
+done
 cargo run --quiet -p uniffi-bindgen -- generate \
   --library target/aarch64-linux-android/release/libsaarthi_core.so \
   --language kotlin --no-format --out-dir android/app/build/generated/uniffi

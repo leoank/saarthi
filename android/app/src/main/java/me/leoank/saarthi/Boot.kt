@@ -37,7 +37,6 @@ import androidx.compose.ui.platform.LocalView
 import androidx.compose.ui.text.SpanStyle
 import androidx.compose.ui.text.TextStyle
 import androidx.compose.ui.text.buildAnnotatedString
-import androidx.compose.ui.text.font.FontFamily
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.text.withStyle
 import androidx.compose.ui.unit.dp
@@ -264,7 +263,7 @@ fun BootScreen(log: BootLog, retry: () -> Unit, settings: () -> Unit, finished: 
     LaunchedEffect(shown, over) {
         if (shown > 0) list.animateScrollToItem(shown)
     }
-    val style = TextStyle(fontFamily = FontFamily.Monospace, fontSize = 12.sp, lineHeight = 17.sp, color = Text)
+    val style = TextStyle(fontFamily = Mono, fontSize = 12.sp, lineHeight = 17.sp, color = Text)
     Box(Modifier.fillMaxSize().background(Black).systemBarsPadding()) {
         LazyColumn(
             state = list,

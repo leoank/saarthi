@@ -34,6 +34,7 @@ val buildCore by tasks.registering(Exec::class) {
     inputs.dir(rootDir.parentFile.resolve("crates"))
     inputs.dir(rootDir.resolve("vt"))
     outputs.dir(layout.projectDirectory.dir("src/main/jniLibs"))
+    outputs.dir(layout.projectDirectory.dir("src/main/res/font"))
     outputs.dir(layout.buildDirectory.dir("generated/uniffi"))
 }
 tasks.named("preBuild") { dependsOn(buildCore) }

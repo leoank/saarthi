@@ -16,7 +16,6 @@ import androidx.compose.ui.text.AnnotatedString
 import androidx.compose.ui.text.SpanStyle
 import androidx.compose.ui.text.TextStyle
 import androidx.compose.ui.text.buildAnnotatedString
-import androidx.compose.ui.text.font.FontFamily
 import androidx.compose.ui.text.font.FontStyle
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.text.withStyle
@@ -60,7 +59,7 @@ fun CodeBlock(text: String, modifier: Modifier = Modifier) {
     val wrap = LocalWrap.current.on
     Text(
         text,
-        fontFamily = FontFamily.Monospace,
+        fontFamily = Mono,
         style = MaterialTheme.typography.bodySmall,
         softWrap = wrap,
         modifier = modifier
@@ -166,7 +165,7 @@ private fun inline(text: String): AnnotatedString {
             append(text.substring(last, m.range.first))
             val t = m.value
             when {
-                t.startsWith("`") -> withStyle(SpanStyle(fontFamily = FontFamily.Monospace, background = codeBg)) {
+                t.startsWith("`") -> withStyle(SpanStyle(fontFamily = Mono, background = codeBg)) {
                     append(t.trim('`'))
                 }
                 t.startsWith("**") -> withStyle(SpanStyle(fontWeight = FontWeight.SemiBold)) { spans(t.removeSurrounding("**")) }

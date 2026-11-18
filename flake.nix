@@ -247,6 +247,8 @@
             # The terminal renderer's library (ADR-0054); build-core.sh links it into
             # libvtjni.so.
             LIBGHOSTTY_VT_ANDROID = "${libghostty-vt-android}";
+            # The app's monospace face (ADR-0069), copied into its resources by build-core.sh.
+            JETBRAINS_MONO = "${pkgs.jetbrains-mono}/share/fonts/truetype";
             ANDROID_HOME = sdk;
             ANDROID_SDK_ROOT = sdk;
             ANDROID_NDK_HOME = "${sdk}/ndk/${android.ndk-bundle.version}";

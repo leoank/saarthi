@@ -103,7 +103,6 @@ import androidx.compose.runtime.remember
 import androidx.compose.runtime.rememberCoroutineScope
 import androidx.compose.runtime.setValue
 import androidx.compose.foundation.border
-import androidx.compose.foundation.isSystemInDarkTheme
 import androidx.compose.foundation.shape.CircleShape
 import androidx.compose.foundation.layout.heightIn
 import androidx.compose.material.icons.filled.ArrowUpward
@@ -971,7 +970,7 @@ private fun UserTurn(text: String, ticks: Int = 0, timeMs: Long? = null) {
             Text(
                 text,
                 style = MaterialTheme.typography.bodyLarge,
-                fontFamily = if (text.startsWith("! ")) FontFamily.Monospace else FontFamily.Default,
+                fontFamily = if (text.startsWith("! ")) Mono else FontFamily.Default,
                 color = MaterialTheme.colorScheme.onSurface,
                 modifier = Modifier.weight(1f, fill = false),
             )
@@ -1076,7 +1075,7 @@ private fun ToolCall(call: Item, result: Item?, cwd: String) {
             Spacer(Modifier.width(8.dp))
             Text(
                 headline,
-                fontFamily = FontFamily.Monospace,
+                fontFamily = Mono,
                 style = MaterialTheme.typography.bodySmall,
                 maxLines = if (open) Int.MAX_VALUE else 2,
                 overflow = TextOverflow.Ellipsis,
@@ -1164,7 +1163,7 @@ private fun DiffLine(line: String, cwd: String) {
             header -> MaterialTheme.colorScheme.secondary
             line.startsWith("@@") -> MaterialTheme.colorScheme.onSurfaceVariant
             line.startsWith("-") -> MaterialTheme.colorScheme.error
-            line.startsWith("+") -> Color(0xFF2E7D32)
+            line.startsWith("+") -> Flame.Ok
             else -> MaterialTheme.colorScheme.onSurface
         },
         header,
@@ -1176,7 +1175,7 @@ private fun DiffLine(line: String, cwd: String) {
 private fun Mono(text: String, color: Color, header: Boolean = false) {
     Text(
         text,
-        fontFamily = FontFamily.Monospace,
+        fontFamily = Mono,
         style = if (header) MaterialTheme.typography.labelLarge else MaterialTheme.typography.bodySmall,
         softWrap = LocalWrap.current.on,
         color = color,
@@ -1238,7 +1237,7 @@ private fun Output(result: Item, open: Boolean) {
                 Spacer(Modifier.width(6.dp))
                 Text(
                     summary,
-                    fontFamily = FontFamily.Monospace,
+                    fontFamily = Mono,
                     style = MaterialTheme.typography.bodySmall,
                     color = color,
                     maxLines = 1,
@@ -1248,7 +1247,7 @@ private fun Output(result: Item, open: Boolean) {
         } else if (text.isNotEmpty()) {
             Text(
                 text,
-                fontFamily = FontFamily.Monospace,
+                fontFamily = Mono,
                 style = MaterialTheme.typography.bodySmall,
                 color = color,
                 modifier = Modifier
@@ -1338,8 +1337,8 @@ private fun PromptBar(
                     .fillMaxWidth()
                     .shadow(2.dp, RoundedCornerShape(26.dp))
                     .background(
-                        // Raised off the page: white on ivory, a lighter grey on charcoal.
-                        if (isSystemInDarkTheme()) MaterialTheme.colorScheme.surfaceContainerHigh else MaterialTheme.colorScheme.surfaceContainerLowest,
+                        // Raised off the page.
+                        MaterialTheme.colorScheme.surfaceContainerHigh,
                         RoundedCornerShape(26.dp),
                     )
                     .border(1.dp, MaterialTheme.colorScheme.outlineVariant, RoundedCornerShape(26.dp))

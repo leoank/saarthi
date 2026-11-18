@@ -1,79 +1,121 @@
 package me.leoank.saarthi
 
-import androidx.compose.foundation.isSystemInDarkTheme
+import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.material3.MaterialTheme
+import androidx.compose.material3.Shapes
 import androidx.compose.material3.darkColorScheme
-import androidx.compose.material3.lightColorScheme
 import androidx.compose.runtime.Composable
 import androidx.compose.ui.graphics.Color
+import androidx.compose.ui.text.TextStyle
+import androidx.compose.ui.text.font.Font
+import androidx.compose.ui.text.font.FontFamily
+import androidx.compose.ui.text.font.FontWeight
+import androidx.compose.ui.unit.dp
+import androidx.compose.ui.unit.sp
 
-/** Warm ivory and terracotta in light, warm charcoal in dark, after the Claude apps'
- *  palette; the same on every phone rather than the wallpaper's colours. */
-private val Light = lightColorScheme(
-    primary = Color(0xFFC96442),
-    onPrimary = Color(0xFFFFFFFF),
-    primaryContainer = Color(0xFFF2E3DA),
-    onPrimaryContainer = Color(0xFF5A2614),
-    secondary = Color(0xFF8A5A44),
-    onSecondary = Color(0xFFFFFFFF),
-    secondaryContainer = Color(0xFFEDE6DA),
-    onSecondaryContainer = Color(0xFF3D3929),
-    tertiary = Color(0xFFB0661E),
-    onTertiary = Color(0xFFFFFFFF),
-    tertiaryContainer = Color(0xFFF8E3C8),
-    onTertiaryContainer = Color(0xFF4A2A06),
-    background = Color(0xFFFAF9F5),
-    onBackground = Color(0xFF141413),
-    surface = Color(0xFFFAF9F5),
-    onSurface = Color(0xFF141413),
-    surfaceVariant = Color(0xFFF0EEE6),
-    onSurfaceVariant = Color(0xFF6B6A63),
-    surfaceContainerLowest = Color(0xFFFFFFFF),
-    surfaceContainerLow = Color(0xFFF5F4EE),
-    surfaceContainer = Color(0xFFF0EEE6),
-    surfaceContainerHigh = Color(0xFFEAE8DF),
-    surfaceContainerHighest = Color(0xFFE3E1D7),
-    outline = Color(0xFFB9B6AB),
-    outlineVariant = Color(0xFFDEDCD1),
-    error = Color(0xFFB3261E),
-    onError = Color(0xFFFFFFFF),
-    errorContainer = Color(0xFFF9DEDC),
-    onErrorContainer = Color(0xFF410E0B),
+/** The blue-flame palette (ADR-0068): near-black tinted blue, surfaces a few percent apart
+ *  and set off by hairlines, a gas-flame blue with its pale core, and the flame's hot amber
+ *  kept for what needs the owner. Dark only. The colours Material has no role for are here;
+ *  the rest are the scheme's roles below. */
+object Flame {
+    val Bg = Color(0xFF080B11)
+    /** Recessed: code, inputs, the bar. */
+    val S0 = Color(0xFF0B1018)
+    /** Cards and sheets. */
+    val S1 = Color(0xFF111824)
+    /** Raised: chips, prompts, the prompt bar. */
+    val S2 = Color(0xFF172131)
+    val S3 = Color(0xFF1D2838)
+    /** Hairlines between surfaces. */
+    val Line = Color(0xFF1F2A3B)
+    val LineStrong = Color(0xFF2E3B50)
+
+    val Text = Color(0xFFE8EEF7)
+    val Soft = Color(0xFFB9C4D4)
+    val Dim = Color(0xFF8794A8)
+
+    /** The flame's blue, the accent. */
+    val Blue = Color(0xFF3D8BFF)
+    /** Its pale core: highlights and the hot end of gradients. */
+    val Core = Color(0xFF8FD8FF)
+    val OnBlue = Color(0xFF04101F)
+    /** What needs the owner, and nothing else. */
+    val Hot = Color(0xFFFFB547)
+    val Ok = Color(0xFF4ED6A0)
+    val Bad = Color(0xFFFF6B6B)
+
+    /** A hue per workspace, for its tab, icons and highlights. */
+    val Agents = Color(0xFF5AA0FF)
+    val Notebooks = Color(0xFFF2A65A)
+    val Terminals = Color(0xFF54E0A6)
+    val Nitya = Color(0xFFB69CFF)
+
+    /** `c` at `alpha` over a card, for tinted fills and borders. */
+    fun soft(c: Color, alpha: Float = 0.14f) = c.copy(alpha = alpha)
+}
+
+/** JetBrains Mono, for structure and facts (ADR-0069): machines, paths, branches, counts,
+ *  states, rules, the bar, the prompt bar and code. What people and Claude wrote stays in
+ *  the phone's sans face. */
+val Mono = FontFamily(
+    Font(R.font.jetbrains_mono_regular, FontWeight.Normal),
+    Font(R.font.jetbrains_mono_medium, FontWeight.Medium),
+    Font(R.font.jetbrains_mono_semibold, FontWeight.SemiBold),
+    Font(R.font.jetbrains_mono_bold, FontWeight.Bold),
 )
 
-private val Dark = darkColorScheme(
-    primary = Color(0xFFD97757),
-    onPrimary = Color(0xFF1F1E1D),
-    primaryContainer = Color(0xFF4A3026),
-    onPrimaryContainer = Color(0xFFF6D8CB),
-    secondary = Color(0xFFD9A58C),
-    onSecondary = Color(0xFF2B1A12),
-    secondaryContainer = Color(0xFF3A3834),
-    onSecondaryContainer = Color(0xFFEDE9DE),
-    tertiary = Color(0xFFE5A85C),
-    onTertiary = Color(0xFF2E1A02),
-    tertiaryContainer = Color(0xFF4D3514),
-    onTertiaryContainer = Color(0xFFF8E3C8),
-    background = Color(0xFF262624),
-    onBackground = Color(0xFFF5F4EE),
-    surface = Color(0xFF262624),
-    onSurface = Color(0xFFF5F4EE),
-    surfaceVariant = Color(0xFF30302E),
-    onSurfaceVariant = Color(0xFFA9A69D),
-    surfaceContainerLowest = Color(0xFF1F1E1D),
-    surfaceContainerLow = Color(0xFF2A2A27),
-    surfaceContainer = Color(0xFF30302E),
-    surfaceContainerHigh = Color(0xFF363633),
-    surfaceContainerHighest = Color(0xFF3D3D3A),
-    outline = Color(0xFF6E6C66),
-    outlineVariant = Color(0xFF45443F),
-    error = Color(0xFFF2B8B5),
-    onError = Color(0xFF601410),
-    errorContainer = Color(0xFF8C1D18),
-    onErrorContainer = Color(0xFFF9DEDC),
+/** Machine names, paths and branches under a title. */
+val MonoMeta = TextStyle(fontFamily = Mono, fontSize = 11.5.sp, lineHeight = 15.sp)
+
+/** Small corners, as a terminal's (ADR-0069); sheets a little rounder. */
+private val Corners = Shapes(
+    extraSmall = RoundedCornerShape(4.dp),
+    small = RoundedCornerShape(6.dp),
+    medium = RoundedCornerShape(6.dp),
+    large = RoundedCornerShape(8.dp),
+    extraLarge = RoundedCornerShape(12.dp),
+)
+
+private val Scheme = darkColorScheme(
+    primary = Flame.Blue,
+    onPrimary = Flame.OnBlue,
+    primaryContainer = Color(0xFF13294A),
+    onPrimaryContainer = Color(0xFFCFE3FF),
+    inversePrimary = Color(0xFF1F5FC4),
+    secondary = Flame.Core,
+    onSecondary = Flame.OnBlue,
+    secondaryContainer = Flame.S2,
+    onSecondaryContainer = Flame.Text,
+    tertiary = Flame.Hot,
+    onTertiary = Color(0xFF231500),
+    tertiaryContainer = Color(0xFF322E29),
+    onTertiaryContainer = Color(0xFFFFDDA8),
+    background = Flame.Bg,
+    onBackground = Flame.Text,
+    surface = Flame.Bg,
+    onSurface = Flame.Text,
+    surfaceVariant = Flame.S1,
+    onSurfaceVariant = Flame.Dim,
+    surfaceTint = Flame.Blue,
+    inverseSurface = Flame.Text,
+    inverseOnSurface = Flame.Bg,
+    surfaceBright = Flame.S3,
+    surfaceDim = Flame.Bg,
+    surfaceContainerLowest = Color(0xFF06080D),
+    surfaceContainerLow = Flame.S0,
+    surfaceContainer = Flame.S1,
+    surfaceContainerHigh = Flame.S2,
+    surfaceContainerHighest = Flame.S3,
+    outline = Flame.LineStrong,
+    outlineVariant = Flame.Line,
+    scrim = Color(0xFF000000),
+    error = Flame.Bad,
+    onError = Color(0xFF2A0505),
+    errorContainer = Color(0xFF3A1518),
+    onErrorContainer = Color(0xFFFFD6D6),
 )
 
 @Composable
 fun SaarthiTheme(content: @Composable () -> Unit) {
-    MaterialTheme(colorScheme = if (isSystemInDarkTheme()) Dark else Light, content = content)
+    MaterialTheme(colorScheme = Scheme, shapes = Corners, content = content)
 }
