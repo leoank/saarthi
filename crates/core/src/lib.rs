@@ -1009,6 +1009,72 @@ fn outcome(r: CommandResponse) -> Result<String, CoreError> {
     }
 }
 
+/// What the app's demo shows (phase PHS-20261117-f22kxe item 13): a node, a session on it
+/// and its conversation, from a recorded session.
+#[derive(Debug, Clone, PartialEq, uniffi::Record)]
+pub struct Demo {
+    pub node: NodeInfo,
+    pub session: SessionInfo,
+    pub items: Vec<Item>,
+    pub usage: Vec<ModelTotals>,
+}
+
+/// The demo from a recording: `{"node": name, "session": {id, cwd, title, git_branch},
+/// "events": [{seq, time_ms, source, kind, payload}]}`, its events read as a stream of the
+/// session would be and moved in time so it ended a few minutes before `now_ms`.
+#[uniffi::export]
+pub fn demo(recording: String, now_ms: i64) -> Result<Demo, CoreError> {
+    let bad = |what: &str| CoreError::Hub { reason: format!("the demo recording {what}") };
+    let v: Value = serde_json::from_str(&recording).map_err(|e| bad(&format!("is not JSON: {e}")))?;
+    let events = v["events"].as_array().ok_or_else(|| bad("has no events"))?;
+    let last = events.iter().filter_map(|e| e["time_ms"].as_i64()).max().unwrap_or(now_ms);
+    let shift = now_ms - 5 * 60_000 - last;
+    let mut conversation = Conversation::default();
+    let mut items = Vec::new();
+    let mut first = i64::MAX;
+    for e in events {
+        let time_ms = e["time_ms"].as_i64().unwrap_or(last) + shift;
+        first = first.min(time_ms);
+        let event = ev::Event {
+            seq: e["seq"].as_u64().unwrap_or_default(),
+            time_ms,
+            source: ev::EventSource::from_str_name(e["source"].as_str().unwrap_or_default()).unwrap_or_default().into(),
+            kind: e["kind"].as_str().unwrap_or_default().into(),
+            payload_json: e["payload"].as_str().unwrap_or_default().into(),
+            ..Default::default()
+        };
+        for mut item in conversation.push(&event) {
+            item.time_ms += shift;
+            items.push(item);
+        }
+    }
+    let s = &v["session"];
+    let text = |k: &str| s[k].as_str().unwrap_or_default().to_string();
+    let session = session(ev::Session {
+        node_id: "demo".into(),
+        id: text("id"),
+        cwd: text("cwd"),
+        title: text("title"),
+        title_source: "ai".into(),
+        git_branch: text("git_branch"),
+        launch: ev::Launch::Spawned.into(),
+        status: ev::SessionStatus::Idle.into(),
+        started_ms: if first == i64::MAX { now_ms } else { first },
+        last_reply: items.iter().rev().find(|i| i.role == Role::Assistant).map(|i| i.text.clone()).unwrap_or_default(),
+        ..Default::default()
+    });
+    let node = node(Node {
+        id: "demo".into(),
+        name: v["node"].as_str().unwrap_or("demo").into(),
+        version: core_version(),
+        connected: true,
+        last_seen_ms: now_ms,
+        ..Default::default()
+    });
+    let usage = conversation.take_totals().unwrap_or_default();
+    Ok(Demo { node, session, items, usage })
+}
+
 fn node(n: Node) -> NodeInfo {
     NodeInfo {
         id: n.id,

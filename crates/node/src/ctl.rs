@@ -122,6 +122,28 @@ pub enum Ctl {
         #[arg(long)]
         then: Option<String>,
     },
+    /// Hand the hub to a phone: a QR code of a `saarthi://pair` link holding the hub's
+    /// address, the phone's client token and, if given, a tailnet auth key for the app's own
+    /// tailnet identity (ADR-0016). Scan it with the phone's camera; the app opens it and
+    /// asks before adding the hub. The code holds secrets: show it only to your phone.
+    Pair {
+        /// A file holding the client token the phone is to use: one of the hub's
+        /// `--client-tokens`, not this client's own, so each keeps its own name.
+        #[arg(long)]
+        phone_token_file: PathBuf,
+        /// The hub's address as the phone reaches it; this client's hub by default.
+        #[arg(long)]
+        address: Option<String>,
+        /// The hub's name in the app.
+        #[arg(long, default_value = "")]
+        name: String,
+        /// A file holding a tailnet auth key, for the app to join the hub's tailnet itself.
+        #[arg(long)]
+        tailnet_key_file: Option<PathBuf>,
+        /// Also print the link as text, to paste in the app's Settings.
+        #[arg(long)]
+        link: bool,
+    },
     /// A GET to one of a node's local services through the hub (ADR-0052): the status and
     /// headers to stderr, the body to stdout as it arrives (an event stream until Ctrl-C).
     Service {
@@ -133,6 +155,72 @@ pub enum Ctl {
         #[arg(long = "header", short = 'H')]
         headers: Vec<String>,
     },
+}
+
+fn read_secret(path: &Path) -> Result<String> {
+    let s = std::fs::read_to_string(path).with_context(|| format!("reading {}", path.display()))?;
+    let s = s.trim().to_string();
+    if s.is_empty() {
+        bail!("{} is empty", path.display());
+    }
+    Ok(s)
+}
+
+/// The `saarthi://pair` link the app opens: each value percent-encoded.
+pub fn pair_link(name: &str, address: &str, token: &str, tailnet_key: Option<&str>) -> String {
+    fn enc(s: &str) -> String {
+        s.bytes()
+            .map(|b| match b {
+                b'A'..=b'Z' | b'a'..=b'z' | b'0'..=b'9' | b'-' | b'.' | b'_' | b'~' => (b as char).to_string(),
+                _ => format!("%{b:02X}"),
+            })
+            .collect()
+    }
+    let mut link = format!("saarthi://pair?v=1&address={}&token={}", enc(address), enc(token));
+    if !name.is_empty() {
+        link.push_str(&format!("&name={}", enc(name)));
+    }
+    if let Some(key) = tailnet_key {
+        link.push_str(&format!("&tailnet_key={}", enc(key)));
+    }
+    link
+}
+
+/// `saarthi ctl pair`: checks the phone's token against the hub, then prints the QR code.
+async fn pair(hub: &str, token_file: &Path, address: Option<String>, name: &str, key_file: Option<&Path>, show: bool) -> Result<()> {
+    let token = read_secret(token_file)?;
+    let key = key_file.map(read_secret).transpose()?;
+    let address = address.unwrap_or_else(|| hub.to_string());
+    // The phone's token, tried from here: a wrong one is better found now than on the phone.
+    let check = async {
+        let mut c = Client::connect(hub, &token).await?;
+        c.inner.list_nodes(c.request(ListNodesRequest {})).await?;
+        anyhow::Ok(())
+    };
+    match tokio::time::timeout(std::time::Duration::from_secs(10), check).await {
+        Ok(Ok(())) => eprintln!("The hub at {hub} takes this token."),
+        Ok(Err(e)) => bail!("the hub at {hub} refused the phone's token: {e:#}"),
+        Err(_) => eprintln!("warning: the hub at {hub} did not answer in 10 s; the token is not checked"),
+    }
+    if ["127.", "localhost", "[::1]"].iter().any(|l| address.contains(l)) {
+        eprintln!("warning: {address} is this machine's own address; pass --address with one the phone reaches");
+    }
+    let link = pair_link(name, &address, &token, key.as_deref());
+    let code = qrcode::QrCode::new(link.as_bytes()).context("making the QR code")?;
+    // Light modules as blocks, for a terminal with a dark background.
+    let art = code
+        .render::<qrcode::render::unicode::Dense1x2>()
+        .dark_color(qrcode::render::unicode::Dense1x2::Light)
+        .light_color(qrcode::render::unicode::Dense1x2::Dark)
+        .quiet_zone(true)
+        .build();
+    println!("{art}");
+    eprintln!("Scan this with the phone's camera and open it in saarthi. It holds the hub's token{}: show it to no one else.",
+        if key.is_some() { " and a tailnet key" } else { "" });
+    if show {
+        println!("{link}");
+    }
+    Ok(())
 }
 
 /// Which Claude credential a spawn or resume runs under (ADR-0039).
@@ -256,6 +344,9 @@ impl Config {
 }
 
 pub async fn run(hub: &str, token: &str, cmd: Ctl) -> Result<()> {
+    if let Ctl::Pair { phone_token_file, address, name, tailnet_key_file, link } = cmd {
+        return pair(hub, &phone_token_file, address, &name, tailnet_key_file.as_deref(), link).await;
+    }
     let mut c = Client::connect(hub, token).await?;
     match cmd {
         Ctl::Nodes => {
@@ -518,6 +609,7 @@ pub async fn run(hub: &str, token: &str, cmd: Ctl) -> Result<()> {
             let r = c.inner.interrupt(c.request(req)).await?.into_inner();
             report(r)?;
         }
+        Ctl::Pair { .. } => unreachable!("pairing is handled before connecting"),
         Ctl::Service {
             node,
             service,
@@ -632,6 +724,13 @@ fn first_prompt(payload: &str) -> Option<String> {
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    #[test]
+    fn a_pairing_link_carries_every_value_encoded() {
+        let link = super::pair_link("My hub", "http://saarthi-hub:7700", "t+/=", Some("tskey-auth-k"));
+        assert_eq!(link, "saarthi://pair?v=1&address=http%3A%2F%2Fsaarthi-hub%3A7700&token=t%2B%2F%3D&name=My%20hub&tailnet_key=tskey-auth-k");
+        assert!(!super::pair_link("", "a", "b", None).contains("name="));
+    }
 
     #[test]
     fn config_fills_what_the_flags_leave_out() {

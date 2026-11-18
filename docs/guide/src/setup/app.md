@@ -40,8 +40,29 @@ core, the settings, the network, the push distributor, the hub and each of its n
 line per step as it happens. When the hub answers, the app goes on to its sessions. When
 it does not, the log ends in a `[FAILED]` line with the reason, and *Retry* or *Settings*.
 
-The first time there is no hub yet, so the app goes on to *Settings* with **Add a hub**
-open:
+The first time there is no hub yet, so the app goes on to *Settings*, with three ways in.
+
+**Pair with a QR code.** On a machine with saarthi and `ctl` set up for the hub, run
+
+```console
+$ saarthi ctl pair --phone-token-file ~/.config/saarthi/phone.token \
+    --address http://hub:7700 --name home --tailnet-key-file ~/tailnet-phone.key
+```
+
+with the token file holding one of the hub's client tokens for the phone (not `ctl`'s
+own, so each keeps its name), the address as the phone reaches the hub (`ctl`'s own hub
+by default), and the tailnet key only if the app is to join the hub's tailnet itself.
+It checks the token against the hub first, then prints a QR code. Point the phone's
+camera at it and open the link in saarthi: the hub appears in *Add a hub*, filled in, for
+you to look at and save. The code holds the token: show it to your phone and no one
+else. Without a camera at hand, `--link` prints the link as text too; copy it to the
+phone and tap **Paste a pairing link** in Settings.
+
+**Try the demo.** A recorded session, to look around the app before there is a hub: a
+small fix to a failing test, with its tool calls, diff and reply. Nothing in the demo
+reaches a hub; adding a hub leaves it.
+
+**Add a hub** by hand:
 
 - **Address**: `http://<hub's tailnet name or address>:7700`, for example
   `http://hub:7700`; `http://` is added if you leave it out.
@@ -60,7 +81,8 @@ open:
 - **Hubs**: every hub you have added, the one the app connects to selected, with how its
   connection stands. Tap another to switch to it; the pencil edits one, and *Remove this
   hub* forgets its address and token. *Add a hub* adds another, for example a second hub
-  or the same hub at another address.
+  or the same hub at another address; *Paste a pairing link* adds one from
+  `saarthi ctl pair --link`.
 - **Display**: whether code, diffs and tool output wrap instead of scrolling sideways.
 - **About**: the app's and the core's versions and the phone.
 

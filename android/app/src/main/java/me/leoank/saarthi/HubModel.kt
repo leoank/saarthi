@@ -22,6 +22,8 @@ import java.io.File
 import kotlinx.coroutines.isActive
 import kotlinx.coroutines.launch
 import uniffi.saarthi_core.Change
+import uniffi.saarthi_core.Demo
+import uniffi.saarthi_core.demo as recordedDemo
 import uniffi.saarthi_core.ContextUsage
 import uniffi.saarthi_core.ClaudeTokenInfo
 import uniffi.saarthi_core.CoreException
@@ -324,7 +326,52 @@ class HubModel(app: Application) : AndroidViewModel(app) {
 
     /** The active hub's name, for titles. */
     val hubName: String
-        get() = active?.title ?: "no hub"
+        get() = if (demo != null) "Demo · add a hub in Settings" else active?.title ?: "no hub"
+
+    /** A hub from a pairing link, waiting for the person to look at it and add it. */
+    var pairing by mutableStateOf<HubProfile?>(null)
+
+    /** Reads a `saarthi://pair` link from `saarthi ctl pair` into [pairing]; false when it
+     *  is not one. */
+    fun pairFrom(link: String): Boolean {
+        val uri = runCatching { android.net.Uri.parse(link.trim()) }.getOrNull() ?: return false
+        if (uri.scheme != "saarthi" || uri.host != "pair") return false
+        val address = uri.getQueryParameter("address").orEmpty()
+        val token = uri.getQueryParameter("token").orEmpty()
+        if (address.isBlank() || token.isBlank()) return false
+        pairing = HubProfile(
+            name = uri.getQueryParameter("name").orEmpty(),
+            address = address,
+            token = token,
+            tailnetKey = uri.getQueryParameter("tailnet_key").orEmpty(),
+        )
+        return true
+    }
+
+    /** The demo (phase PHS-20261117-f22kxe item 13): a recorded session to look around in,
+     *  with no hub; null outside it. */
+    var demo by mutableStateOf<Demo?>(null)
+        private set
+
+    fun startDemo() {
+        val recording = runCatching { getApplication<Application>().assets.open("demo.json").bufferedReader().use { it.readText() } }
+        val d = recording.mapCatching { recordedDemo(it, System.currentTimeMillis()) }.getOrElse { say("The demo did not load: ${it.message}"); return }
+        disconnect()
+        demo = d
+        nodes.replaceAll(listOf(d.node))
+        sessions.replaceAll(listOf(d.session))
+        pending.clear()
+        link = Link.Connected
+    }
+
+    private fun leaveDemo() {
+        if (demo == null) return
+        demo = null
+        nodes.clear()
+        sessions.clear()
+        conversation.clear()
+        link = Link.Disconnected
+    }
 
     /** Adds or replaces a hub. The first one becomes active; a change to the active one
      *  reconnects with it. */
@@ -342,6 +389,7 @@ class HubModel(app: Application) : AndroidViewModel(app) {
 
     /** Makes a hub the one the app connects to, and connects to it. */
     fun activate(id: String?) {
+        leaveDemo()
         activeId = id
         store.save(hubs, id)
         disconnect()
@@ -526,6 +574,10 @@ class HubModel(app: Application) : AndroidViewModel(app) {
     private fun send(s: SessionInfo, text: String, sent: () -> Unit, call: suspend (Hub) -> PromptSent) {
         val key = "${s.nodeId}/${s.id}"
         if (key in outgoing) return
+        if (demo != null) {
+            notSent[key] = "The demo sends nothing · add a hub in Settings to prompt real sessions"
+            return
+        }
         outgoing[key] = text
         notSent.remove(key)
         viewModelScope.launch {
@@ -644,6 +696,14 @@ class HubModel(app: Application) : AndroidViewModel(app) {
         lastSeq = cache.lastSeq
         olderMore = true
         olderBefore = null
+        demo?.let { d ->
+            conversation.clear()
+            conversation.addAll(d.items)
+            usage.clear()
+            usage.addAll(d.usage)
+            olderMore = false
+            return
+        }
         withHub { startStream(it, s, cache.lastSeq) }
     }
 
@@ -825,6 +885,10 @@ class HubModel(app: Application) : AndroidViewModel(app) {
     private fun withHub(block: suspend (Hub) -> Unit) {
         viewModelScope.launch {
             val h = hub
+            if (h == null && demo != null) {
+                say("This is the demo: add a hub in Settings to act on real sessions")
+                return@launch
+            }
             if (h == null) {
                 if (link == Link.Reconnecting) say("Reconnecting to the hub, try again in a moment")
                 else if (link == Link.Connected) say("Not connected")

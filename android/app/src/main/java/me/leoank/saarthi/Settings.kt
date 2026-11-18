@@ -1,6 +1,9 @@
 package me.leoank.saarthi
 
 import android.os.Build
+import androidx.compose.ui.platform.LocalClipboardManager
+import androidx.compose.material.icons.filled.PlayArrow
+import androidx.compose.material.icons.filled.ContentPaste
 import androidx.compose.foundation.background
 import androidx.compose.foundation.clickable
 import androidx.compose.foundation.layout.Arrangement
@@ -61,9 +64,11 @@ import uniffi.saarthi_core.coreVersion
  *  how text shows, and what is running. New kinds of settings get a group here. */
 @OptIn(ExperimentalMaterial3Api::class)
 @Composable
-fun SettingsScreen(model: HubModel, snackbar: SnackbarHostState, back: (() -> Unit)?) {
+fun SettingsScreen(model: HubModel, snackbar: SnackbarHostState, back: (() -> Unit)?, tryDemo: () -> Unit = {}) {
     var editing by remember { mutableStateOf<HubProfile?>(null) }
-    var adding by remember { mutableStateOf(model.hubs.isEmpty()) }
+    // A first start shows its three ways in (add, pair, demo) rather than opening the form.
+    var adding by remember { mutableStateOf(false) }
+    val clipboard = LocalClipboardManager.current
     Scaffold(
         topBar = {
             TopAppBar(
@@ -98,7 +103,49 @@ fun SettingsScreen(model: HubModel, snackbar: SnackbarHostState, back: (() -> Un
                     Icon(Icons.Filled.Add, null, tint = MaterialTheme.colorScheme.primary)
                     Text("Add a hub", style = MaterialTheme.typography.bodyLarge, modifier = Modifier.padding(start = 16.dp))
                 }
+                Divider()
+                // A link from `saarthi ctl pair`, for when the camera is not at hand.
+                Row(
+                    verticalAlignment = Alignment.CenterVertically,
+                    modifier = Modifier
+                        .fillMaxWidth()
+                        .clickable {
+                            val text = clipboard.getText()?.text.orEmpty()
+                            if (!model.pairFrom(text)) model.say("No pairing link on the clipboard: copy the one `saarthi ctl pair --link` prints")
+                        }
+                        .padding(horizontal = 16.dp, vertical = 14.dp),
+                ) {
+                    Icon(Icons.Filled.ContentPaste, null, tint = MaterialTheme.colorScheme.primary)
+                    Text("Paste a pairing link", style = MaterialTheme.typography.bodyLarge, modifier = Modifier.padding(start = 16.dp))
+                }
+                if (model.hubs.isEmpty()) {
+                    Divider()
+                    Row(
+                        verticalAlignment = Alignment.CenterVertically,
+                        modifier = Modifier
+                            .fillMaxWidth()
+                            .clickable(onClick = tryDemo)
+                            .padding(horizontal = 16.dp, vertical = 14.dp),
+                    ) {
+                        Icon(Icons.Filled.PlayArrow, null, tint = MaterialTheme.colorScheme.primary)
+                        Column(Modifier.padding(start = 16.dp)) {
+                            Text("Try the demo", style = MaterialTheme.typography.bodyLarge)
+                            Text(
+                                "A recorded session to look around in, with no hub",
+                                style = MaterialTheme.typography.bodySmall,
+                                color = MaterialTheme.colorScheme.onSurfaceVariant,
+                            )
+                        }
+                    }
+                }
             }
+            Text(
+                "To pair this phone, run `saarthi ctl pair --phone-token-file <file>` on a machine with " +
+                    "saarthi and scan the code with the camera.",
+                style = MaterialTheme.typography.bodySmall,
+                color = MaterialTheme.colorScheme.onSurfaceVariant,
+                modifier = Modifier.padding(start = 4.dp, end = 4.dp, top = 8.dp),
+            )
             Text(
                 "The app connects to the selected hub: through a tailnet device of its own when the hub " +
                     "has an auth key, otherwise through the phone's own network, such as the Tailscale app.",
@@ -160,7 +207,18 @@ fun SettingsScreen(model: HubModel, snackbar: SnackbarHostState, back: (() -> Un
             Spacer(Modifier.height(32.dp))
         }
     }
-    if (adding || editing != null) {
+    val paired = model.pairing
+    if (paired != null) {
+        // A hub from a pairing link: shown in full, added only when saved.
+        HubEditor(
+            initial = paired,
+            first = model.hubs.isEmpty(),
+            dismiss = { model.pairing = null },
+            save = { model.saveHub(it); model.pairing = null },
+            delete = null,
+            isNew = true,
+        )
+    } else if (adding || editing != null) {
         HubEditor(
             initial = editing,
             first = model.hubs.isEmpty(),
@@ -237,6 +295,7 @@ private fun HubEditor(
     dismiss: () -> Unit,
     save: (HubProfile) -> Unit,
     delete: (() -> Unit)?,
+    isNew: Boolean = initial == null,
 ) {
     var name by remember { mutableStateOf(initial?.name ?: "") }
     var address by remember { mutableStateOf(initial?.address ?: "") }
@@ -258,7 +317,7 @@ private fun HubEditor(
         Scaffold(
             topBar = {
                 TopAppBar(
-                    title = { Text(if (initial == null) "Add a hub" else "Edit hub") },
+                    title = { Text(if (isNew) "Add a hub" else "Edit hub") },
                     navigationIcon = { IconButton(onClick = dismiss) { Icon(Icons.Filled.Close, "Cancel") } },
                 )
             },

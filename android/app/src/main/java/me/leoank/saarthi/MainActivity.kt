@@ -20,13 +20,17 @@ import androidx.lifecycle.viewmodel.compose.viewModel
 class MainActivity : ComponentActivity() {
     /** A session a notification asked to open: node id and session id. */
     private val requested = mutableStateOf<Pair<String, String>?>(null)
+    /** A pairing link the app was opened with. */
+    private val paired = mutableStateOf<String?>(null)
 
     override fun onCreate(savedInstanceState: Bundle?) {
         super.onCreate(savedInstanceState)
         enableEdgeToEdge()
         take(intent)
         setContent {
-            SaarthiTheme { App(requested.value, consumed = { requested.value = null }) }
+            SaarthiTheme {
+                App(requested.value, consumed = { requested.value = null }, paired.value, pairedSeen = { paired.value = null })
+            }
         }
     }
 
@@ -46,6 +50,12 @@ class MainActivity : ComponentActivity() {
     }
 
     private fun take(intent: Intent?) {
+        // A hub handed over as a link (`saarthi ctl pair`): opened in Settings to confirm.
+        if (intent?.data?.scheme == "saarthi") {
+            paired.value = intent.dataString
+            intent.data = null
+            return
+        }
         val node = intent?.getStringExtra("node_id") ?: return
         val session = intent.getStringExtra("session_id") ?: return
         requested.value = node to session
@@ -68,7 +78,13 @@ sealed interface Screen {
 }
 
 @Composable
-fun App(requested: Pair<String, String>?, consumed: () -> Unit, model: HubModel = viewModel()) {
+fun App(
+    requested: Pair<String, String>?,
+    consumed: () -> Unit,
+    paired: String? = null,
+    pairedSeen: () -> Unit = {},
+    model: HubModel = viewModel(),
+) {
     var screen by remember { mutableStateOf<Screen>(Screen.Home) }
     val snackbar = remember { SnackbarHostState() }
     LaunchedEffect(Unit) { model.messages.collect { snackbar.showSnackbar(it) } }
@@ -82,11 +98,21 @@ fun App(requested: Pair<String, String>?, consumed: () -> Unit, model: HubModel 
     var booted by remember { mutableStateOf(false) }
     // A first run goes from the boot log to Settings; once its first hub connects, Home.
     var firstRun by remember { mutableStateOf(false) }
-    LaunchedEffect(firstRun, model.link) {
-        if (firstRun && model.link == Link.Connected) {
+    LaunchedEffect(firstRun, model.link, model.demo) {
+        if (firstRun && model.link == Link.Connected && model.demo == null) {
             screen = Screen.Home
             firstRun = false
         }
+    }
+    // A pairing link goes to Settings, where the hub it holds waits to be added.
+    LaunchedEffect(paired) {
+        val link = paired ?: return@LaunchedEffect
+        if (model.pairFrom(link)) {
+            screen = Screen.Settings
+            booted = true
+            firstRun = model.hubs.isEmpty()
+        } else model.say("That link is not a saarthi pairing link")
+        pairedSeen()
     }
     if (!booted) {
         BootScreen(
@@ -106,7 +132,7 @@ fun App(requested: Pair<String, String>?, consumed: () -> Unit, model: HubModel 
     // Once connected, and again with each hub switched to: register for notifications
     // with the phone's distributor.
     val activity = LocalActivity.current
-    val connected = model.link == Link.Connected
+    val connected = model.link == Link.Connected && model.demo == null
     LaunchedEffect(connected, model.activeId) { if (connected) activity?.let { Push.start(it) } }
 
     // A notification tap lands on its session once the lists are in; a usage alert, which
@@ -187,7 +213,8 @@ fun App(requested: Pair<String, String>?, consumed: () -> Unit, model: HubModel 
         Screen.Tokens -> TokensScreen(model, snackbar, back = { screen = Screen.Home })
         Screen.Settings -> SettingsScreen(
             model, snackbar,
-            back = if (model.hubs.isEmpty()) null else ({ screen = Screen.Home }),
+            back = if (model.hubs.isEmpty() && model.demo == null) null else ({ screen = Screen.Home }),
+            tryDemo = { model.startDemo(); screen = Screen.Home },
         )
     }
 }
