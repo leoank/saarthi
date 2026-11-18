@@ -47,6 +47,8 @@ uses) behind the same byte stream; the node side does not change.
 One line per run after its link, what was tried and what it showed; `yajna validate`
 rejects a bare link here. Metric runs also land in results.tsv.
 - [[RUN-20261114-s2jk7j]] the build: Ghostty v1.4.0's libghostty-vt builds for aarch64-linux-android (API 26) under Nix with Zig 0.17.1 and the NDK, unpatched; 2.1 MB stripped, 16 KB pages, needs only libc and libm; a smoke test passes on the host and links for Android
+- [[RUN-20261118-f1904n]] the phone: libghostty-vt behind a JNI shim, drawn on a Compose canvas, takes a shell's output in at about 91 MB/s and draws a 10-second flood at 60 fps (worst frame 8.4 ms); Termux's library parses about 0.5 MB/s on the UI thread, 40 to 80 times slower
+- [[RUN-20261118-f1904n]] compute run, not yet described
 
 ## Conclusion
 Written once, by a human, when status becomes `concluded`.
