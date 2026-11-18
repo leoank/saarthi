@@ -1,6 +1,8 @@
 package me.leoank.saarthi
 
 import androidx.compose.foundation.clickable
+import androidx.compose.runtime.remember
+import androidx.compose.foundation.combinedClickable
 import androidx.compose.foundation.background
 import androidx.compose.ui.draw.clip
 import androidx.compose.material.icons.filled.SubdirectoryArrowRight
@@ -66,6 +68,13 @@ private val dayFormat: DateTimeFormatter = DateTimeFormatter.ofPattern("EEEE d M
 fun HistoryScreen(model: HubModel, snackbar: SnackbarHostState, back: () -> Unit, openSession: (SessionInfo, String?) -> Unit) {
     var nodeId by rememberSaveable { mutableStateOf("") }
     var query by rememberSaveable { mutableStateOf("") }
+    var deleting by remember { mutableStateOf<HistoryItem?>(null) }
+    deleting?.let { d ->
+        DeleteDialog(dismiss = { deleting = null }) {
+            deleting = null
+            model.deleteSession(d.session)
+        }
+    }
     LaunchedEffect(nodeId) { model.loadHistory(nodeId) }
     // Searched a moment after typing stops, on the node the chips pick (ADR-0063).
     LaunchedEffect(query, nodeId) {
@@ -149,7 +158,11 @@ fun HistoryScreen(model: HubModel, snackbar: SnackbarHostState, back: () -> Unit
                     item(key = "d$d") { SectionTitle(dayLabel(d)) }
                     items(rows, key = { "h" + it.session.nodeId + it.session.id }) { h ->
                         Column(verticalArrangement = Arrangement.spacedBy(4.dp)) {
-                            HistoryRow(h, model.node(h.session.nodeId)?.name ?: "node") { openSession(h.session, null) }
+                            HistoryRow(
+                                h,
+                                model.node(h.session.nodeId)?.name ?: "node",
+                                onDelete = if (h.session.endedMs != null) ({ deleting = h }) else null,
+                            ) { openSession(h.session, null) }
                             for (c in descendants(h)) ContinuedRow(c) { openSession(c.session, null) }
                         }
                     }
@@ -168,10 +181,11 @@ fun HistoryScreen(model: HubModel, snackbar: SnackbarHostState, back: () -> Unit
 }
 
 @Composable
-private fun HistoryRow(h: HistoryItem, node: String, onOpen: () -> Unit) {
+private fun HistoryRow(h: HistoryItem, node: String, onDelete: (() -> Unit)? = null, onOpen: () -> Unit) {
     val s = h.session
     Card(
-        Modifier.fillMaxWidth().clickable(onClick = onOpen),
+        // A long press on an ended session offers to delete it.
+        Modifier.fillMaxWidth().combinedClickable(onClick = onOpen, onLongClick = onDelete),
         colors = CardDefaults.cardColors(containerColor = MaterialTheme.colorScheme.surfaceContainer),
     ) {
         Column(Modifier.padding(horizontal = 16.dp, vertical = 12.dp)) {

@@ -5,6 +5,7 @@ pub mod claude_api;
 pub mod claude_tokens;
 pub mod control_service;
 pub mod db;
+pub mod keep;
 pub mod live;
 pub mod node_service;
 pub mod notify;

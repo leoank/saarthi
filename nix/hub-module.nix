@@ -136,6 +136,16 @@ in
       '';
     };
 
+    retainDays = lib.mkOption {
+      type = lib.types.nullOr lib.types.ints.positive;
+      default = null;
+      example = 365;
+      description = ''
+        Drop the transcripts of sessions that ended more than this many days ago, keeping
+        their titles, first prompts and totals (ADR-0065). Null keeps everything.
+      '';
+    };
+
     noNotify = lib.mkOption {
       type = lib.types.listOf (
         lib.types.enum [
@@ -223,6 +233,10 @@ in
             "--no-notify"
             k
           ]) cfg.noNotify
+          ++ lib.optionals (cfg.retainDays != null) [
+            "--retain-days"
+            (toString cfg.retainDays)
+          ]
           ++ lib.optionals (cfg.tailnets != { }) [
             "--tailnet-hostname"
             cfg.tailnetHostname

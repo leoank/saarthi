@@ -33,6 +33,8 @@ pub struct NodeRow {
 #[derive(Clone)]
 pub struct Db {
     pub(crate) pool: SqlitePool,
+    /// The sessions deleted from a client, by node and id (ADR-0065).
+    pub(crate) deleted: std::sync::Arc<std::sync::RwLock<std::collections::HashSet<(String, String)>>>,
 }
 
 impl Db {
@@ -50,7 +52,11 @@ impl Db {
             .run(&pool)
             .await
             .context("migrating")?;
-        Ok(Self { pool })
+        let deleted: Vec<(String, String)> = sqlx::query_as("SELECT node_id, session_id FROM deleted_sessions")
+            .fetch_all(&pool)
+            .await?;
+        let deleted = std::sync::Arc::new(std::sync::RwLock::new(deleted.into_iter().collect()));
+        Ok(Self { pool, deleted })
     }
 
     /// The node's id, created on first registration, and the highest seq stored for it.
@@ -91,6 +97,9 @@ impl Db {
     /// Stores an event unless the node sent it before: the same seq, or the same line of
     /// the session under another seq. True when it was new.
     pub async fn store_event(&self, node_id: &str, e: &Event) -> Result<bool> {
+        if self.is_deleted(node_id, &e.session_id) {
+            return Ok(false);
+        }
         let done = sqlx::query(
             "INSERT INTO events (node_id, seq, session_id, time_ms, source, kind, payload, line_id)
              VALUES (?1, ?2, ?3, ?4, ?5, ?6, ?7, ?8) ON CONFLICT DO NOTHING",
@@ -199,6 +208,9 @@ impl Db {
     /// Stores a session; true when this update ends a session the hub had as live, which
     /// is when a person is told it ended (ADR-0029).
     pub async fn store_session(&self, node_id: &str, s: &Session) -> Result<bool> {
+        if self.is_deleted(node_id, &s.id) {
+            return Ok(false);
+        }
         let was_live: Option<(Option<i64>,)> =
             sqlx::query_as("SELECT ended_ms FROM sessions WHERE node_id = ?1 AND id = ?2")
                 .bind(node_id)
@@ -257,6 +269,9 @@ impl Db {
     }
 
     pub async fn store_pending(&self, node_id: &str, p: &PendingRequest) -> Result<()> {
+        if self.is_deleted(node_id, &p.session_id) {
+            return Ok(());
+        }
         sqlx::query(
             "INSERT INTO pending (node_id, id, session_id, kind, tool_name, tool_input, created_ms)
              VALUES (?1, ?2, ?3, ?4, ?5, ?6, ?7) ON CONFLICT DO NOTHING",

@@ -538,6 +538,12 @@ impl Hub {
         Ok(PromptSent { note: outcome(r)?, queued })
     }
 
+    /// Deletes an ended session from the hub, for good (ADR-0065).
+    pub async fn delete_session(&self, node_id: String, session_id: String) -> Result<String, CoreError> {
+        let req = DeleteSessionRequest { node_id, session_id };
+        outcome(self.client.clone().delete_session(self.req(req)).await?.into_inner())
+    }
+
     /// Takes a queued prompt off a session's queue: delivered now when `send`, else dropped.
     pub async fn unqueue(
         &self,

@@ -79,6 +79,7 @@ spawns, with the owner's answers of 2026-11-07.
 | [ADR-0062](ADR-0062-the-node-holds-prompts-queued-while-a-session-works.md) | The node holds prompts queued while a session works | accepted |
 | [ADR-0063](ADR-0063-search-across-sessions-with-a-contentless-fts5-index-at-the-hub.md) | Search across sessions with a contentless FTS5 index at the hub, and paged sessions | accepted |
 | [ADR-0064](ADR-0064-pairing-through-a-link-the-phone-camera-opens.md) | Pairing through a link the phone's camera opens, and a recorded demo | accepted |
+| [ADR-0065](ADR-0065-deleted-sessions-stay-deleted-and-old-transcripts-can-be-dropped.md) | Deleted sessions stay deleted, and old transcripts can be dropped | accepted |
 
 Each record:
 

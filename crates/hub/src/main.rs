@@ -72,6 +72,10 @@ struct Cli {
     /// or `token` (a Claude token about to expire). Repeatable (ADR-0029, ADR-0032).
     #[arg(long = "no-notify")]
     no_notify: Vec<String>,
+    /// Drop the transcripts of sessions that ended more than this many days ago, keeping
+    /// their titles, first prompts and totals (ADR-0065). Without it the hub keeps everything.
+    #[arg(long)]
+    retain_days: Option<u64>,
 }
 
 #[tokio::main]
@@ -124,6 +128,10 @@ async fn main() -> Result<()> {
         ));
     }
     tokio::spawn(saarthi_hub::search::run_index(hub.db.clone()));
+    if let Some(days) = cli.retain_days {
+        tracing::info!(days, "dropping transcripts of sessions ended longer ago");
+        tokio::spawn(saarthi_hub::keep::run_retention(hub.db.clone(), days));
+    }
     let reminders = hub.clone();
     tokio::spawn(async move {
         let mut hourly = tokio::time::interval(std::time::Duration::from_secs(3600));

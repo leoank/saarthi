@@ -171,7 +171,12 @@ rocket says it ran under `saarthi run` or was started from the app. A session re
 or forked from another (`claude --resume`, `--fork-session`, or continued after its
 context filled) is listed under the one it came from, as a *continued* line, not as a row
 of its own; a search that matches lines it copied finds the session that wrote them.
-Subagents' transcripts are part of their session and never rows. *Show older* at the
+Subagents' transcripts are part of their session and never rows.
+
+Long-press an ended session in History, or use *Delete session* in its menu, to delete it
+from the hub for good: its conversation goes, and its machine cannot send it back. Claude
+Code's own transcript on that machine stays, so `claude --resume` still works there. A
+running session has to be ended first. *Show older* at the
 bottom loads the next 50. Tap a row to read the whole conversation.
 
 The field at the top searches every session: what you typed, what Claude replied, and

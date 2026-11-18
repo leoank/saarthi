@@ -357,6 +357,24 @@ impl ControlService for Hub {
         ))
     }
 
+    async fn delete_session(
+        &self,
+        request: Request<DeleteSessionRequest>,
+    ) -> Result<Response<CommandResponse>, Status> {
+        self.client(&request)?;
+        let r = request.into_inner();
+        let refused = |error: &str| CommandResponse { ok: false, error: error.into(), ..Default::default() };
+        let done = self.db.delete_session(&r.node_id, &r.session_id, crate::node_service::now_ms()).await.map_err(internal)?;
+        Ok(Response::new(match done {
+            crate::keep::Deleted::Done => {
+                tracing::info!(node = %r.node_id, session = %r.session_id, "session deleted");
+                CommandResponse { ok: true, ..Default::default() }
+            }
+            crate::keep::Deleted::Live => refused("the session is still running: end it first"),
+            crate::keep::Deleted::Missing => refused("the hub has no such session"),
+        }))
+    }
+
     async fn unqueue(
         &self,
         request: Request<UnqueueRequest>,

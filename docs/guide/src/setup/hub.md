@@ -41,6 +41,7 @@ $ saarthi-hub --listen 100.101.102.103:7700 --db /var/lib/saarthi-hub/hub.db \
 | `--usage-probe-node` | A node that runs a throwaway Haiku turn under each Claude token about every `--usage-probe-minutes` (default 30), so every account's usage stays fresh. It must allow headless sessions. |
 | `--ntfy` | An ntfy topic URL to publish notifications to, besides the phones' own push. |
 | `--no-notify <kind>` | Turn one kind of notification off: `permission`, `question`, `turn`, `ended`, `usage` or `token` (a Claude token about to expire). Repeat for several. |
+| `--retain-days <n>` | Once an hour, drop the conversations of sessions that ended more than *n* days ago, keeping each one's title, first prompt and totals so History still lists it (ADR-0065). Without it, the hub keeps everything. The NixOS module's `retainDays`. |
 
 The hub speaks plain gRPC with no TLS. Tailscale encrypts the traffic between machines;
 do not expose the port to the internet.

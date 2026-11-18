@@ -369,6 +369,9 @@ async fn serve_link(
                 }
                 send(tx, hub_message::Body::Ack(Ack { seq })).await?;
             }
+            // A session deleted from a client stays deleted (ADR-0065).
+            Some(Body::Session(s)) if db.is_deleted(node_id, &s.id) => {}
+            Some(Body::Pending(p)) if db.is_deleted(node_id, &p.session_id) => {}
             Some(Body::Session(s)) => {
                 if db.store_session(node_id, &s).await? {
                     hub.notifier.ended(name, node_id, &s);

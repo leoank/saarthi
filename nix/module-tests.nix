@@ -41,6 +41,7 @@ let
     claudeTokensFile = "/run/agenix/k";
     usageProbeNode = "ghost001";
     noNotify = [ "turn" ];
+    retainDays = 365;
     dataDir = "/srv/saarthi";
     openFirewall = true;
     extraArgs = [ "--x" ];
@@ -114,7 +115,7 @@ let
           e = exec hubFull;
         in
         {
-          tail = lib.hasSuffix "--claude-tokens /run/agenix/k --usage-probe-node ghost001 --usage-probe-minutes 30 --ntfy http://127.0.0.1:2586/saarthi --no-notify turn --x" e;
+          tail = lib.hasSuffix "--claude-tokens /run/agenix/k --usage-probe-node ghost001 --usage-probe-minutes 30 --ntfy http://127.0.0.1:2586/saarthi --no-notify turn --retain-days 365 --x" e;
           db = lib.hasInfix "--db /srv/saarthi/hub.db" e;
           port = builtins.elem 7700 hubFull.networking.firewall.allowedTCPPorts;
         };

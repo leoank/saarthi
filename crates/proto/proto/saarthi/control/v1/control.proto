@@ -21,6 +21,8 @@ service ControlService {
   rpc Prompt(PromptRequest) returns (CommandResponse);
   rpc Interrupt(InterruptRequest) returns (CommandResponse);
   rpc Unqueue(UnqueueRequest) returns (CommandResponse);
+  // Deletes an ended session from the hub's record, for good (ADR-0065).
+  rpc DeleteSession(DeleteSessionRequest) returns (CommandResponse);
   // Ends any session's process (ADR-0034).
   rpc Kill(KillRequest) returns (CommandResponse);
   // Starts a headless session on a node; the response carries its id.
@@ -149,6 +151,11 @@ message PromptRequest {
   string session_id = 2;
   string text = 3;
   bool queue = 4;               // hold it while the session works (node Prompt.queue)
+}
+
+message DeleteSessionRequest {
+  string node_id = 1;
+  string session_id = 2;
 }
 
 message UnqueueRequest {

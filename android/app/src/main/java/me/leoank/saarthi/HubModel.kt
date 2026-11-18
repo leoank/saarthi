@@ -562,6 +562,17 @@ class HubModel(app: Application) : AndroidViewModel(app) {
         else send(s, follow, sent) { PromptSent(it.interrupt(s.nodeId, s.id, follow), false) }
     }
 
+    /** Deletes an ended session from the hub for good (ADR-0065); [done] once it is gone. */
+    fun deleteSession(s: SessionInfo, done: () -> Unit = {}) = withHub {
+        it.deleteSession(s.nodeId, s.id)
+        history.removeAll { h -> h.session.nodeId == s.nodeId && h.session.id == s.id }
+        searchHits.removeAll { h -> h.session.nodeId == s.nodeId && h.session.id == s.id }
+        caches.remove(key(s))
+        File(cacheDir, key(s) + ".json").delete()
+        say("Deleted")
+        done()
+    }
+
     /** A queued prompt handed to Claude now, which takes it at its next step, or dropped. */
     fun unqueue(s: SessionInfo, q: QueuedPrompt, send: Boolean) =
         withHub { noted(it.unqueue(s.nodeId, s.id, q.id, send)) }

@@ -144,6 +144,7 @@ fun SessionScreen(
     val node = model.node(nodeId)?.name ?: "node"
     var menu by remember { mutableStateOf(false) }
     var confirmKill by remember { mutableStateOf(false) }
+    var confirmDelete by remember { mutableStateOf(false) }
     var showUsage by remember { mutableStateOf(false) }
     // Search in this session: the words, null while not searching; which match is shown.
     var find by remember(nodeId, sessionId) { mutableStateOf(findFirst) }
@@ -269,6 +270,11 @@ fun SessionScreen(
                                         text = { Text("Kill session", color = MaterialTheme.colorScheme.error) },
                                         onClick = { menu = false; confirmKill = true },
                                     )
+                                } else {
+                                    DropdownMenuItem(
+                                        text = { Text("Delete session", color = MaterialTheme.colorScheme.error) },
+                                        onClick = { menu = false; confirmDelete = true },
+                                    )
                                 }
                             }
                         }
@@ -378,6 +384,13 @@ fun SessionScreen(
             },
             confirmButton = { TextButton(onClick = { showUsage = false }) { Text("Close") } },
         )
+    }
+
+    if (confirmDelete) {
+        DeleteDialog(dismiss = { confirmDelete = false }) {
+            confirmDelete = false
+            model.deleteSession(s) { back() }
+        }
     }
 
     if (confirmKill) {
@@ -1423,4 +1436,21 @@ private fun RoundButton(
     ) {
         CompositionLocalProvider(LocalContentColor provides fg) { icon() }
     }
+}
+
+/** Asks before a session is deleted from the hub for good (ADR-0065). */
+@Composable
+fun DeleteDialog(dismiss: () -> Unit, delete: () -> Unit) {
+    AlertDialog(
+        onDismissRequest = dismiss,
+        title = { Text("Delete this session?") },
+        text = {
+            Text(
+                "Its conversation is removed from the hub for good, and its machine cannot send it back. " +
+                    "Claude Code's own transcript on that machine stays, so `claude --resume` still works there."
+            )
+        },
+        confirmButton = { TextButton(onClick = delete) { Text("Delete", color = MaterialTheme.colorScheme.error) } },
+        dismissButton = { TextButton(onClick = dismiss) { Text("Cancel") } },
+    )
 }
