@@ -154,7 +154,15 @@ fun HomeScreen(
             val ready = live.filter { !it.busy && it !in asking }.sortedByDescending { it.startedMs }
             val oneNode = model.scope.startsWith("node:") || model.nodes.size == 1
             LazyColumn(
-                contentPadding = PaddingValues(horizontal = 16.dp, vertical = 8.dp),
+                // Room under the last row for the New session button, which floats over the
+                // list's end: its 56 dp, its 16 dp margin and a little air, so the last
+                // machine's row and its health button scroll clear of it.
+                contentPadding = PaddingValues(
+                    start = 16.dp,
+                    end = 16.dp,
+                    top = 8.dp,
+                    bottom = if (spawnable.isNotEmpty()) 96.dp else 8.dp,
+                ),
                 verticalArrangement = Arrangement.spacedBy(8.dp),
                 modifier = Modifier.fillMaxSize(),
             ) {
