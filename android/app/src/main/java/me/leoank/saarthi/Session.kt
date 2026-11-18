@@ -1,6 +1,9 @@
 package me.leoank.saarthi
 
 import kotlin.math.roundToInt
+import androidx.compose.foundation.layout.widthIn
+import androidx.compose.foundation.layout.BoxWithConstraints
+import androidx.compose.material.icons.filled.ContentCopy
 import androidx.compose.animation.AnimatedVisibility
 import androidx.compose.animation.core.LinearEasing
 import androidx.compose.animation.core.animateFloat
@@ -280,7 +283,8 @@ fun SessionScreen(
                         )
                     }
                 }
-                Conversation(model, s, Modifier.weight(1f))
+                // *Edit and resend* puts a prompt back in the bar, in place of what was there.
+                Conversation(model, s, Modifier.weight(1f), edit = { text = it })
             }
         }
     }
@@ -402,7 +406,7 @@ private fun folded(turn: Turn): List<Entry> {
 }
 
 @Composable
-private fun Conversation(model: HubModel, s: SessionInfo, modifier: Modifier) {
+private fun Conversation(model: HubModel, s: SessionInfo, modifier: Modifier, edit: (String) -> Unit) {
     val list = rememberLazyListState()
     val scope = rememberCoroutineScope()
     val items = model.conversation
@@ -480,7 +484,7 @@ private fun Conversation(model: HubModel, s: SessionInfo, modifier: Modifier) {
                         if (before != null && e.item.timeMs - before.timeMs > 10 * 60_000 || i == 0) {
                             Caption(whenLabel(e.item.timeMs), Modifier.padding(top = if (i == 0) 0.dp else 8.dp))
                         }
-                        ConversationRow(e, s.cwd, delivered = e.item.role == Role.USER && e.item.text in model.delivered)
+                        ConversationRow(e, s.cwd, delivered = e.item.role == Role.USER && e.item.text in model.delivered, edit = edit)
                     }
                 }
             }
@@ -611,19 +615,42 @@ private fun span(ms: Long): String {
  *  rendered markdown, a tool call as one line with its output folded beneath, thinking
  *  folded, notices as captions. */
 @Composable
-private fun ConversationRow(e: Entry, cwd: String, delivered: Boolean = false) {
+private fun ConversationRow(e: Entry, cwd: String, delivered: Boolean = false, edit: (String) -> Unit = {}) {
     val item = e.item
+    val clipboard = LocalClipboardManager.current
     when (item.role) {
-        Role.USER -> UserTurn(item.text, ticks = if (delivered) 2 else 0, timeMs = item.timeMs)
+        Role.USER -> Column(horizontalAlignment = Alignment.End, modifier = Modifier.fillMaxWidth()) {
+            UserTurn(item.text, ticks = if (delivered) 2 else 0, timeMs = item.timeMs)
+            Row {
+                TurnAction(Icons.Filled.ContentCopy, "Copy") { clipboard.setText(AnnotatedString(item.text)) }
+                TurnAction(Icons.Filled.Edit, "Edit and resend") { edit(item.text) }
+            }
+        }
+        // Claude's text as it reads, unboxed; its time and the copies under it.
         Role.ASSISTANT -> Column(Modifier.fillMaxWidth().padding(vertical = 4.dp)) {
             Markdown(item.text, Modifier.fillMaxWidth())
-            Text(
-                clockTime(item.timeMs),
-                style = MaterialTheme.typography.labelSmall,
-                color = MaterialTheme.colorScheme.onSurfaceVariant.copy(alpha = 0.7f),
-                textAlign = TextAlign.End,
-                modifier = Modifier.fillMaxWidth(),
-            )
+            Row(verticalAlignment = Alignment.CenterVertically) {
+                var copy by remember { mutableStateOf(false) }
+                Box {
+                    TurnAction(Icons.Filled.ContentCopy, "Copy") { copy = true }
+                    DropdownMenu(expanded = copy, onDismissRequest = { copy = false }) {
+                        DropdownMenuItem(text = { Text("Copy as Markdown") }, onClick = {
+                            copy = false
+                            clipboard.setText(AnnotatedString(item.text))
+                        })
+                        DropdownMenuItem(text = { Text("Copy as text") }, onClick = {
+                            copy = false
+                            clipboard.setText(AnnotatedString(plainText(item.text)))
+                        })
+                    }
+                }
+                Spacer(Modifier.weight(1f))
+                Text(
+                    clockTime(item.timeMs),
+                    style = MaterialTheme.typography.labelSmall,
+                    color = MaterialTheme.colorScheme.onSurfaceVariant.copy(alpha = 0.7f),
+                )
+            }
         }
         Role.THINKING -> Folded(
             label = "Thinking",
@@ -707,46 +734,67 @@ private fun SentTurn(x: Sent) {
     }
 }
 
+/** A prompt: a neutral card on the right, its time and ticks inside. */
 @Composable
 private fun UserTurn(text: String, ticks: Int = 0, timeMs: Long? = null) {
-    Row(
-        Modifier
-            .fillMaxWidth()
-            .padding(vertical = 4.dp)
-            .height(IntrinsicSize.Min)
-            .background(MaterialTheme.colorScheme.surfaceContainer, RoundedCornerShape(10.dp)),
-    ) {
-        Box(
-            Modifier
-                .width(4.dp)
-                .fillMaxHeight()
-                .background(MaterialTheme.colorScheme.primary, RoundedCornerShape(topStart = 8.dp, bottomStart = 8.dp)),
-        )
-        Text(
-            text,
-            style = MaterialTheme.typography.bodyLarge,
-            fontFamily = if (text.startsWith("! ")) FontFamily.Monospace else FontFamily.Default,
-            color = MaterialTheme.colorScheme.onSurface,
-            modifier = Modifier.weight(1f).padding(horizontal = 12.dp, vertical = 10.dp),
-        )
-        if (timeMs != null) {
+    BoxWithConstraints(Modifier.fillMaxWidth().padding(vertical = 4.dp), contentAlignment = Alignment.CenterEnd) {
+        Row(
+            verticalAlignment = Alignment.Bottom,
+            modifier = Modifier
+                .widthIn(max = maxWidth * 0.85f)
+                .background(MaterialTheme.colorScheme.surfaceContainerHigh, RoundedCornerShape(16.dp))
+                .padding(start = 14.dp, end = 10.dp, top = 9.dp, bottom = 9.dp),
+        ) {
             Text(
-                clockTime(timeMs),
-                style = MaterialTheme.typography.labelSmall,
-                color = MaterialTheme.colorScheme.onSurfaceVariant.copy(alpha = 0.7f),
-                modifier = Modifier.padding(end = if (ticks > 0) 4.dp else 10.dp, top = 14.dp),
+                text,
+                style = MaterialTheme.typography.bodyLarge,
+                fontFamily = if (text.startsWith("! ")) FontFamily.Monospace else FontFamily.Default,
+                color = MaterialTheme.colorScheme.onSurface,
+                modifier = Modifier.weight(1f, fill = false),
             )
-        }
-        if (ticks > 0) {
-            Icon(
-                if (ticks >= 2) Icons.Filled.DoneAll else Icons.Filled.Done,
-                contentDescription = if (ticks >= 2) "In the transcript" else "Sent",
-                tint = MaterialTheme.colorScheme.onSurfaceVariant.copy(alpha = 0.7f),
-                modifier = Modifier.padding(end = 10.dp, top = 14.dp).size(14.dp),
-            )
+            if (timeMs != null) {
+                Text(
+                    clockTime(timeMs),
+                    style = MaterialTheme.typography.labelSmall,
+                    color = MaterialTheme.colorScheme.onSurfaceVariant.copy(alpha = 0.7f),
+                    modifier = Modifier.padding(start = 10.dp, end = if (ticks > 0) 4.dp else 0.dp),
+                )
+            }
+            if (ticks > 0) {
+                Icon(
+                    if (ticks >= 2) Icons.Filled.DoneAll else Icons.Filled.Done,
+                    contentDescription = if (ticks >= 2) "In the transcript" else "Sent",
+                    tint = MaterialTheme.colorScheme.onSurfaceVariant.copy(alpha = 0.7f),
+                    modifier = Modifier.padding(bottom = 2.dp).size(14.dp),
+                )
+            }
         }
     }
 }
+
+/** A small action under a turn: an icon and a word, quiet until tapped. */
+@Composable
+private fun TurnAction(icon: ImageVector, label: String, onClick: () -> Unit) {
+    Row(
+        verticalAlignment = Alignment.CenterVertically,
+        modifier = Modifier.clip(RoundedCornerShape(8.dp)).clickable(onClick = onClick).padding(horizontal = 6.dp, vertical = 4.dp),
+    ) {
+        Icon(icon, null, Modifier.size(14.dp), tint = MaterialTheme.colorScheme.onSurfaceVariant)
+        Text(label, style = MaterialTheme.typography.labelSmall, color = MaterialTheme.colorScheme.onSurfaceVariant, modifier = Modifier.padding(start = 4.dp))
+    }
+}
+
+/** Markdown as plain text, for pasting where it would show as symbols: fences, emphasis,
+ *  code ticks and heading marks go; a link keeps its text and its address. */
+internal fun plainText(md: String): String = md.lines()
+    .filterNot { it.trimStart().startsWith("```") }
+    .joinToString("\n") { line ->
+        line.replace(Regex("^#{1,6}\\s+"), "")
+            .replace(Regex("\\[([^\\]]+)]\\(([^)]+)\\)"), "$1 ($2)")
+            .replace(Regex("(\\*\\*|__)(.+?)\\1"), "$2")
+            .replace(Regex("(?<![\\w*])[*_](\\S(?:.*?\\S)?)[*_](?![\\w*])"), "$1")
+            .replace("`", "")
+    }
 
 private fun toolIcon(tool: String): ImageVector = when (tool) {
     "Bash", "Monitor" -> Icons.Filled.Terminal

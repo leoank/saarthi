@@ -75,6 +75,12 @@ to read and a *Jump to latest* button brings you back. When your last prompt is 
 screen, *Your last prompt* at the top scrolls to it. Long-press any text to select and
 copy it.
 
+Your prompts sit on the right as cards; Claude's replies read as plain text across the
+screen. Under a reply, *Copy* copies it as Markdown or as plain text (no `**`, ticks or
+heading marks; a link keeps its address in brackets), with its time beside. Under a
+prompt, *Copy* copies it and *Edit and resend* puts it back in the prompt bar, in place
+of what you had typed, to change and send again.
+
 Your prompts and Claude's replies show the time Claude Code wrote them. A prompt you send
 stays in the bar, *Sending…* above it, until the hub has it; it then shows with one tick,
 and two once it is in the transcript. If the link is down it waits in the bar for the hub
