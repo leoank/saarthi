@@ -83,8 +83,8 @@ sealed interface Screen {
     data object History : Screen
     data object Tokens : Screen
     data class Health(val nodeId: String, val from: Screen) : Screen
-    /** A shell on a node (ADR-0054). */
-    data class Terminal(val nodeId: String, val from: Screen) : Screen
+    /** An open shell (ADR-0054), by its id in the model. */
+    data class Terminal(val shellId: Int, val from: Screen) : Screen
     data class Changes(val nodeId: String, val sessionId: String, val from: Screen) : Screen
     data object Settings : Screen
     data object Notebooks : Screen
@@ -242,7 +242,11 @@ fun App(
             openTokens = { screen = Screen.Tokens },
             openSettings = { screen = Screen.Settings },
         )
-        Screen.Terminals -> TerminalsScreen(model, open = { screen = Screen.Terminal(it.id, Screen.Terminals) })
+        Screen.Terminals -> TerminalsScreen(
+            model,
+            openShell = { screen = Screen.Terminal(it.id, Screen.Terminals) },
+            newShell = { screen = Screen.Terminal(model.newShell(it).id, Screen.Terminals) },
+        )
         Screen.Notebooks -> NotebooksScreen(
             model, snackbar,
             open = { screen = Screen.Notebook(it.nodeId, it.namespace, it.url) },
@@ -268,7 +272,9 @@ fun App(
             openSession = { id -> spawnedFrom = s.from; spawned = s.nodeId to id },
         )
         is Screen.Health -> HealthScreen(model, snackbar, s.nodeId, back = { screen = s.from })
-        is Screen.Terminal -> TerminalScreen(model, s.nodeId, back = { screen = s.from })
+        is Screen.Terminal -> model.shell(s.shellId)?.let { shell ->
+            TerminalScreen(model, shell, back = { screen = s.from }, close = { model.closeShell(shell); screen = s.from })
+        } ?: LaunchedEffect(s) { screen = s.from }
         is Screen.Changes -> ChangesScreen(model, s.nodeId, s.sessionId, back = { screen = s.from })
         Screen.Tokens -> TokensScreen(model, snackbar, back = { screen = root(tab) })
         Screen.Settings -> SettingsScreen(

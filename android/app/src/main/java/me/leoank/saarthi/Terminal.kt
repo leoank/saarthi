@@ -26,6 +26,7 @@ import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.size
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.automirrored.filled.ArrowBack
+import androidx.compose.material.icons.filled.Close
 import androidx.compose.material3.ExperimentalMaterial3Api
 import androidx.compose.material3.Icon
 import androidx.compose.material3.IconButton
@@ -57,20 +58,106 @@ import androidx.compose.ui.viewinterop.AndroidView
 import uniffi.saarthi_core.TerminalHandle
 import uniffi.saarthi_core.TerminalListener
 
+/** An open shell (ADR-0054), kept in the model while the app runs (ADR-0068): its
+ *  libghostty-vt state and its stream, which outlive the screen showing it. Output arrives
+ *  on the core's thread and close comes from the main one; the lock keeps the terminal from
+ *  being fed after it is freed. */
+class Shell(val id: Int, val nodeId: String, val nodeName: String) {
+    val startedMs = System.currentTimeMillis()
+    /** The libghostty-vt terminal; 0 until the screen first knows its size. */
+    @Volatile var vt = 0L
+        private set
+    @Volatile var handle: TerminalHandle? = null
+        private set
+    var cols by mutableIntStateOf(0)
+        private set
+    var rows by mutableIntStateOf(0)
+        private set
+    /** Why the shell ended, once it has; it stays listed until closed. */
+    var ended by mutableStateOf<String?>(null)
+    /** Bumped by *Open again*, which starts a new shell in its place. */
+    var generation by mutableIntStateOf(0)
+        private set
+
+    /** Opens the shell at a size, once: the terminal first, so no output is lost. */
+    suspend fun open(model: HubModel, cols: Int, rows: Int, cellW: Int, cellH: Int) {
+        if (vt != 0L) return
+        val v = Vt.create(cols, rows, cellW, cellH)
+        synchronized(this) { vt = v }
+        this.cols = cols
+        this.rows = rows
+        val h = model.openTerminal(nodeId, cols, rows, object : TerminalListener {
+            override fun onOutput(bytes: ByteArray) {
+                synchronized(this@Shell) {
+                    if (vt != v) return
+                    Vt.feed(v, bytes)
+                    reply()
+                }
+            }
+
+            override fun onEnded(reason: String) {
+                ended = reason
+            }
+        })
+        synchronized(this) {
+            handle = h
+            // Replies owed before the stream was ours.
+            reply()
+        }
+    }
+
+    /** What the terminal owes the program goes back at once, shown or not; it waits in the
+     *  terminal until there is a stream to send it on. */
+    private fun reply() {
+        val h = handle ?: return
+        if (vt != 0L) Vt.replies(vt)?.let { h.input(it) }
+    }
+
+    fun resize(cols: Int, rows: Int, cellW: Int, cellH: Int) {
+        if (cols == this.cols && rows == this.rows) return
+        synchronized(this) {
+            if (vt == 0L) return
+            Vt.resize(vt, cols, rows, cellW, cellH)
+        }
+        this.cols = cols
+        this.rows = rows
+        handle?.resize(cols.toUInt(), rows.toUInt())
+    }
+
+    fun input(bytes: ByteArray) = handle?.input(bytes)
+
+    /** Copies the screen out for drawing; false when nothing changed. */
+    fun snapshot(cells: IntArray, meta: IntArray, force: Boolean): Boolean = synchronized(this) {
+        vt != 0L && Vt.snapshot(vt, cells, meta, force)
+    }
+
+    /** A new shell in place of an ended one. */
+    fun reopen() {
+        close()
+        ended = null
+        generation++
+    }
+
+    fun close() {
+        handle?.hangUp()
+        handle = null
+        synchronized(this) {
+            if (vt != 0L) Vt.free(vt)
+            vt = 0L
+        }
+    }
+}
+
 /** A shell on a node (ADR-0054): the screen libghostty-vt keeps, drawn on a canvas; typing
  *  goes straight to the shell, and a bar of the keys a phone keyboard lacks, which the owner
  *  can edit, sits under it. */
 @OptIn(ExperimentalMaterial3Api::class)
 @Composable
-fun TerminalScreen(model: HubModel, nodeId: String, back: () -> Unit) {
-    val node = model.node(nodeId)
-    var opened by remember { mutableIntStateOf(0) }
-    var ended by remember { mutableStateOf<String?>(null) }
-    var handle by remember { mutableStateOf<TerminalHandle?>(null) }
+fun TerminalScreen(model: HubModel, shell: Shell, back: () -> Unit, close: () -> Unit) {
     var held by remember { mutableStateOf(emptySet<String>()) }
     var editing by remember { mutableStateOf(false) }
     var keys by remember { mutableStateOf<KeyView?>(null) }
-    fun send(bytes: ByteArray) = handle?.input(bytes)
+    fun send(bytes: ByteArray) = shell.input(bytes)
     fun send(s: String) = send(s.toByteArray())
     // A key typed or tapped, with what Ctrl and Alt held for it; either lets go after it.
     fun key(s: String) {
@@ -86,17 +173,18 @@ fun TerminalScreen(model: HubModel, nodeId: String, back: () -> Unit) {
     Scaffold(
         topBar = {
             TopAppBar(
-                title = { Text(node?.name ?: "Terminal") },
+                title = { Text(shell.nodeName) },
                 navigationIcon = { IconButton(onClick = back) { Icon(Icons.AutoMirrored.Filled.ArrowBack, "Back") } },
+                actions = { IconButton(onClick = close) { Icon(Icons.Filled.Close, "Close this shell") } },
             )
         },
     ) { padding ->
         Column(Modifier.fillMaxSize().padding(padding).navigationBarsPadding().imePadding()) {
-            ended?.let { why ->
+            shell.ended?.let { why ->
                 Surface(color = MaterialTheme.colorScheme.surfaceVariant, modifier = Modifier.fillMaxWidth()) {
                     Row(Modifier.padding(horizontal = 16.dp, vertical = 4.dp)) {
                         Text(why, style = MaterialTheme.typography.bodySmall, modifier = Modifier.weight(1f).padding(top = 12.dp))
-                        TextButton(onClick = { ended = null; opened++ }) { Text("Open again") }
+                        TextButton(onClick = { shell.reopen() }) { Text("Open again") }
                     }
                 }
             }
@@ -106,13 +194,7 @@ fun TerminalScreen(model: HubModel, nodeId: String, back: () -> Unit) {
                     indication = null,
                 ) { keys?.show() },
             ) {
-                androidx.compose.runtime.key(opened) {
-                    TerminalCanvas(
-                        open = { cols, rows, listener -> model.openTerminal(nodeId, cols, rows, listener) },
-                        opened = { handle = it },
-                        ended = { ended = it },
-                    )
-                }
+                TerminalCanvas(model, shell)
                 KeyInput({ keys = it }) { key(it) }
             }
             // The keys a phone keyboard lacks, as the owner arranged them.
@@ -224,14 +306,11 @@ private fun KeyInput(made: (KeyView) -> Unit, typed: (String) -> Unit) {
     )
 }
 
-/** The terminal itself: sized to the space it has, the shell opened at that size, its
- *  output fed to libghostty-vt as it comes and drawn each frame it changed. */
+/** The terminal itself: sized to the space it has, the shell opened at that size the first
+ *  time, resized after, and drawn each frame its screen changed. Leaving it leaves the
+ *  shell running. */
 @Composable
-private fun TerminalCanvas(
-    open: suspend (Int, Int, TerminalListener) -> TerminalHandle?,
-    opened: (TerminalHandle?) -> Unit,
-    ended: (String) -> Unit,
-) {
+private fun TerminalCanvas(model: HubModel, shell: Shell) {
     val density = LocalDensity.current
     val paint = remember {
         Paint(Paint.ANTI_ALIAS_FLAG).apply {
@@ -247,44 +326,28 @@ private fun TerminalCanvas(
     var size by remember { mutableLongStateOf(0L) }
     val cols = (size ushr 32).toInt().let { if (it == 0) 0 else (it / cellW).toInt().coerceAtLeast(1) }
     val rows = (size and 0xffffffffL).toInt().let { if (it == 0) 0 else (it / cellH).toInt().coerceAtLeast(1) }
-    var vt by remember { mutableLongStateOf(0L) }
-    var handle by remember { mutableStateOf<TerminalHandle?>(null) }
     var frame by remember { mutableIntStateOf(0) }
     val cells = remember(cols, rows) { IntArray(cols * rows * 4) }
     val meta = remember { IntArray(7) }
 
-    // Opened once the canvas has its size; resized after.
-    LaunchedEffect(cols > 0) {
-        if (cols == 0) return@LaunchedEffect
-        val v = Vt.create(cols, rows, cellW.toInt(), cellH.toInt())
-        vt = v
-        val h = open(cols, rows, object : TerminalListener {
-            override fun onOutput(bytes: ByteArray) = Vt.feed(v, bytes)
-            override fun onEnded(reason: String) = ended(reason)
-        })
-        handle = h
-        opened(h)
+    // Opened the first time the canvas has its size (and again after Open again); resized
+    // whenever the size changes.
+    LaunchedEffect(cols > 0, shell.generation) {
+        if (cols > 0) shell.open(model, cols, rows, cellW.toInt(), cellH.toInt())
     }
     LaunchedEffect(cols, rows) {
-        if (vt != 0L && cols > 0) {
-            Vt.resize(vt, cols, rows, cellW.toInt(), cellH.toInt())
-            handle?.resize(cols.toUInt(), rows.toUInt())
-        }
+        if (cols > 0) shell.resize(cols, rows, cellW.toInt(), cellH.toInt())
     }
-    DisposableEffect(Unit) {
-        onDispose {
-            handle?.hangUp()
-            opened(null)
-            if (vt != 0L) Vt.free(vt)
-        }
-    }
-    // Each display frame: answer what the terminal owes the program, and draw if changed.
-    LaunchedEffect(vt, cells) {
-        if (vt == 0L) return@LaunchedEffect
+    // Each display frame: draw if the screen changed; the first frame draws whatever the
+    // shell did while it was not shown.
+    LaunchedEffect(cells, shell.generation) {
+        var first = true
         while (true) {
             withFrameNanos { }
-            Vt.replies(vt)?.let { handle?.input(it) }
-            if (Vt.snapshot(vt, cells, meta, false)) frame++
+            if (shell.cols == cols && shell.rows == rows && shell.snapshot(cells, meta, first)) {
+                first = false
+                frame++
+            }
         }
     }
 

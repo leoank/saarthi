@@ -29,12 +29,15 @@ it does not have yet (Shift-Tab, Alt, ^D, ^Z, ^L, ^R, Enter, Home, End, Page up 
 Delete, and `|`, `~`, `/`, `-`), or go back to the default keys. The bar is kept on the
 phone, the same for every machine.
 
-Leaving the screen ends the shell. When the shell exits, or the node or hub goes away, a
-banner says why, with *Open again* to start a new one.
+A shell stays open while the app runs: leave it for another part of the app and come back
+to it under *Open* on *term*, with whatever it printed meanwhile. Close it with the ✕ there
+or in the shell's top bar; switching hubs or the phone stopping the app closes it too.
+When the shell exits, or the node or hub goes away, a banner says why, with *Open again*
+to start a new one.
 
 ## What it does not do yet
 
-- A shell does not survive leaving the screen or losing the connection; run `tmux` or
+- A shell does not survive the app being stopped or losing the connection; run `tmux` or
   `screen` in it for that.
 - There is no scrollback on the phone and no text selection.
 - The hub sees every key and every byte of output, as it sees your sessions.

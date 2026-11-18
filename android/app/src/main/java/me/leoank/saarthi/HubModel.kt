@@ -425,8 +425,24 @@ class HubModel(app: Application) : AndroidViewModel(app) {
         if (activeId == id) activate(hubs.firstOrNull()?.id) else store.save(hubs, activeId)
     }
 
+    /** Open shells, kept while the app runs (ADR-0068), oldest first. */
+    val shells = mutableStateListOf<Shell>()
+    private var shellIds = 0
+
+    /** A new shell on a node; it opens once its screen knows its size. */
+    fun newShell(node: NodeInfo): Shell = Shell(++shellIds, node.id, node.name).also { shells.add(it) }
+
+    fun shell(id: Int): Shell? = shells.firstOrNull { it.id == id }
+
+    fun closeShell(s: Shell) {
+        s.close()
+        shells.remove(s)
+    }
+
     /** Makes a hub the one the app connects to, and connects to it. */
     fun activate(id: String?) {
+        // Shells are the old hub's.
+        shells.toList().forEach(::closeShell)
         leaveDemo()
         activeId = id
         store.save(hubs, id)
@@ -984,6 +1000,7 @@ class HubModel(app: Application) : AndroidViewModel(app) {
     }
 
     override fun onCleared() {
+        shells.forEach { it.close() }
         openSession?.let { s -> caches[key(s)]?.let { c -> runCatching { File(cacheDir, key(s) + ".json").writeText(c.snapshot()) } } }
         reconnect?.cancel()
         watch?.cancel()

@@ -19,7 +19,11 @@ import androidx.compose.foundation.layout.width
 import androidx.compose.foundation.layout.windowInsetsBottomHeight
 import androidx.compose.foundation.lazy.LazyColumn
 import androidx.compose.foundation.lazy.items
+import androidx.compose.material.icons.Icons
+import androidx.compose.material.icons.filled.Close
 import androidx.compose.material3.ExperimentalMaterial3Api
+import androidx.compose.material3.Icon
+import androidx.compose.material3.IconButton
 import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.Scaffold
 import androidx.compose.material3.Text
@@ -92,14 +96,40 @@ fun WorkspaceBar(current: Workspace, needsYou: Int, select: (Workspace) -> Unit)
     }
 }
 
-/** The Terminals workspace's root: the machines that offer a shell (ADR-0054), each opening
- *  one; the others listed below with why not. */
+/** The Terminals workspace's root: the open shells, kept while the app runs (ADR-0068),
+ *  each going back to where it was or closed here; then the machines, each offering a new
+ *  shell (ADR-0054) or saying why not. */
 @OptIn(ExperimentalMaterial3Api::class)
 @Composable
-fun TerminalsScreen(model: HubModel, open: (NodeInfo) -> Unit) {
+fun TerminalsScreen(model: HubModel, openShell: (Shell) -> Unit, newShell: (NodeInfo) -> Unit) {
     val nodes = model.nodes.sortedWith(compareByDescending<NodeInfo> { it.connected && it.terminal }.thenBy { it.name })
     Scaffold(topBar = { TopAppBar(title = { Text("Terminals") }) }) { padding ->
         LazyColumn(Modifier.fillMaxSize().padding(padding), contentPadding = PaddingValues(horizontal = 16.dp, vertical = 8.dp)) {
+            if (model.shells.isNotEmpty()) {
+                item(key = "open") { Text("Open", style = MaterialTheme.typography.titleSmall, color = Flame.Terminals, modifier = Modifier.padding(vertical = 8.dp)) }
+                items(model.shells, key = { "s${it.id}" }) { sh ->
+                    Row(
+                        verticalAlignment = Alignment.CenterVertically,
+                        modifier = Modifier.fillMaxWidth().clickable { openShell(sh) }.padding(vertical = 8.dp),
+                    ) {
+                        Text("●", color = if (sh.ended == null) Flame.Terminals else Flame.Dim, fontFamily = Mono, fontSize = 12.sp)
+                        Spacer(Modifier.width(10.dp))
+                        Column(Modifier.weight(1f)) {
+                            Text(sh.nodeName, fontFamily = Mono, style = MaterialTheme.typography.bodyLarge)
+                            Text(
+                                sh.ended ?: listOfNotNull(
+                                    if (sh.cols > 0) "${sh.cols}×${sh.rows}" else null,
+                                    "opened ${relative(sh.startedMs)}",
+                                ).joinToString(" · "),
+                                style = MonoMeta,
+                                color = Flame.Dim,
+                            )
+                        }
+                        IconButton(onClick = { model.closeShell(sh) }) { Icon(Icons.Filled.Close, "Close the shell on ${sh.nodeName}", tint = Flame.Dim) }
+                    }
+                }
+                item(key = "machines") { Text("Machines", style = MaterialTheme.typography.titleSmall, color = Flame.Dim, modifier = Modifier.padding(top = 16.dp, bottom = 8.dp)) }
+            }
             if (nodes.isEmpty()) {
                 item { Text("No machines yet.", color = Flame.Dim, modifier = Modifier.padding(vertical = 16.dp)) }
             }
@@ -109,7 +139,7 @@ fun TerminalsScreen(model: HubModel, open: (NodeInfo) -> Unit) {
                     verticalAlignment = Alignment.CenterVertically,
                     modifier = Modifier
                         .fillMaxWidth()
-                        .clickable(enabled = can) { open(n) }
+                        .clickable(enabled = can) { newShell(n) }
                         .padding(vertical = 12.dp),
                 ) {
                     Text(if (n.connected) "●" else "○", color = if (n.connected) Flame.Ok else Flame.Dim, fontFamily = Mono, fontSize = 12.sp)
@@ -126,7 +156,7 @@ fun TerminalsScreen(model: HubModel, open: (NodeInfo) -> Unit) {
                             color = Flame.Dim,
                         )
                     }
-                    if (can) Text("open a shell ›", style = MonoMeta, color = Flame.Terminals)
+                    if (can) Text("new shell ›", style = MonoMeta, color = Flame.Terminals)
                 }
             }
         }
