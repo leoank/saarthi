@@ -3,12 +3,16 @@ package me.leoank.saarthi
 import kotlin.math.roundToInt
 import uniffi.saarthi_core.ModelInUse
 import uniffi.saarthi_core.modelName
+import androidx.compose.material3.rememberModalBottomSheetState
+import androidx.compose.ui.unit.sp
+import androidx.compose.ui.text.font.FontWeight
+import androidx.compose.material3.Button
+import androidx.compose.ui.graphics.Brush
+import androidx.compose.ui.semantics.semantics
+import androidx.compose.ui.semantics.contentDescription
 import androidx.compose.foundation.verticalScroll
 import androidx.compose.foundation.rememberScrollState
 import androidx.compose.material3.ModalBottomSheet
-import androidx.compose.foundation.layout.FlowRow
-import androidx.compose.material3.FilterChip
-import androidx.compose.material3.RadioButton
 import androidx.compose.ui.graphics.StrokeCap
 import androidx.compose.ui.geometry.Offset
 import androidx.compose.ui.draw.drawBehind
@@ -1462,82 +1466,166 @@ fun DeleteDialog(dismiss: () -> Unit, delete: () -> Unit) {
     )
 }
 
-/** The session's model and effort, "Opus 5.5 · High"; a tap offers to switch them when the
- *  node can (phase PHS-20261117-f22kxe item 18). */
+/** The session's model and effort as a terminal would put them, `◢ opus-5.5 ▁▃▅▆█`: the
+ *  model's name and the effort as five bars lit to its level (ADR-0069); a tap offers to
+ *  switch them when the node can (phase PHS-20261117-f22kxe item 18). */
 @Composable
 private fun ModelChip(m: ModelInUse, pick: (() -> Unit)?) {
-    Surface(
-        onClick = { pick?.invoke() },
-        enabled = pick != null,
-        shape = RoundedCornerShape(12.dp),
-        color = MaterialTheme.colorScheme.surfaceContainerHigh,
-        modifier = Modifier.padding(end = 4.dp),
+    val level = EFFORTS.indexOf(m.effort) + 1
+    Row(
+        verticalAlignment = Alignment.CenterVertically,
+        modifier = Modifier
+            .padding(end = 4.dp)
+            .clip(RoundedCornerShape(4.dp))
+            .background(Flame.S1)
+            .border(1.dp, Flame.LineStrong, RoundedCornerShape(4.dp))
+            .clickable(enabled = pick != null) { pick?.invoke() }
+            .semantics { contentDescription = listOf(m.label, effortLabel(m.effort)).filter { it.isNotEmpty() }.joinToString(", ") }
+            .padding(horizontal = 7.dp, vertical = 3.dp),
     ) {
-        Text(
-            listOf(m.label, effortLabel(m.effort)).filter { it.isNotEmpty() }.joinToString(" · "),
-            style = MaterialTheme.typography.labelMedium,
-            color = MaterialTheme.colorScheme.onSurfaceVariant,
-            modifier = Modifier.padding(horizontal = 10.dp, vertical = 4.dp),
-        )
+        Text("◢", fontFamily = Mono, fontSize = 10.sp, color = Flame.Core)
+        Spacer(Modifier.width(5.dp))
+        Text(m.label.lowercase().replace(' ', '-'), fontFamily = Mono, fontSize = 12.sp, color = Flame.Text)
+        if (level > 0) {
+            Spacer(Modifier.width(6.dp))
+            EffortBars(level, height = 10.dp)
+        }
+    }
+}
+
+/** Five bars rising left to right, lit up to `level` in the flame's core. */
+@Composable
+private fun EffortBars(level: Int, height: androidx.compose.ui.unit.Dp) {
+    Row(verticalAlignment = Alignment.Bottom, horizontalArrangement = Arrangement.spacedBy(1.5.dp), modifier = Modifier.height(height)) {
+        for (i in 1..EFFORTS.size) {
+            Box(
+                Modifier
+                    .width(3.dp)
+                    .fillMaxHeight(i / EFFORTS.size.toFloat())
+                    .background(if (i <= level) Flame.Core else Flame.LineStrong, RoundedCornerShape(1.dp)),
+            )
+        }
     }
 }
 
 /** An effort level as people say it: "Extra high" for `xhigh`. */
 private fun effortLabel(e: String): String = if (e == "xhigh") "Extra high" else e.replaceFirstChar { it.uppercase() }
 
-private val MODELS = listOf("default" to "Default", "opus" to "Opus", "sonnet" to "Sonnet", "haiku" to "Haiku")
+/** The models a session can switch to, and what each is for. */
+private val MODELS = listOf(
+    Triple("opus", "opus", "Deepest reasoning, the slowest"),
+    Triple("sonnet", "sonnet", "Fast and capable, for most work"),
+    Triple("haiku", "haiku", "Quickest, for small edits"),
+    Triple("default", "default", "What the account picks"),
+)
 private val EFFORTS = listOf("low", "medium", "high", "xhigh", "max")
 
-/** Picks a model and an effort for the session; what is not changed is left as it is. */
+/** Picks a model and an effort for the session, as a sheet that echoes the commands it will
+ *  send (ADR-0069); what is not changed is left as it is. */
+@OptIn(ExperimentalMaterial3Api::class)
 @Composable
 private fun ModelPicker(now: ModelInUse?, dismiss: () -> Unit, pick: (String, String) -> Unit) {
     var model by remember { mutableStateOf("") }
     var effort by remember { mutableStateOf("") }
-    AlertDialog(
+    val nowModel = now?.label?.substringBefore(' ')?.lowercase().orEmpty()
+    // Fully open: half-open, its buttons would sit below the screen's edge.
+    ModalBottomSheet(
         onDismissRequest = dismiss,
-        title = { Text("Model and effort") },
-        text = {
-            Column {
-                now?.let {
-                    Text(
-                        "Now: " + listOf(it.label, effortLabel(it.effort)).filter { v -> v.isNotEmpty() }.joinToString(" · "),
-                        style = MaterialTheme.typography.bodySmall,
-                        color = MaterialTheme.colorScheme.onSurfaceVariant,
-                    )
+        sheetState = rememberModalBottomSheetState(skipPartiallyExpanded = true),
+        containerColor = Flame.S0,
+        shape = RoundedCornerShape(topStart = 12.dp, topEnd = 12.dp),
+    ) {
+        Column(Modifier.fillMaxWidth().verticalScroll(rememberScrollState()).padding(start = 16.dp, end = 16.dp, bottom = 20.dp)) {
+            @Composable
+            fun rule(name: String) = Row(verticalAlignment = Alignment.CenterVertically, modifier = Modifier.padding(top = 14.dp, bottom = 8.dp)) {
+                Text("── ", fontFamily = Mono, fontSize = 11.sp, color = Flame.Dim)
+                Text(name, fontFamily = Mono, fontSize = 11.sp, fontWeight = FontWeight.SemiBold, color = Flame.Text)
+                Spacer(Modifier.width(8.dp))
+                Box(Modifier.weight(1f).height(1.dp).background(Flame.Line))
+            }
+            rule("model and effort")
+            // What the switch will send, or what runs now.
+            val echo = listOfNotNull(
+                model.ifEmpty { null }?.let { "/model $it" },
+                effort.ifEmpty { null }?.let { "/effort $it" },
+            )
+            Row {
+                Text("❯ ", fontFamily = Mono, fontSize = 12.sp, color = Flame.Blue, fontWeight = FontWeight.Bold)
+                Text(
+                    if (echo.isEmpty()) now?.let { listOf(it.label.lowercase().replace(' ', '-'), it.effort).filter { v -> v.isNotEmpty() }.joinToString(" · ") }.orEmpty()
+                    else echo.joinToString(" · "),
+                    fontFamily = Mono, fontSize = 12.sp, color = Flame.Soft,
+                )
+                Text(if (echo.isEmpty()) "  # now" else "", fontFamily = Mono, fontSize = 12.sp, color = Flame.Dim)
+            }
+            Spacer(Modifier.height(10.dp))
+            for ((value, name, what) in MODELS) {
+                val on = model == value || model.isEmpty() && value == nowModel
+                Row(
+                    verticalAlignment = Alignment.CenterVertically,
+                    modifier = Modifier
+                        .fillMaxWidth()
+                        .clip(RoundedCornerShape(4.dp))
+                        .then(if (on) Modifier.background(Flame.soft(Flame.Blue, 0.12f)).border(1.dp, Flame.soft(Flame.Blue, 0.5f), RoundedCornerShape(4.dp)) else Modifier)
+                        .clickable { model = if (model == value) "" else value }
+                        .padding(horizontal = 8.dp, vertical = 9.dp),
+                ) {
+                    Text(if (on) "●" else "○", fontFamily = Mono, fontSize = 12.sp, color = if (on) Flame.Blue else Flame.Dim)
+                    Spacer(Modifier.width(10.dp))
+                    Text(name, fontFamily = Mono, fontSize = 13.sp, color = Flame.Text, modifier = Modifier.width(72.dp))
+                    Text(what, style = MaterialTheme.typography.bodySmall, color = Flame.Dim)
                 }
-                Text("Model", style = MaterialTheme.typography.titleSmall, modifier = Modifier.padding(top = 12.dp, bottom = 4.dp))
-                for ((value, label) in MODELS) {
-                    Row(
-                        verticalAlignment = Alignment.CenterVertically,
-                        modifier = Modifier.fillMaxWidth().clickable { model = if (model == value) "" else value },
+            }
+            rule("effort")
+            val chosen = EFFORTS.indexOf(effort.ifEmpty { now?.effort.orEmpty() }) + 1
+            Row(horizontalArrangement = Arrangement.spacedBy(6.dp)) {
+                EFFORTS.forEachIndexed { i, e ->
+                    val lit = i + 1 <= chosen
+                    Column(
+                        horizontalAlignment = Alignment.CenterHorizontally,
+                        modifier = Modifier.weight(1f).clip(RoundedCornerShape(4.dp)).clickable { effort = if (effort == e) "" else e }.padding(vertical = 4.dp),
                     ) {
-                        RadioButton(selected = model == value, onClick = { model = if (model == value) "" else value })
-                        Text(label)
-                    }
-                }
-                Text("Effort", style = MaterialTheme.typography.titleSmall, modifier = Modifier.padding(top = 12.dp, bottom = 4.dp))
-                FlowRow(horizontalArrangement = Arrangement.spacedBy(6.dp)) {
-                    for (e in EFFORTS) {
-                        FilterChip(
-                            selected = effort == e,
-                            onClick = { effort = if (effort == e) "" else e },
-                            label = { Text(effortLabel(e)) },
+                        Box(
+                            contentAlignment = Alignment.BottomCenter,
+                            modifier = Modifier.fillMaxWidth().height(36.dp).border(1.dp, Flame.LineStrong, RoundedCornerShape(3.dp)).padding(2.dp),
+                        ) {
+                            Box(
+                                Modifier
+                                    .fillMaxWidth()
+                                    .fillMaxHeight((i + 1) / EFFORTS.size.toFloat())
+                                    .background(
+                                        if (lit) Brush.verticalGradient(listOf(Flame.Core, Flame.Blue)) else Brush.verticalGradient(listOf(Flame.S2, Flame.S2)),
+                                        RoundedCornerShape(2.dp),
+                                    ),
+                            )
+                        }
+                        Spacer(Modifier.height(5.dp))
+                        Text(
+                            if (e == "medium") "med" else e,
+                            fontFamily = Mono,
+                            fontSize = 11.sp,
+                            color = if (i + 1 == chosen) Flame.Text else Flame.Dim,
+                            fontWeight = if (i + 1 == chosen) FontWeight.SemiBold else FontWeight.Normal,
                         )
                     }
                 }
-                Text(
-                    "From the next reply on. A session under saarthi run gets /model and /effort typed at its terminal.",
-                    style = MaterialTheme.typography.bodySmall,
-                    color = MaterialTheme.colorScheme.onSurfaceVariant,
-                    modifier = Modifier.padding(top = 12.dp),
-                )
             }
-        },
-        confirmButton = {
-            TextButton(onClick = { pick(model, effort) }, enabled = model.isNotEmpty() || effort.isNotEmpty()) { Text("Switch") }
-        },
-        dismissButton = { TextButton(onClick = dismiss) { Text("Cancel") } },
-    )
+            Text(
+                "# from the next reply on; a session under saarthi run gets /model and /effort typed at its terminal",
+                fontFamily = Mono, fontSize = 11.sp, lineHeight = 15.sp, color = Flame.Dim,
+                modifier = Modifier.padding(top = 12.dp),
+            )
+            Row(horizontalArrangement = Arrangement.End, verticalAlignment = Alignment.CenterVertically, modifier = Modifier.fillMaxWidth().padding(top = 12.dp)) {
+                TextButton(onClick = dismiss) { Text("cancel", fontFamily = Mono, color = Flame.Dim) }
+                Spacer(Modifier.width(8.dp))
+                Button(
+                    onClick = { pick(model, effort) },
+                    enabled = model.isNotEmpty() || effort.isNotEmpty(),
+                    shape = RoundedCornerShape(4.dp),
+                ) { Text("switch ⏎", fontFamily = Mono, fontWeight = FontWeight.Bold) }
+            }
+        }
+    }
 }
 
 /** Everything known about a session on one sheet (phase PHS-20261117-f22kxe item 19): what
