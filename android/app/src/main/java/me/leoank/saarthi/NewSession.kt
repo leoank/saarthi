@@ -49,6 +49,7 @@ import androidx.compose.runtime.remember
 import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
+import androidx.compose.foundation.border
 import androidx.compose.ui.draw.clip
 import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.unit.dp
@@ -279,24 +280,19 @@ fun NewSessionDialog(
     }
 }
 
+/** A settings section's heading, as a rule (ADR-0069). */
 @Composable
-internal fun Heading(text: String) {
-    Text(
-        text,
-        style = MaterialTheme.typography.titleSmall,
-        color = MaterialTheme.colorScheme.primary,
-        modifier = Modifier.padding(top = 20.dp, bottom = 8.dp, start = 4.dp),
-    )
-}
+internal fun Heading(text: String) = SectionTitle(text, Modifier.padding(top = 4.dp))
 
-/** Rows on one rounded surface, like a settings group. */
+/** Rows on one surface, like a settings group, with a hairline round it. */
 @Composable
 internal fun Group(modifier: Modifier = Modifier, content: @Composable () -> Unit) {
     Column(
         modifier
             .fillMaxWidth()
-            .clip(RoundedCornerShape(16.dp))
-            .background(MaterialTheme.colorScheme.surfaceContainerLow),
+            .clip(RoundedCornerShape(6.dp))
+            .background(MaterialTheme.colorScheme.surfaceContainerLow)
+            .border(1.dp, Flame.Line, RoundedCornerShape(6.dp)),
     ) { content() }
 }
 

@@ -3,6 +3,7 @@ package me.leoank.saarthi
 import kotlin.math.roundToInt
 import uniffi.saarthi_core.ModelInUse
 import uniffi.saarthi_core.modelName
+import androidx.compose.foundation.layout.wrapContentHeight
 import androidx.compose.material3.rememberModalBottomSheetState
 import androidx.compose.ui.unit.sp
 import androidx.compose.ui.text.font.FontWeight
@@ -189,7 +190,7 @@ fun SessionScreen(
                                 onValueChange = { find = it; findAt = null },
                                 singleLine = true,
                                 textStyle = MaterialTheme.typography.titleMedium.copy(color = MaterialTheme.colorScheme.onSurface),
-                                cursorBrush = SolidColor(MaterialTheme.colorScheme.primary),
+                                cursorBrush = SolidColor(Flame.Core),
                                 decorationBox = { field ->
                                     Box(contentAlignment = Alignment.CenterStart) {
                                         if (find.isNullOrEmpty()) {
@@ -206,7 +207,7 @@ fun SessionScreen(
                             Text(s.title(), maxLines = 1, overflow = TextOverflow.Ellipsis)
                             Text(
                                 listOf(
-                                    node,
+                                    if (s.gitBranch.isNotBlank()) "$node:${s.repo()}@${s.gitBranch}" else node,
                                     when {
                                         ended -> "ended"
                                         model.pendingFor(s).isNotEmpty() -> "waiting for you"
@@ -224,7 +225,7 @@ fun SessionScreen(
                                     },
                                     if (tokensIn + tokensOut > 0uL) "${thousands(tokensIn)} in · ${thousands(tokensOut)} out" + (if (cost > 0.0) " · ${dollars(cost)}" else "") else null,
                                 ).filterNotNull().joinToString(" · "),
-                                style = MaterialTheme.typography.bodySmall,
+                                style = MonoMeta,
                                 color = MaterialTheme.colorScheme.onSurfaceVariant,
                                 maxLines = 1,
                                 overflow = TextOverflow.Ellipsis,
@@ -960,17 +961,19 @@ private fun SentTurn(x: Sent) {
     }
 }
 
-/** A prompt: a neutral card on the right, its time and ticks inside. */
+/** A prompt as a shell shows what was typed (ADR-0069): `❯` in the accent, the words, its
+ *  time and ticks at the end, on a faint raised band. */
 @Composable
 private fun UserTurn(text: String, ticks: Int = 0, timeMs: Long? = null) {
-    BoxWithConstraints(Modifier.fillMaxWidth().padding(vertical = 4.dp), contentAlignment = Alignment.CenterEnd) {
+    BoxWithConstraints(Modifier.fillMaxWidth().padding(vertical = 6.dp)) {
         Row(
             verticalAlignment = Alignment.Bottom,
             modifier = Modifier
-                .widthIn(max = maxWidth * 0.85f)
-                .background(MaterialTheme.colorScheme.surfaceContainerHigh, RoundedCornerShape(16.dp))
-                .padding(start = 14.dp, end = 10.dp, top = 9.dp, bottom = 9.dp),
+                .fillMaxWidth()
+                .background(Brush.horizontalGradient(listOf(Flame.S1, Color.Transparent)), RoundedCornerShape(4.dp))
+                .padding(start = 8.dp, end = 4.dp, top = 7.dp, bottom = 7.dp),
         ) {
+            Text("❯ ", fontFamily = Mono, fontWeight = FontWeight.Bold, color = Flame.Agents, style = MaterialTheme.typography.bodyLarge)
             Text(
                 text,
                 style = MaterialTheme.typography.bodyLarge,
@@ -1339,15 +1342,19 @@ private fun PromptBar(
                 verticalAlignment = Alignment.Bottom,
                 modifier = Modifier
                     .fillMaxWidth()
-                    .shadow(2.dp, RoundedCornerShape(26.dp))
-                    .background(
-                        // Raised off the page.
-                        MaterialTheme.colorScheme.surfaceContainerHigh,
-                        RoundedCornerShape(26.dp),
-                    )
-                    .border(1.dp, MaterialTheme.colorScheme.outlineVariant, RoundedCornerShape(26.dp))
-                    .padding(start = 18.dp, end = 8.dp, top = 8.dp, bottom = 8.dp),
+                    .background(Flame.S0, RoundedCornerShape(6.dp))
+                    .border(1.dp, Flame.LineStrong, RoundedCornerShape(6.dp))
+                    .padding(start = 12.dp, end = 6.dp, top = 6.dp, bottom = 6.dp),
             ) {
+                // A shell's prompt (ADR-0069).
+                Text(
+                    "❯",
+                    fontFamily = Mono,
+                    fontWeight = FontWeight.Bold,
+                    color = Flame.Blue,
+                    style = MaterialTheme.typography.bodyLarge,
+                    modifier = Modifier.heightIn(min = ROUND_BUTTON).wrapContentHeight().padding(end = 10.dp),
+                )
                 BasicTextField(
                     value = text,
                     onValueChange = onText,
@@ -1410,7 +1417,7 @@ private fun QueuedBubble(q: QueuedPrompt, sendNow: () -> Unit, discard: () -> Un
         modifier = Modifier
             .fillMaxWidth()
             .padding(horizontal = 12.dp, vertical = 3.dp)
-            .background(MaterialTheme.colorScheme.surfaceContainer, RoundedCornerShape(14.dp))
+            .background(MaterialTheme.colorScheme.surfaceContainer, RoundedCornerShape(6.dp))
             .padding(start = 14.dp, end = 2.dp),
     ) {
         Icon(Icons.Filled.Schedule, "Queued", Modifier.size(14.dp), tint = MaterialTheme.colorScheme.onSurfaceVariant)
@@ -1441,7 +1448,7 @@ private fun RoundButton(
         contentAlignment = Alignment.Center,
         modifier = Modifier
             .size(ROUND_BUTTON)
-            .clip(CircleShape)
+            .clip(RoundedCornerShape(4.dp))
             .background(bg)
             .clickable(enabled = enabled, role = androidx.compose.ui.semantics.Role.Button, onClick = onClick),
     ) {

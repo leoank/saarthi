@@ -1,5 +1,9 @@
 package me.leoank.saarthi
 
+import androidx.compose.ui.graphics.Color
+import androidx.compose.foundation.layout.wrapContentHeight
+import androidx.compose.ui.unit.sp
+import androidx.compose.ui.graphics.Brush
 import androidx.compose.foundation.background
 import androidx.compose.ui.unit.Dp
 import androidx.compose.material3.Surface
@@ -52,22 +56,22 @@ fun PendingCard(
     val question = p.questions.isNotEmpty()
     Surface(
         modifier.fillMaxWidth(),
-        shape = RoundedCornerShape(16.dp),
-        color = MaterialTheme.colorScheme.surfaceContainerHigh,
-        border = BorderStroke(1.dp, MaterialTheme.colorScheme.tertiary.copy(alpha = 0.6f)),
+        shape = RoundedCornerShape(6.dp),
+        color = Flame.S0,
+        border = BorderStroke(1.dp, Flame.Hot.copy(alpha = 0.45f)),
     ) {
-        Column(Modifier.padding(16.dp)) {
+        Column(
+            Modifier
+                .background(androidx.compose.ui.graphics.Brush.verticalGradient(listOf(Flame.soft(Flame.Hot, 0.07f), Flame.S0)))
+                .padding(14.dp),
+        ) {
+            // `── claude asks ──` (ADR-0069).
+            Row(verticalAlignment = Alignment.CenterVertically, modifier = Modifier.padding(bottom = 6.dp)) {
+                Text("── ", fontFamily = Mono, fontSize = 11.sp, color = Flame.Hot.copy(alpha = 0.6f))
+                Text(if (question) "claude asks" else "allow?", fontFamily = Mono, fontSize = 11.sp, fontWeight = FontWeight.SemiBold, color = Flame.Hot)
+                Text(" ──", fontFamily = Mono, fontSize = 11.sp, color = Flame.Hot.copy(alpha = 0.6f))
+            }
             Row(verticalAlignment = Alignment.CenterVertically) {
-                Text(
-                    "NEEDS YOU",
-                    style = MaterialTheme.typography.labelSmall,
-                    fontWeight = FontWeight.Bold,
-                    color = MaterialTheme.colorScheme.onTertiaryContainer,
-                    modifier = Modifier
-                        .background(MaterialTheme.colorScheme.tertiaryContainer, RoundedCornerShape(6.dp))
-                        .padding(horizontal = 6.dp, vertical = 2.dp),
-                )
-                Spacer(Modifier.width(10.dp))
                 Text(
                     if (question) "Claude asks" else "Allow ${p.toolName}?",
                     style = MaterialTheme.typography.titleMedium,
@@ -75,7 +79,7 @@ fun PendingCard(
                 )
             }
             val sub = listOfNotNull(where, relative(p.createdMs)).joinToString(" · ")
-            Text(sub, style = MaterialTheme.typography.bodySmall, color = MaterialTheme.colorScheme.onSurfaceVariant)
+            Text(sub, style = MonoMeta, color = MaterialTheme.colorScheme.onSurfaceVariant)
             if (question) QuestionForm(p.questions, maxBody) { answers -> model.answer(p, answers) }
             else PermissionForm(p, maxBody, allow = { model.allow(p) }, deny = { model.deny(p, it) })
         }
@@ -214,9 +218,9 @@ private fun OptionRow(number: Int, option: String, description: String, picked: 
     val label = if (recommended) option.trimEnd().removeSuffix(RECOMMENDED).trimEnd() else option
     Surface(
         onClick = onClick,
-        shape = RoundedCornerShape(10.dp),
-        color = if (picked) MaterialTheme.colorScheme.secondaryContainer else MaterialTheme.colorScheme.surface,
-        border = BorderStroke(1.dp, if (picked) MaterialTheme.colorScheme.secondary else MaterialTheme.colorScheme.outlineVariant),
+        shape = RoundedCornerShape(4.dp),
+        color = if (picked) Flame.soft(Flame.Hot, 0.12f) else if (recommended) Flame.soft(Flame.Hot, 0.06f) else Color.Transparent,
+        border = BorderStroke(1.dp, if (picked) Flame.Hot.copy(alpha = 0.6f) else Flame.Line),
         modifier = Modifier.fillMaxWidth().padding(vertical = 3.dp),
     ) {
         Row(verticalAlignment = Alignment.Top, modifier = Modifier.padding(horizontal = 12.dp, vertical = 10.dp)) {
@@ -225,9 +229,10 @@ private fun OptionRow(number: Int, option: String, description: String, picked: 
                 Spacer(Modifier.width(10.dp))
             }
             Text(
-                "$number.",
+                "$number",
                 fontFamily = Mono,
-                color = MaterialTheme.colorScheme.secondary,
+                fontWeight = FontWeight.Bold,
+                color = Flame.Hot,
                 modifier = Modifier.width(28.dp),
             )
             Column(Modifier.weight(1f)) {
@@ -235,14 +240,7 @@ private fun OptionRow(number: Int, option: String, description: String, picked: 
                     Text(label, style = MaterialTheme.typography.bodyLarge, modifier = Modifier.weight(1f, fill = false))
                     if (recommended) {
                         Spacer(Modifier.width(8.dp))
-                        Text(
-                            "Recommended",
-                            style = MaterialTheme.typography.labelSmall,
-                            color = MaterialTheme.colorScheme.onPrimaryContainer,
-                            modifier = Modifier
-                                .background(MaterialTheme.colorScheme.primaryContainer, RoundedCornerShape(6.dp))
-                                .padding(horizontal = 6.dp, vertical = 1.dp),
-                        )
+                        Text("recommended", fontFamily = Mono, fontSize = 10.5.sp, color = Flame.Dim)
                     }
                 }
                 if (description.isNotBlank()) {

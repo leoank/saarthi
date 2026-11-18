@@ -100,7 +100,7 @@ fun HistoryScreen(model: HubModel, snackbar: SnackbarHostState, back: () -> Unit
                     if (query.isNotEmpty()) IconButton(onClick = { query = "" }) { Icon(Icons.Filled.Close, "Clear") }
                 },
                 singleLine = true,
-                shape = RoundedCornerShape(28.dp),
+                shape = RoundedCornerShape(6.dp),
                 modifier = Modifier.fillMaxWidth().padding(horizontal = 16.dp, vertical = 4.dp),
             )
             if (model.nodes.size > 1) {
@@ -229,7 +229,7 @@ private fun HistoryRow(h: HistoryItem, node: String, onDelete: (() -> Unit)? = n
                     if (h.inputTokens + h.outputTokens > 0uL) "${thousands(h.inputTokens)} in · ${thousands(h.outputTokens)} out" else null,
                     if (h.costUsd > 0.0) dollars(h.costUsd) else null,
                 ).joinToString(" · "),
-                style = MaterialTheme.typography.bodySmall,
+                style = MonoMeta,
                 color = MaterialTheme.colorScheme.onSurfaceVariant.copy(alpha = 0.8f),
             )
         }
@@ -245,7 +245,7 @@ private fun ContinuedRow(h: HistoryItem, onOpen: () -> Unit) {
         modifier = Modifier
             .fillMaxWidth()
             .padding(start = 20.dp)
-            .clip(RoundedCornerShape(12.dp))
+            .clip(RoundedCornerShape(6.dp))
             .background(MaterialTheme.colorScheme.surfaceContainerLow)
             .clickable(onClick = onOpen)
             .padding(horizontal = 12.dp, vertical = 8.dp),
@@ -265,7 +265,7 @@ private fun ContinuedRow(h: HistoryItem, onOpen: () -> Unit) {
                     if (h.messages > 0uL) "${h.messages} messages" else null,
                     if (s.endedMs == null) "live" else null,
                 ).joinToString(" · "),
-                style = MaterialTheme.typography.bodySmall,
+                style = MonoMeta,
                 color = MaterialTheme.colorScheme.onSurfaceVariant,
             )
         }
@@ -290,7 +290,7 @@ private fun SearchRow(hit: SearchHit, node: String, onOpen: () -> Unit) {
             )
             Text(
                 listOfNotNull(node, s.place().ifEmpty { null }, dayLabel(day(s.startedMs))).joinToString(" · "),
-                style = MaterialTheme.typography.bodySmall,
+                style = MonoMeta,
                 color = MaterialTheme.colorScheme.onSurfaceVariant,
                 maxLines = 1,
                 overflow = TextOverflow.Ellipsis,
