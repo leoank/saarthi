@@ -17,7 +17,6 @@ import androidx.compose.material3.FilterChip
 import androidx.compose.foundation.lazy.LazyRow
 import androidx.compose.foundation.lazy.items
 import androidx.compose.material.icons.Icons
-import androidx.compose.material.icons.automirrored.filled.MenuBook
 import androidx.compose.material.icons.filled.Add
 import androidx.compose.material.icons.filled.ChevronRight
 import androidx.compose.material.icons.filled.ExpandMore
@@ -65,12 +64,10 @@ fun HomeScreen(
     snackbar: SnackbarHostState,
     openSession: (SessionInfo) -> Unit,
     openHealth: (NodeInfo) -> Unit,
-    openTerminal: (NodeInfo) -> Unit,
     spawned: (nodeId: String, sessionId: String) -> Unit,
     openHistory: () -> Unit,
     openTokens: () -> Unit,
     openSettings: () -> Unit,
-    openNotebooks: () -> Unit,
 ) {
     var menu by remember { mutableStateOf(false) }
     var newSession by remember { mutableStateOf(false) }
@@ -105,9 +102,6 @@ fun HomeScreen(
                     }
                 },
                 actions = {
-                    if (model.nodes.any { NOTEBOOK_SERVICE in it.services }) {
-                        IconButton(onClick = openNotebooks) { Icon(Icons.AutoMirrored.Filled.MenuBook, "Notebooks") }
-                    }
                     IconButton(onClick = openHistory) { Icon(Icons.Filled.History, "History") }
                     IconButton(onClick = { refreshing = true }) { Icon(Icons.Filled.Refresh, "Refresh") }
                     Box {
@@ -202,7 +196,6 @@ fun HomeScreen(
                             sessions.size,
                             sessions.count { s -> model.pendingFor(s).isNotEmpty() },
                             select = { model.changeScope(if (model.scope == "node:${node.id}") "" else "node:${node.id}") },
-                            onTerminal = if (node.terminal && node.connected) ({ openTerminal(node) }) else null,
                         ) { openHealth(node) }
                     }
                 }
@@ -223,7 +216,6 @@ private fun NodeHeader(
     count: Int,
     waiting: Int,
     select: () -> Unit,
-    onTerminal: (() -> Unit)? = null,
     onHealth: () -> Unit,
 ) {
     Row(
@@ -249,8 +241,6 @@ private fun NodeHeader(
                 color = MaterialTheme.colorScheme.onSurfaceVariant,
             )
         }
-        // A shell on it, when the node offers one (ADR-0054).
-        onTerminal?.let { IconButton(onClick = it) { Icon(Icons.Filled.Terminal, "Terminal on ${node.name}") } }
         IconButton(onClick = onHealth) { Icon(Icons.Outlined.ShowChart, "Health of ${node.name}") }
     }
 }

@@ -15,9 +15,9 @@ or the phone.
 
 ## In the app
 
-The book icon on the sessions screen appears once a node offers `yajna`. It lists each such
-node's notebooks, asking the node for them each time the list opens; a node whose notebook
-server does not answer shows why, without holding up the others.
+*notes* on the bar at the bottom lists the notebooks of each node that offers `yajna`,
+asking the node for them each time the list opens; a node whose notebook server does not
+answer shows why, without holding up the others.
 
 Tapping a notebook opens its site: the project pages, the log and the tasks. The folder
 icon opens its files viewer, which follows open files as they grow, as it does in a browser.
@@ -39,7 +39,7 @@ the `claude` the node starts.
 
 ## When it does not work
 
-- **No book icon**: no connected node lists `yajna`; `saarthi ctl nodes` shows each node's
+- **No notebooks listed**: no connected node lists `yajna`; `saarthi ctl nodes` shows each node's
   services.
 - **"nothing answers" under a node**: the service has no `start` command and is not
   running, or its command failed; the node's log says which.

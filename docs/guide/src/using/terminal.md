@@ -12,8 +12,9 @@ no SSH key goes onto the phone.
 
 ## In the app
 
-A terminal icon appears beside each connected machine that offers one, in the machines
-list on the sessions screen. Tapping it opens the shell at the size of the screen; turning
+*term* on the bar at the bottom lists your machines; each connected one that offers a shell
+says *open a shell*, and the others say why not. Tapping one opens the shell at the size
+of the screen; turning
 the phone or opening the keyboard resizes it, and full-screen programs such as `top` or an
 editor redraw to fit.
 

@@ -1,5 +1,11 @@
 # Sessions
 
+The bar at the bottom of the app moves between its parts: *agents*, your sessions, with
+how many need you; *notes*, your [notebooks](notebooks.md); and *term*, a
+[shell](terminal.md) on your machines. Each keeps its place when you switch, and the bar
+steps aside inside a session, a notebook or a shell, which have the whole screen. Back
+returns to a part's first screen, then to *agents*.
+
 ## The home screen
 
 The home screen lists, from the top:

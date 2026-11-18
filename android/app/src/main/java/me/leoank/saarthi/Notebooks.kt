@@ -89,7 +89,6 @@ import java.util.concurrent.ConcurrentHashMap
 fun NotebooksScreen(
     model: HubModel,
     snackbar: SnackbarHostState,
-    back: () -> Unit,
     open: (NotebookInfo) -> Unit,
     spawned: (nodeId: String, sessionId: String) -> Unit,
 ) {
@@ -107,7 +106,6 @@ fun NotebooksScreen(
         topBar = {
             TopAppBar(
                 title = { Text("Notebooks") },
-                navigationIcon = { IconButton(onClick = back) { Icon(Icons.AutoMirrored.Filled.ArrowBack, "Back") } },
                 actions = {
                     IconButton(onClick = { model.loadNotebooks() }) { Icon(Icons.Filled.Refresh, "Refresh") }
                 },
