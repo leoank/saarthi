@@ -170,11 +170,23 @@ pub struct TailState {
 /// PHS-20261117-f22kxe item 3). A name given to the session (`agent-name`, `custom-title`)
 /// outranks Claude Code's generated `ai-title`, which outranks a `summary`, as atuin ranks a
 /// thread's title; a title cleared falls back to the next.
+///
+/// A resumed or forked session's transcript starts with the lines of the session it came
+/// from, under that session's id: the last such id before its own lines is its parent (phase
+/// PHS-20261117-f22kxe item 15).
 #[derive(Default)]
 struct Meta {
+    /// The session's own id, to tell its lines from those it copied.
+    own: String,
     titles: [String; 4],
     branch: String,
-    sent: Option<(String, &'static str, String)>,
+    parent: String,
+    /// Its own lines have begun: no copied line comes after them.
+    begun: bool,
+    /// The uuid of its first message line, and whether a fork's origin was looked for by it.
+    first_uuid: String,
+    looked: bool,
+    sent: Option<(String, &'static str, String, String)>,
 }
 
 const TITLE_SOURCES: [(&str, &str, &str); 4] = [
@@ -195,6 +207,25 @@ impl Meta {
                 return;
             }
         }
+        if self.first_uuid.is_empty() && (raw.contains("\"type\":\"user\"") || raw.contains("\"type\":\"assistant\""))
+            && let Some(at) = raw.find("\"uuid\":\"")
+            && let Some(end) = raw[at + 8..].find('"')
+        {
+            self.first_uuid = raw[at + 8..at + 8 + end].to_string();
+        }
+        // Every message line names its session, before the session's own lines a copied one.
+        if !self.begun && !self.own.is_empty() {
+            if let Some(at) = raw.find("\"sessionId\":\"") {
+                let rest = &raw[at + 13..];
+                if let Some(end) = rest.find('"') {
+                    if rest[..end] == self.own {
+                        self.begun = true;
+                    } else {
+                        self.parent = rest[..end].to_string();
+                    }
+                }
+            }
+        }
         // Every message line names the branch; read it without parsing the line.
         if let Some(at) = raw.find("\"gitBranch\":\"") {
             let rest = &raw[at + 13..];
@@ -213,14 +244,52 @@ impl Meta {
             .find(|(t, _)| !t.is_empty())
             .map(|(t, (_, _, source))| (t.clone(), source))
             .unwrap_or_default();
-        let now = (title, source, self.branch.clone());
-        if self.sent.as_ref() == Some(&now) || (now.0.is_empty() && now.2.is_empty()) {
+        let now = (title, source, self.branch.clone(), self.parent.clone());
+        if self.sent.as_ref() == Some(&now) || (now.0.is_empty() && now.2.is_empty() && now.3.is_empty()) {
             return None;
         }
-        let payload = serde_json::json!({"title": now.0, "title_source": now.1, "git_branch": now.2}).to_string();
+        let payload =
+            serde_json::json!({"title": now.0, "title_source": now.1, "git_branch": now.2, "parent_id": now.3}).to_string();
         self.sent = Some(now);
         Some(payload)
     }
+}
+
+/// The session a fork came from. `--fork-session` copies the parent's lines under the new
+/// id, so they do not name it, but they keep their uuids: the fork's first message is the
+/// parent's. Of the transcripts beside it made before it, the earliest that starts with
+/// the same message is its origin; only each file's first lines are read.
+pub async fn fork_origin(transcript: &Path, first_uuid: &str) -> Option<String> {
+    use tokio::io::AsyncBufReadExt;
+    let born = |m: &std::fs::Metadata| m.created().or_else(|_| m.modified()).ok();
+    let own = born(&tokio::fs::metadata(transcript).await.ok()?)?;
+    let mut dir = tokio::fs::read_dir(transcript.parent()?).await.ok()?;
+    let mut best: Option<(std::time::SystemTime, String)> = None;
+    while let Ok(Some(entry)) = dir.next_entry().await {
+        let path = entry.path();
+        if path == transcript || path.extension().is_none_or(|e| e != "jsonl") {
+            continue;
+        }
+        let Some(made) = entry.metadata().await.ok().as_ref().and_then(born) else { continue };
+        if made >= own || best.as_ref().is_some_and(|(b, _)| made >= *b) {
+            continue;
+        }
+        let Ok(file) = tokio::fs::File::open(&path).await else { continue };
+        let mut lines = tokio::io::BufReader::new(file).lines();
+        // Its first message line, within the bookkeeping lines a transcript starts with.
+        for _ in 0..50 {
+            let Ok(Some(line)) = lines.next_line().await else { break };
+            if !(line.contains("\"type\":\"user\"") || line.contains("\"type\":\"assistant\"")) {
+                continue;
+            }
+            if line.contains(&format!("\"uuid\":\"{first_uuid}\"")) {
+                let id = path.file_stem().and_then(|s| s.to_str()).unwrap_or_default().to_string();
+                best = Some((made, id));
+            }
+            break;
+        }
+    }
+    best.map(|(_, id)| id)
 }
 
 /// Follows a session's transcripts until `stop` turns true, then reads once more and returns
@@ -239,6 +308,7 @@ pub async fn tail(
         mut files,
         mut meta,
     } = state;
+    meta.own.clone_from(&session_id);
     loop {
         let stopping = *stop.borrow();
         let mut paths = vec![transcript.clone()];
@@ -283,6 +353,15 @@ pub async fn tail(
                             .await;
                     }
                 }
+            }
+        }
+        // A fork's origin, looked for once its first message is in, if its lines named none.
+        if !meta.looked && !meta.first_uuid.is_empty() {
+            meta.looked = true;
+            if meta.parent.is_empty()
+                && let Some(origin) = fork_origin(&transcript, &meta.first_uuid).await
+            {
+                meta.parent = origin;
             }
         }
         if let Some(payload) = meta.changed() {
@@ -404,10 +483,48 @@ mod tests {
         m.observe(r#"{"type":"agent-name","agentName":"Parser rework","sessionId":"s"}"#);
         let v: Value = serde_json::from_str(&m.changed().unwrap()).unwrap();
         assert_eq!((v["title"].as_str(), v["title_source"].as_str()), (Some("Parser rework"), Some("name")));
-        // A name cleared falls back to the generated title.
+        // A name cleared falls back to the generated title (after the parent, below).
         m.observe(r#"{"type":"agent-name","agentName":"","sessionId":"s"}"#);
         let v: Value = serde_json::from_str(&m.changed().unwrap()).unwrap();
         assert_eq!(v["title"], "Fix the parser");
+    }
+
+    #[tokio::test]
+    async fn a_fork_is_traced_to_the_earliest_transcript_that_starts_like_it() {
+        let dir = tempfile::tempdir().unwrap();
+        let write = |name: &str, first: &str| {
+            let body = format!(
+                "{{\"type\":\"mode\",\"sessionId\":\"{name}\"}}\n{{\"type\":\"user\",\"uuid\":\"{first}\",\"sessionId\":\"{name}\"}}\n"
+            );
+            std::fs::write(dir.path().join(format!("{name}.jsonl")), body).unwrap();
+            std::thread::sleep(std::time::Duration::from_millis(20));
+        };
+        write("original", "m1");
+        write("unrelated", "m9");
+        write("fork", "m1");
+        write("later", "m1");
+        let fork = dir.path().join("fork.jsonl");
+        assert_eq!(fork_origin(&fork, "m1").await.as_deref(), Some("original"));
+        // The original has none: what starts like it came after it.
+        assert_eq!(fork_origin(&dir.path().join("original.jsonl"), "m1").await, None);
+        assert_eq!(fork_origin(&dir.path().join("unrelated.jsonl"), "m9").await, None);
+    }
+
+    #[test]
+    fn a_resumed_session_names_the_session_it_continues() {
+        let mut m = Meta { own: "child".into(), ..Default::default() };
+        // A chain: the grandparent's lines, then the parent's, then its own.
+        m.observe(r#"{"type":"user","uuid":"a","sessionId":"grandparent","message":{"content":"one"}}"#);
+        m.observe(r#"{"type":"user","uuid":"b","sessionId":"parent","message":{"content":"two"}}"#);
+        m.observe(r#"{"type":"user","uuid":"c","sessionId":"child","message":{"content":"three"}}"#);
+        // A line of another session after its own (a subagent's, say) changes nothing.
+        m.observe(r#"{"type":"user","uuid":"d","sessionId":"other","message":{"content":"four"}}"#);
+        let v: Value = serde_json::from_str(&m.changed().unwrap()).unwrap();
+        assert_eq!(v["parent_id"], "parent");
+        let mut fresh = Meta { own: "s".into(), ..Default::default() };
+        fresh.observe(r#"{"type":"user","uuid":"a","sessionId":"s","gitBranch":"main","message":{"content":"hi"}}"#);
+        let v: Value = serde_json::from_str(&fresh.changed().unwrap()).unwrap();
+        assert_eq!(v["parent_id"], "");
     }
 
     #[test]

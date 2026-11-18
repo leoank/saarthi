@@ -176,6 +176,11 @@ One Rust binary, tonic for gRPC, sqlx on SQLite in WAL mode.
   ranks sessions by their best match, titles first and older sessions lower. A session's
   stream can start at its last lines (`tail`) and page back (`before_seq`), so a client
   opens a long session without its whole history (ADR-0063).
+- **Related sessions.** A session resumed or forked from another records it as its parent
+  (`Session.parent_id`), as the node reads it from the transcript: a continuation's
+  copied lines keep the old session's id, and a fork's first message has the uuid of its
+  origin's first message. Clients list a session under its parent; search credits a
+  copied line to the session that wrote it.
 - **Secrets.** Named Claude tokens and the tokens nodes and clients present, read from
   agenix files at start; the database holds only the Claude tokens' fingerprints, dates and
   the nodes' defaults. Tailnet auth keys later. See "Credentials".

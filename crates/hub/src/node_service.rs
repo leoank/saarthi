@@ -359,7 +359,7 @@ async fn serve_link(
                         let v: serde_json::Value = serde_json::from_str(&e.payload_json).unwrap_or_default();
                         let text = |k: &str| v[k].as_str().unwrap_or_default().to_string();
                         if let Some(s) = db
-                            .set_session_meta(node_id, &e.session_id, &text("title"), &text("title_source"), &text("git_branch"))
+                            .set_session_meta(node_id, &e.session_id, &text("title"), &text("title_source"), &text("git_branch"), &text("parent_id"))
                             .await?
                         {
                             publish_session(hub, node_id, s).await?;

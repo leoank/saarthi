@@ -167,7 +167,11 @@ machine. Each row shows the session's title or the first thing typed in it; unde
 how long ago it was last active, its node, its repository and branch and how many
 messages Claude wrote; and then when it started, how long it ran, and its tokens and
 estimated cost; a terminal icon or a
-rocket says it ran under `saarthi run` or was started from the app. *Show older* at the
+rocket says it ran under `saarthi run` or was started from the app. A session resumed
+or forked from another (`claude --resume`, `--fork-session`, or continued after its
+context filled) is listed under the one it came from, as a *continued* line, not as a row
+of its own; a search that matches lines it copied finds the session that wrote them.
+Subagents' transcripts are part of their session and never rows. *Show older* at the
 bottom loads the next 50. Tap a row to read the whole conversation.
 
 The field at the top searches every session: what you typed, what Claude replied, and

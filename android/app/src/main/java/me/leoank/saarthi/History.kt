@@ -1,6 +1,9 @@
 package me.leoank.saarthi
 
 import androidx.compose.foundation.clickable
+import androidx.compose.foundation.background
+import androidx.compose.ui.draw.clip
+import androidx.compose.material.icons.filled.SubdirectoryArrowRight
 import uniffi.saarthi_core.SearchHit
 import kotlinx.coroutines.delay
 import androidx.compose.foundation.shape.RoundedCornerShape
@@ -119,7 +122,18 @@ fun HistoryScreen(model: HubModel, snackbar: SnackbarHostState, back: () -> Unit
                 return@Column
             }
             if (model.historyLoading && model.history.isEmpty()) LinearProgressIndicator(Modifier.fillMaxWidth())
-            val days = model.history.groupBy { day(it.session.startedMs) }
+            // A resumed or forked copy goes under the session it continues, when that is
+            // loaded too, and its own copies with it (phase PHS-20261117-f22kxe item 15).
+            fun key(nodeId: String, id: String) = "$nodeId/$id"
+            val loaded = model.history.map { key(it.session.nodeId, it.session.id) }.toSet()
+            val nested = model.history.filter { it.session.parentId.isNotEmpty() && key(it.session.nodeId, it.session.parentId) in loaded }
+            val children = nested.groupBy { key(it.session.nodeId, it.session.parentId) }
+            fun descendants(h: HistoryItem, seen: MutableSet<String> = mutableSetOf()): List<HistoryItem> =
+                children[key(h.session.nodeId, h.session.id)].orEmpty()
+                    .filter { seen.add(key(it.session.nodeId, it.session.id)) }
+                    .flatMap { listOf(it) + descendants(it, seen) }
+                    .sortedBy { it.session.startedMs }
+            val days = (model.history - nested.toSet()).groupBy { day(it.session.startedMs) }
             LazyColumn(
                 contentPadding = PaddingValues(horizontal = 16.dp, vertical = 8.dp),
                 verticalArrangement = Arrangement.spacedBy(8.dp),
@@ -134,7 +148,10 @@ fun HistoryScreen(model: HubModel, snackbar: SnackbarHostState, back: () -> Unit
                 for ((d, rows) in days) {
                     item(key = "d$d") { SectionTitle(dayLabel(d)) }
                     items(rows, key = { "h" + it.session.nodeId + it.session.id }) { h ->
-                        HistoryRow(h, model.node(h.session.nodeId)?.name ?: "node") { openSession(h.session, null) }
+                        Column(verticalArrangement = Arrangement.spacedBy(4.dp)) {
+                            HistoryRow(h, model.node(h.session.nodeId)?.name ?: "node") { openSession(h.session, null) }
+                            for (c in descendants(h)) ContinuedRow(c) { openSession(c.session, null) }
+                        }
                     }
                 }
                 if (model.historyMore && model.history.isNotEmpty()) {
@@ -200,6 +217,42 @@ private fun HistoryRow(h: HistoryItem, node: String, onOpen: () -> Unit) {
                 ).joinToString(" · "),
                 style = MaterialTheme.typography.bodySmall,
                 color = MaterialTheme.colorScheme.onSurfaceVariant.copy(alpha = 0.8f),
+            )
+        }
+    }
+}
+
+/** A session that continues the one above it, resumed or forked from it: one line, indented. */
+@Composable
+private fun ContinuedRow(h: HistoryItem, onOpen: () -> Unit) {
+    val s = h.session
+    Row(
+        verticalAlignment = Alignment.CenterVertically,
+        modifier = Modifier
+            .fillMaxWidth()
+            .padding(start = 20.dp)
+            .clip(RoundedCornerShape(12.dp))
+            .background(MaterialTheme.colorScheme.surfaceContainerLow)
+            .clickable(onClick = onOpen)
+            .padding(horizontal = 12.dp, vertical = 8.dp),
+    ) {
+        Icon(Icons.Filled.SubdirectoryArrowRight, null, Modifier.size(16.dp), tint = MaterialTheme.colorScheme.onSurfaceVariant)
+        Column(Modifier.padding(start = 8.dp).weight(1f)) {
+            Text(
+                s.title.ifBlank { h.title.ifEmpty { "Continued" } },
+                style = MaterialTheme.typography.bodyMedium,
+                maxLines = 1,
+                overflow = TextOverflow.Ellipsis,
+            )
+            Text(
+                listOfNotNull(
+                    "continued",
+                    ago(s.endedMs ?: s.startedMs),
+                    if (h.messages > 0uL) "${h.messages} messages" else null,
+                    if (s.endedMs == null) "live" else null,
+                ).joinToString(" · "),
+                style = MaterialTheme.typography.bodySmall,
+                color = MaterialTheme.colorScheme.onSurfaceVariant,
             )
         }
     }

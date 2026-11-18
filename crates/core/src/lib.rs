@@ -216,6 +216,8 @@ pub struct SessionInfo {
     pub git_branch: String,
     /// The opening of Claude's latest reply, for a preview in a list.
     pub last_reply: String,
+    /// The session this one continues (resumed or forked from); empty for none.
+    pub parent_id: String,
 }
 
 /// A page of older conversation: its items, oldest first, and whether more may come before.
@@ -1150,6 +1152,7 @@ fn session(s: ev::Session) -> SessionInfo {
         title_source: s.title_source,
         git_branch: s.git_branch,
         last_reply: s.last_reply,
+        parent_id: s.parent_id,
     }
 }
 

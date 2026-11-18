@@ -39,6 +39,9 @@ message Session {
   // The opening of Claude's latest reply, for a list's preview (phase PHS-20261117-f22kxe item
   // 4); filled by the hub when it lists or reports the session, empty from the node.
   string last_reply = 17;
+  // The session this one continues, resumed or forked from, as its transcript says; empty
+  // for one that came from none (phase PHS-20261117-f22kxe item 15).
+  string parent_id = 18;
 }
 
 // A way a node can start a session (`--profiles`, ADR-0038), as the app offers it.

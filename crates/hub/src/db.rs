@@ -669,13 +669,15 @@ impl Db {
         title: &str,
         source: &str,
         branch: &str,
+        parent_id: &str,
     ) -> Result<Option<Session>> {
-        sqlx::query("UPDATE sessions SET title = ?3, title_source = ?4, git_branch = ?5 WHERE node_id = ?1 AND id = ?2")
+        sqlx::query("UPDATE sessions SET title = ?3, title_source = ?4, git_branch = ?5, parent_id = ?6 WHERE node_id = ?1 AND id = ?2")
             .bind(node_id)
             .bind(session_id)
             .bind(title)
             .bind(source)
             .bind(branch)
+            .bind(parent_id)
             .execute(&self.pool)
             .await?;
         self.index_title(node_id, session_id).await?;
@@ -835,6 +837,7 @@ pub(crate) fn session_from(r: &sqlx::sqlite::SqliteRow) -> Session {
         title_source: r.get("title_source"),
         git_branch: r.get("git_branch"),
         last_reply: String::new(),
+        parent_id: r.get("parent_id"),
     }
 }
 

@@ -110,6 +110,8 @@ async fn a_session_carries_its_title_and_branch_from_its_transcript() {
     std::fs::write(
         &transcript,
         concat!(
+            // Resumed from "earlier": its lines come first, under its id.
+            r#"{"type":"user","uuid":"u0","sessionId":"earlier","message":{"role":"user","content":"before"}}"#, "\n",
             r#"{"type":"user","uuid":"u1","gitBranch":"feat/parser","message":{"role":"user","content":"fix it"}}"#, "\n",
             r#"{"type":"ai-title","aiTitle":"Fix the parser","sessionId":"titled"}"#, "\n",
             r#"{"type":"agent-name","agentName":"Parser rework","sessionId":"titled"}"#, "\n",
@@ -128,6 +130,7 @@ async fn a_session_carries_its_title_and_branch_from_its_transcript() {
     }
     assert_eq!((s.title.as_str(), s.title_source.as_str(), s.git_branch.as_str()), ("Parser rework", "name", "feat/parser"));
     assert_eq!(s.last_reply, "Fixed it: the parser now handles tabs.");
+    assert_eq!(s.parent_id, "earlier");
     // Search finds it by a word of the reply, once the index has caught up (ADR-0063).
     let mut c = ControlServiceClient::connect(format!("http://{addr}")).await.unwrap();
     let mut hits = Vec::new();

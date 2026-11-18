@@ -207,10 +207,19 @@ impl Db {
         .fetch_all(&self.pool)
         .await?;
         for r in &lines {
-            let key = (r.get::<String, _>("node_id"), r.get::<String, _>("session_id"));
+            let mut key = (r.get::<String, _>("node_id"), r.get::<String, _>("session_id"));
+            // A line a resumed or forked session copied from another is credited to the
+            // session that wrote it, when the hub has it (phase item 15).
+            let payload = r.get::<String, _>("payload");
+            if let Some(origin) = serde_json::from_str::<Value>(&payload).ok().and_then(|v| v["sessionId"].as_str().map(str::to_string))
+                && origin != key.1
+                && self.session(&key.0, &origin).await?.is_some()
+            {
+                key.1 = origin;
+            }
             let rank: f64 = r.get("rank");
             if best.get(&key).is_none_or(|b| rank < b.0) {
-                let text = searchable(&r.get::<String, _>("kind"), &r.get::<String, _>("payload")).unwrap_or_default();
+                let text = searchable(&r.get::<String, _>("kind"), &payload).unwrap_or_default();
                 best.insert(key, (rank, r.get::<i64, _>("seq") as u64, snippet(&text, query)));
             }
         }
@@ -324,7 +333,7 @@ mod tests {
             let s = Session { id: id.into(), cwd: format!("/w/{id}"), started_ms: 1, ended_ms: Some(ended_days * 86_400_000), ..Default::default() };
             db.store_session(&node, &s).await.unwrap();
             if !title.is_empty() {
-                db.set_session_meta(&node, id, title, "ai", "main").await.unwrap();
+                db.set_session_meta(&node, id, title, "ai", "main", "").await.unwrap();
             }
         }
         for e in [
@@ -345,8 +354,22 @@ mod tests {
         assert!(hits[1].snippet.contains("parser"), "{}", hits[1].snippet);
         assert_eq!(db.search("parser tabs", "", 10, now).await.unwrap().len(), 2);
         assert!(db.search("nothing like it", "", 10, now).await.unwrap().is_empty());
+        // A resumed copy's lines from "new" are credited to "new", its own to itself.
+        let copy = Session { id: "copy".into(), cwd: "/w/copy".into(), started_ms: 1, ended_ms: Some(399 * 86_400_000), ..Default::default() };
+        db.store_session(&node, &copy).await.unwrap();
+        let mut copied = line(6, "copy", "user", "fix the parser for tabs");
+        copied.payload_json = copied.payload_json.replacen('{', r#"{"sessionId":"new","#, 1);
+        let mut own = line(7, "copy", "user", "now the spaces too");
+        own.payload_json = own.payload_json.replacen('{', r#"{"sessionId":"copy","#, 1);
+        for e in [copied, own] {
+            db.store_event(&node, &e).await.unwrap();
+        }
+        while db.index_search().await.unwrap() as i64 >= BATCH {}
+        let ids: Vec<String> = db.search("parser tabs", "", 10, now).await.unwrap().into_iter().map(|h| h.session.id).collect();
+        assert!(!ids.contains(&"copy".to_string()), "{ids:?}");
+        assert_eq!(db.search("spaces", "", 10, now).await.unwrap()[0].session.id, "copy");
         // A title that changes is found by its new words.
-        db.set_session_meta(&node, "old", "Tab handling", "ai", "main").await.unwrap();
+        db.set_session_meta(&node, "old", "Tab handling", "ai", "main", "").await.unwrap();
         assert_eq!(db.search("handling", "", 10, now).await.unwrap()[0].session.id, "old");
     }
 }
