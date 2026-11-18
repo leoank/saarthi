@@ -13,7 +13,6 @@ import android.view.inputmethod.InputMethodManager
 import androidx.compose.foundation.Canvas
 import androidx.compose.foundation.background
 import androidx.compose.foundation.clickable
-import androidx.compose.foundation.horizontalScroll
 import androidx.compose.foundation.interaction.MutableInteractionSource
 import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.Column
@@ -24,7 +23,6 @@ import androidx.compose.foundation.layout.imePadding
 import androidx.compose.foundation.layout.navigationBarsPadding
 import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.size
-import androidx.compose.foundation.rememberScrollState
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.automirrored.filled.ArrowBack
 import androidx.compose.material3.ExperimentalMaterial3Api
@@ -59,7 +57,8 @@ import uniffi.saarthi_core.TerminalHandle
 import uniffi.saarthi_core.TerminalListener
 
 /** A shell on a node (ADR-0054): the screen libghostty-vt keeps, drawn on a canvas; typing
- *  goes straight to the shell, and a row of the keys a phone keyboard lacks sits under it. */
+ *  goes straight to the shell, and a bar of the keys a phone keyboard lacks, which the owner
+ *  can edit, sits under it. */
 @OptIn(ExperimentalMaterial3Api::class)
 @Composable
 fun TerminalScreen(model: HubModel, nodeId: String, back: () -> Unit) {
@@ -67,10 +66,21 @@ fun TerminalScreen(model: HubModel, nodeId: String, back: () -> Unit) {
     var opened by remember { mutableIntStateOf(0) }
     var ended by remember { mutableStateOf<String?>(null) }
     var handle by remember { mutableStateOf<TerminalHandle?>(null) }
-    var ctrl by remember { mutableStateOf(false) }
+    var held by remember { mutableStateOf(emptySet<String>()) }
+    var editing by remember { mutableStateOf(false) }
     var keys by remember { mutableStateOf<KeyView?>(null) }
     fun send(bytes: ByteArray) = handle?.input(bytes)
     fun send(s: String) = send(s.toByteArray())
+    // A key typed or tapped, with what Ctrl and Alt held for it; either lets go after it.
+    fun key(s: String) {
+        var out = s
+        if (KeyBar.CTRL in held && s.length == 1 && (s[0].isLetter() || s[0] in "@[\\]^_ ")) {
+            out = (if (s[0] == ' ') 0 else s[0].uppercaseChar().code and 0x1f).toChar().toString()
+        }
+        if (KeyBar.ALT in held) out = "\u001b" + out
+        held = emptySet()
+        send(out)
+    }
 
     Scaffold(
         topBar = {
@@ -102,31 +112,20 @@ fun TerminalScreen(model: HubModel, nodeId: String, back: () -> Unit) {
                         ended = { ended = it },
                     )
                 }
-                KeyInput({ keys = it }) { typed ->
-                    // A sticky Ctrl turns the next letter into its control code.
-                    if (ctrl && typed.length == 1 && typed[0].isLetter()) {
-                        ctrl = false
-                        send(byteArrayOf((typed[0].uppercaseChar().code and 0x1f).toByte()))
-                    } else send(typed)
-                }
+                KeyInput({ keys = it }) { key(it) }
             }
-            // The keys a phone keyboard lacks.
-            Row(Modifier.fillMaxWidth().horizontalScroll(rememberScrollState())) {
-                @Composable
-                fun key(label: String, active: Boolean = false, onClick: () -> Unit) = TextButton(onClick = onClick) {
-                    Text(label, color = if (active) MaterialTheme.colorScheme.primary else MaterialTheme.colorScheme.onSurface)
-                }
-                key("Esc") { send("\u001b") }
-                key("Tab") { send("\t") }
-                key("Ctrl", active = ctrl) { ctrl = !ctrl }
-                key("←") { send("\u001b[D") }
-                key("↑") { send("\u001b[A") }
-                key("↓") { send("\u001b[B") }
-                key("→") { send("\u001b[C") }
-                key("^C") { send("\u0003") }
-            }
+            // The keys a phone keyboard lacks, as the owner arranged them.
+            KeyBarRow(
+                keys = KeyBar.keys(model.keyBar),
+                held = held,
+                press = { k ->
+                    if (k.sends.isEmpty()) held = if (k.id in held) held - k.id else held + k.id else key(k.sends)
+                },
+                edit = { editing = true },
+            )
         }
     }
+    if (editing) KeyBarEditor(model.keyBar, model::changeKeyBar) { editing = false }
     LaunchedEffect(keys) { keys?.show() }
 }
 

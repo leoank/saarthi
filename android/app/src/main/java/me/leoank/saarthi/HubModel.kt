@@ -204,6 +204,16 @@ class HubModel(app: Application) : AndroidViewModel(app) {
         prefs.edit().putString("drafts", JSONObject(drafts.toMap()).toString()).apply()
     }
 
+    /** The terminal's key bar, by key id, kept on this device (phase PHS-20261117-f22kxe
+     *  item 11). */
+    var keyBar by mutableStateOf(prefs.getString("key_bar", null)?.split(",")?.filter { it.isNotEmpty() } ?: KeyBar.default)
+        private set
+
+    fun changeKeyBar(ids: List<String>) {
+        keyBar = ids
+        prefs.edit().putString("key_bar", ids.joinToString(",")).apply()
+    }
+
     fun toggleCollapsed(nodeId: String) {
         collapsed = if (nodeId in collapsed) collapsed - nodeId else collapsed + nodeId
         prefs.edit().putStringSet("collapsed", collapsed).apply()

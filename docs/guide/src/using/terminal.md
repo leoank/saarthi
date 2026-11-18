@@ -17,9 +17,16 @@ list on the sessions screen. Tapping it opens the shell at the size of the scree
 the phone or opening the keyboard resizes it, and full-screen programs such as `top` or an
 editor redraw to fit.
 
-Type with the phone's keyboard. The row above it has the keys a phone keyboard lacks: Esc,
-Tab, Ctrl, the arrows and ^C. Ctrl is sticky: tap it, then a letter, for that control key
-(Ctrl, then `d`, sends end-of-file). Tap the screen to bring the keyboard back.
+Type with the phone's keyboard. The key bar above it has the keys a phone keyboard lacks:
+at first Esc, Tab, Ctrl, the arrows and ^C. Ctrl and Alt are held for the next key: tap
+Ctrl, then a letter, for that control key (Ctrl, then `d`, sends end-of-file), or Alt, then
+a key, for that key with Alt (Alt, then `b`, goes back a word in most shells). Tap the
+screen to bring the keyboard back.
+
+The pencil at the end of the bar edits it: move a key along the bar or remove it, add keys
+it does not have yet (Shift-Tab, Alt, ^D, ^Z, ^L, ^R, Enter, Home, End, Page up and down,
+Delete, and `|`, `~`, `/`, `-`), or go back to the default keys. The bar is kept on the
+phone, the same for every machine.
 
 Leaving the screen ends the shell. When the shell exits, or the node or hub goes away, a
 banner says why, with *Open again* to start a new one.
