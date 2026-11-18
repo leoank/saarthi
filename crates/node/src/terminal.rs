@@ -9,7 +9,7 @@ use std::io::{Read, Write};
 use std::sync::Arc;
 
 use portable_pty::{CommandBuilder, PtySize, native_pty_system};
-use saarthi_proto::node::v1::{OpenTerminal, TerminalOut};
+use saarthi_proto::node::v1::{OpenTerminal, TerminalIn, TerminalOut};
 use tokio::sync::mpsc;
 use tokio_stream::wrappers::ReceiverStream;
 
@@ -30,23 +30,21 @@ pub async fn open(api: Arc<HubApi>, open: OpenTerminal, shell: Option<String>) {
             return;
         }
     };
-    let ended = |why: String| TerminalOut { ended: why, ..Default::default() };
     let Some(shell) = shell else {
-        let _ = up.send(ended("this node offers no terminal: it runs without --terminal".into())).await;
-        return;
+        return end(up, down, "this node offers no terminal: it runs without --terminal".into()).await;
     };
     let size = PtySize { rows: open.rows.max(1) as u16, cols: open.cols.max(1) as u16, pixel_width: 0, pixel_height: 0 };
     let pty = match native_pty_system().openpty(size) {
         Ok(p) => p,
-        Err(e) => {
-            let _ = up.send(ended(format!("could not open a PTY: {e}"))).await;
-            return;
-        }
+        Err(e) => return end(up, down, format!("could not open a PTY: {e}")).await,
     };
-    // The owner's shell as a login shell, in their home directory.
+    // The owner's shell as a login shell, in their home directory; where the node runs when
+    // that is not a directory (unset, or a build sandbox's `/homeless-shelter`).
     let mut cmd = if shell.is_empty() { CommandBuilder::new_default_prog() } else { CommandBuilder::new(&shell) };
-    if let Some(home) = std::env::var_os("HOME") {
-        cmd.cwd(home);
+    // portable-pty would otherwise start it in `$HOME` itself, and fail there.
+    match std::env::var_os("HOME").filter(|h| std::path::Path::new(h).is_dir()) {
+        Some(home) => cmd.cwd(home),
+        None => cmd.cwd(std::env::current_dir().unwrap_or_else(|_| "/".into())),
     }
     cmd.env("TERM", "xterm-256color");
     cmd.env("COLORTERM", "truecolor");
@@ -59,17 +57,13 @@ pub async fn open(api: Arc<HubApi>, open: OpenTerminal, shell: Option<String>) {
     }
     let mut child = match pty.slave.spawn_command(cmd) {
         Ok(c) => c,
-        Err(e) => {
-            let _ = up.send(ended(format!("could not start the shell: {e}"))).await;
-            return;
-        }
+        Err(e) => return end(up, down, format!("could not start the shell: {e}")).await,
     };
     drop(pty.slave);
     let mut killer = child.clone_killer();
     let (Ok(mut reader), Ok(mut writer)) = (pty.master.try_clone_reader(), pty.master.take_writer()) else {
         let _ = killer.kill();
-        let _ = up.send(ended("could not read the PTY".into())).await;
-        return;
+        return end(up, down, "could not read the PTY".into()).await;
     };
     tracing::info!(id = %open.id, cols = open.cols, rows = open.rows, "a terminal started");
 
@@ -122,9 +116,13 @@ pub async fn open(api: Arc<HubApi>, open: OpenTerminal, shell: Option<String>) {
         None => "the shell's input closed".to_string(),
     };
     tracing::info!(id = %open.id, %why, "a terminal ended");
-    let _ = up.send(ended(why)).await;
-    // Dropping the call now would cancel it before the reason went out: hold it until the
-    // hub, having passed the reason on, closes it.
+    end(up, down, why).await;
+}
+
+/// Says why the terminal ended. Dropping the call at once would cancel it before the reason
+/// went out: it is held until the hub, having passed the reason on, closes it.
+async fn end(up: mpsc::Sender<TerminalOut>, mut down: tonic::Streaming<TerminalIn>, why: String) {
+    let _ = up.send(TerminalOut { ended: why, ..Default::default() }).await;
     drop(up);
     let _ = tokio::time::timeout(std::time::Duration::from_secs(5), async { while let Ok(Some(_)) = down.message().await {} }).await;
 }
