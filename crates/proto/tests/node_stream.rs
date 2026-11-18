@@ -45,6 +45,15 @@ impl NodeService for Hub {
         Err(Status::unimplemented("not part of this test"))
     }
 
+    type TerminalStreamStream = Pin<Box<dyn Stream<Item = Result<saarthi_proto::node::v1::TerminalIn, Status>> + Send>>;
+
+    async fn terminal_stream(
+        &self,
+        _: Request<Streaming<saarthi_proto::node::v1::TerminalOut>>,
+    ) -> Result<Response<Self::TerminalStreamStream>, Status> {
+        Err(Status::unimplemented("not part of this test"))
+    }
+
     type SessionTranscriptStream =
         Pin<Box<dyn Stream<Item = Result<saarthi_proto::node::v1::SessionTranscriptPart, Status>> + Send>>;
 

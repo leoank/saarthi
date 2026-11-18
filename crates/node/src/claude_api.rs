@@ -158,6 +158,29 @@ impl HubApi {
 }
 
 impl HubApi {
+    /// Dials a `TerminalStream` back to the hub for a client's terminal (ADR-0054): `up`
+    /// starts with the terminal's id; the returned stream carries what the client sends.
+    pub async fn terminal_stream(
+        &self,
+        up: tokio_stream::wrappers::ReceiverStream<saarthi_proto::node::v1::TerminalOut>,
+    ) -> Result<tonic::Streaming<saarthi_proto::node::v1::TerminalIn>, String> {
+        let mut client = self.client().await?;
+        let mut request = tonic::Request::new(up);
+        let bearer = format!("Bearer {}", self.token)
+            .parse()
+            .map_err(|_| "the node token is not valid in a header".to_string())?;
+        request.metadata_mut().insert("authorization", bearer);
+        match client.terminal_stream(request).await {
+            Ok(r) => Ok(r.into_inner()),
+            Err(status) => {
+                if status.code() == tonic::Code::Unavailable {
+                    self.forget().await;
+                }
+                Err(status.message().to_string())
+            }
+        }
+    }
+
     /// A session's transcript lines as the hub kept them, in order, for a session this node
     /// no longer has a transcript of.
     pub async fn session_transcript(&self, session_id: &str) -> Result<Vec<String>, String> {

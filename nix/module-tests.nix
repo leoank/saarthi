@@ -189,6 +189,7 @@ let
     ignoreCwd = [ "*/target/live-work-*" ];
     claudeUsage = true;
     keepAwake = true;
+    terminal = true;
     spawnRoots = [
       "/home/u/a"
       "/home/u/b"
@@ -255,11 +256,12 @@ let
             "--profiles"
             "--services"
             "--tailnet"
+            "--terminal"
           ];
           name = lib.hasInfix "--name rogue" l;
           tailnet = lib.hasInfix "--claude /opt/claude --tailnet --tailnet-authkey-file /run/agenix/tk --profiles" l;
           ignore = lib.hasInfix "--ignore-cwd" l && lib.hasInfix "live-work-" l;
-          usage = lib.hasInfix "--claude-usage --keep-awake --spawn-root /home/u/a --spawn-root /home/u/b --claude /opt/claude" l;
+          usage = lib.hasInfix "--claude-usage --keep-awake --terminal --spawn-root /home/u/a --spawn-root /home/u/b --claude /opt/claude" l;
           profiles =
             builtins.match ".*--profiles /nix/store/[a-z0-9]+-saarthi-profiles\\.toml --services /nix/store/[a-z0-9]+-saarthi-services\\.toml --hold-secs 60.*" l != null;
           onPath = rich.config.home.packages == [ rich.pkg ];

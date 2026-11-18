@@ -9,8 +9,8 @@ use std::time::Duration;
 use saarthi_proto::control::v1::{ServiceResponsePart, Update};
 use saarthi_proto::event::v1::{Event, LaunchProfile};
 use saarthi_proto::node::v1::{
-    Command, CommandResult, HubMessage, OpenService, ServiceDown, ServiceRequestHead, command,
-    hub_message,
+    Command, CommandResult, HubMessage, OpenService, OpenTerminal, ServiceDown, ServiceRequestHead, TerminalIn,
+    TerminalOut, command, hub_message,
 };
 use tokio::sync::{Mutex, broadcast, mpsc, oneshot};
 use tonic::Status;
@@ -29,6 +29,19 @@ pub type ToClient = mpsc::Sender<Result<ServiceResponsePart, Status>>;
 /// The request body's pieces, for the node's stream.
 pub type BodyDown = mpsc::Receiver<Result<ServiceDown, Status>>;
 
+/// What a client's terminal is answered through: the shell's output, then why it ended.
+pub type ToTerminalClient = mpsc::Sender<Result<TerminalOut, Status>>;
+
+/// What the client types and resizes, for the node's stream.
+pub type TerminalInput = mpsc::Receiver<Result<TerminalIn, Status>>;
+
+/// A terminal waiting for the node to dial its stream back (ADR-0054).
+pub struct PendingTerminal {
+    pub node_id: String,
+    pub input: TerminalInput,
+    pub to_client: ToTerminalClient,
+}
+
 /// A service request waiting for the node to dial its stream back.
 pub struct PendingService {
     pub node_id: String,
@@ -40,6 +53,7 @@ pub struct Live {
     nodes: Mutex<HashMap<String, NodeLink>>,
     waiting: Mutex<HashMap<String, oneshot::Sender<CommandResult>>>,
     services: Mutex<HashMap<String, PendingService>>,
+    terminals: Mutex<HashMap<String, PendingTerminal>>,
     links: AtomicU64,
     updates: broadcast::Sender<Update>,
     /// Newly stored events with their node id, for session streams.
@@ -55,6 +69,8 @@ struct NodeLink {
     profiles: Vec<LaunchProfile>,
     /// The local services it offers through the hub (ADR-0052).
     services: Vec<String>,
+    /// Whether it offers a shell (ADR-0054).
+    terminal: bool,
 }
 
 impl Live {
@@ -63,6 +79,7 @@ impl Live {
             nodes: Mutex::new(HashMap::new()),
             waiting: Mutex::new(HashMap::new()),
             services: Mutex::new(HashMap::new()),
+            terminals: Mutex::new(HashMap::new()),
             links: AtomicU64::new(0),
             updates: broadcast::channel(1024).0,
             events: broadcast::channel(4096).0,
@@ -78,6 +95,7 @@ impl Live {
         spawn_roots: Vec<String>,
         profiles: Vec<LaunchProfile>,
         services: Vec<String>,
+        terminal: bool,
     ) -> u64 {
         let link = self.links.fetch_add(1, Ordering::Relaxed);
         self.nodes.lock().await.insert(
@@ -88,6 +106,7 @@ impl Live {
                 spawn_roots,
                 profiles,
                 services,
+                terminal,
             },
         );
         link
@@ -170,6 +189,62 @@ impl Live {
             }
         });
         Ok(())
+    }
+
+    /// Whether a linked node offers a shell.
+    pub async fn terminal(&self, node_id: &str) -> bool {
+        self.nodes.lock().await.get(node_id).is_some_and(|n| n.terminal)
+    }
+
+    /// Asks a node to open a shell for a client (ADR-0054), as `open_service` does for a
+    /// request: it waits under a fresh id until the node dials its stream back.
+    pub async fn open_terminal(
+        self: &Arc<Self>,
+        node_id: &str,
+        cols: u32,
+        rows: u32,
+        input: TerminalInput,
+        to_client: ToTerminalClient,
+    ) -> Result<(), Status> {
+        let tx = match self.nodes.lock().await.get(node_id) {
+            Some(n) if n.terminal => n.tx.clone(),
+            Some(_) => return Err(Status::failed_precondition("the node offers no terminal: it runs without --terminal")),
+            None => return Err(Status::unavailable("the node is not connected")),
+        };
+        let id = uuid::Uuid::new_v4().simple().to_string();
+        self.terminals.lock().await.insert(
+            id.clone(),
+            PendingTerminal { node_id: node_id.to_string(), input, to_client },
+        );
+        let open = OpenTerminal { id: id.clone(), cols, rows };
+        if tx
+            .send(Ok(HubMessage { body: Some(hub_message::Body::OpenTerminal(open)) }))
+            .await
+            .is_err()
+        {
+            self.terminals.lock().await.remove(&id);
+            return Err(Status::unavailable("the node went away"));
+        }
+        let live = self.clone();
+        tokio::spawn(async move {
+            tokio::time::sleep(SERVICE_DIAL_TIMEOUT).await;
+            if let Some(p) = live.terminals.lock().await.remove(&id) {
+                let _ = p
+                    .to_client
+                    .send(Err(Status::deadline_exceeded("the node did not open the terminal in time")))
+                    .await;
+            }
+        });
+        Ok(())
+    }
+
+    /// The terminal a node's `TerminalStream` names, if it is waiting and is that node's.
+    pub async fn take_terminal(&self, id: &str, node_id: &str) -> Option<PendingTerminal> {
+        let mut terminals = self.terminals.lock().await;
+        if terminals.get(id).is_some_and(|p| p.node_id == node_id) {
+            return terminals.remove(id);
+        }
+        None
     }
 
     /// The request a node's `ServiceStream` names, if it is waiting and is that node's.

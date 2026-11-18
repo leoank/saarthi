@@ -83,6 +83,8 @@ pub struct NodeInfo {
     /// The local services a client may reach through the hub (ADR-0052), `yajna` for
     /// the machine's notebooks; empty when the node has none or is offline.
     pub services: Vec<String>,
+    /// Whether it offers a shell (ADR-0054).
+    pub terminal: bool,
 }
 
 /// A notebook a node's `yajna serve` answers for (yajna's ADR-0036).
@@ -354,6 +356,53 @@ pub trait SessionListener: Send + Sync {
     /// The model and effort the session replies with, whenever they change.
     fn on_model(&self, model: ModelInUse);
     fn on_error(&self, message: String);
+}
+
+/// Receives a terminal's output (ADR-0054): the shell's bytes as they come, then once why
+/// it ended.
+#[uniffi::export(with_foreign)]
+pub trait TerminalListener: Send + Sync {
+    fn on_output(&self, bytes: Vec<u8>);
+    fn on_ended(&self, reason: String);
+}
+
+/// An open terminal on a node: what is typed goes in, in order; closing it, or dropping it,
+/// ends the shell.
+#[derive(uniffi::Object)]
+pub struct TerminalHandle {
+    up: std::sync::Mutex<Option<tokio::sync::mpsc::UnboundedSender<TerminalUp>>>,
+}
+
+#[uniffi::export]
+impl TerminalHandle {
+    /// Bytes for the shell: typed text, or a key's sequence.
+    pub fn input(&self, bytes: Vec<u8>) {
+        self.send(saarthi_proto::node::v1::TerminalIn { input: bytes, ..Default::default() });
+    }
+
+    /// The window's new size in cells.
+    pub fn resize(&self, cols: u32, rows: u32) {
+        if cols > 0 && rows > 0 {
+            self.send(saarthi_proto::node::v1::TerminalIn { cols, rows, ..Default::default() });
+        }
+    }
+
+    /// Ends the shell. (Not `close`: UniFFI gives every object a `close` that frees it.)
+    pub fn hang_up(&self) {
+        if let Ok(mut up) = self.up.lock() {
+            up.take();
+        }
+    }
+}
+
+impl TerminalHandle {
+    fn send(&self, m: saarthi_proto::node::v1::TerminalIn) {
+        if let Ok(up) = self.up.lock()
+            && let Some(up) = up.as_ref()
+        {
+            let _ = up.send(TerminalUp { node_id: String::new(), r#in: Some(m) });
+        }
+    }
 }
 
 /// A running watch or session stream; dropping it or calling `cancel` stops it.
@@ -863,6 +912,43 @@ impl Hub {
         }))
     }
 
+    /// A shell on a node (ADR-0054), `cols` by `rows`: its output goes to the listener until
+    /// it ends; the handle takes what is typed.
+    pub async fn terminal(
+        &self,
+        node_id: String,
+        cols: u32,
+        rows: u32,
+        listener: Arc<dyn TerminalListener>,
+    ) -> Result<Arc<TerminalHandle>, CoreError> {
+        let (up, up_rx) = tokio::sync::mpsc::unbounded_channel();
+        let size = saarthi_proto::node::v1::TerminalIn { cols, rows, ..Default::default() };
+        let _ = up.send(TerminalUp { node_id, r#in: Some(size) });
+        let mut stream = self
+            .client
+            .clone()
+            .terminal(self.req(tokio_stream::wrappers::UnboundedReceiverStream::new(up_rx)))
+            .await?
+            .into_inner();
+        tokio::spawn(async move {
+            loop {
+                match stream.message().await {
+                    Ok(Some(m)) => {
+                        if !m.output.is_empty() {
+                            listener.on_output(m.output);
+                        }
+                        if !m.ended.is_empty() {
+                            return listener.on_ended(m.ended);
+                        }
+                    }
+                    Ok(None) => return listener.on_ended("the terminal closed".into()),
+                    Err(s) => return listener.on_ended(s.message().to_string()),
+                }
+            }
+        });
+        Ok(Arc::new(TerminalHandle { up: std::sync::Mutex::new(Some(up)) }))
+    }
+
     /// The notebooks a node's `yajna` service answers for, from yajna's
     /// `/api/notebooks`; the node starts the service if it is not running.
     pub async fn notebooks(&self, node_id: String) -> Result<Vec<NotebookInfo>, CoreError> {
@@ -1150,6 +1236,7 @@ fn node(n: Node) -> NodeInfo {
             .collect(),
         default_claude_token: n.default_claude_token,
         services: n.services,
+        terminal: n.terminal,
     }
 }
 

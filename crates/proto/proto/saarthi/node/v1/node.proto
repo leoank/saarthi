@@ -18,6 +18,9 @@ service NodeService {
   // node after `OpenService`: its first message names the request; down come the request's
   // body pieces, if it has a body; up go the answer's head and its body as it arrives.
   rpc ServiceStream(stream ServiceUp) returns (stream ServiceDown);
+  // A client's terminal (ADR-0054), dialled back by the node after `OpenTerminal`: its first
+  // message names it; down comes what the client types and resizes, up the shell's output.
+  rpc TerminalStream(stream TerminalOut) returns (stream TerminalIn);
   // A session's transcript as the hub stored it, for a node that resumes a session whose
   // transcript it no longer has: the node's own session's transcript lines, in the order
   // they were read, in parts.
@@ -92,6 +95,8 @@ message Register {
   repeated saarthi.event.v1.LaunchProfile profiles = 6;
   // The local HTTP services a client may reach through the hub (ADR-0052), by name.
   repeated string services = 7;
+  // Whether it offers a shell to clients (`--terminal`, ADR-0054).
+  bool terminal = 8;
 }
 
 message HubMessage {
@@ -100,7 +105,30 @@ message HubMessage {
     Ack ack = 2;
     Command command = 3;
     OpenService open_service = 4;
+    OpenTerminal open_terminal = 5;
   }
+}
+
+// A client's terminal on the node (ADR-0054): the node starts the owner's login shell under
+// a PTY of this size and dials `TerminalStream` back with `id`.
+message OpenTerminal {
+  string id = 1;
+  uint32 cols = 2;
+  uint32 rows = 3;
+}
+
+// Down a terminal: keystrokes for the shell, and a new window size when it changes.
+message TerminalIn {
+  bytes input = 1;
+  uint32 cols = 2;              // with rows, a resize; 0 when the size is unchanged
+  uint32 rows = 3;
+}
+
+// Up a terminal: the shell's output, and once, why it ended.
+message TerminalOut {
+  string id = 1;                // the first message only
+  bytes output = 2;
+  string ended = 3;             // the shell exited or could not start, and why
 }
 
 // A client's request to one of the node's services (ADR-0052, ADR-0057): the node starts on

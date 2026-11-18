@@ -65,6 +65,7 @@ fun HomeScreen(
     snackbar: SnackbarHostState,
     openSession: (SessionInfo) -> Unit,
     openHealth: (NodeInfo) -> Unit,
+    openTerminal: (NodeInfo) -> Unit,
     spawned: (nodeId: String, sessionId: String) -> Unit,
     openHistory: () -> Unit,
     openTokens: () -> Unit,
@@ -201,6 +202,7 @@ fun HomeScreen(
                             sessions.size,
                             sessions.count { s -> model.pendingFor(s).isNotEmpty() },
                             select = { model.changeScope(if (model.scope == "node:${node.id}") "" else "node:${node.id}") },
+                            onTerminal = if (node.terminal && node.connected) ({ openTerminal(node) }) else null,
                         ) { openHealth(node) }
                     }
                 }
@@ -216,7 +218,14 @@ fun HomeScreen(
 }
 
 @Composable
-private fun NodeHeader(node: NodeInfo, count: Int, waiting: Int, select: () -> Unit, onHealth: () -> Unit) {
+private fun NodeHeader(
+    node: NodeInfo,
+    count: Int,
+    waiting: Int,
+    select: () -> Unit,
+    onTerminal: (() -> Unit)? = null,
+    onHealth: () -> Unit,
+) {
     Row(
         verticalAlignment = Alignment.CenterVertically,
         modifier = Modifier.fillMaxWidth().clickable(onClick = select),
@@ -240,6 +249,8 @@ private fun NodeHeader(node: NodeInfo, count: Int, waiting: Int, select: () -> U
                 color = MaterialTheme.colorScheme.onSurfaceVariant,
             )
         }
+        // A shell on it, when the node offers one (ADR-0054).
+        onTerminal?.let { IconButton(onClick = it) { Icon(Icons.Filled.Terminal, "Terminal on ${node.name}") } }
         IconButton(onClick = onHealth) { Icon(Icons.Outlined.ShowChart, "Health of ${node.name}") }
     }
 }

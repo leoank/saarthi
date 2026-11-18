@@ -211,6 +211,11 @@ struct Serve {
     /// their sockets.
     #[arg(long)]
     services: Option<PathBuf>,
+    /// Let clients open a shell on this machine (ADR-0054): the owner's login shell in their
+    /// home directory, as long as the client keeps it open. Off by default: a shell is this
+    /// account's everything, to anyone with a client token.
+    #[arg(long)]
+    terminal: bool,
     /// The unix socket sandboxed sessions post their hooks to, since loopback TCP is closed
     /// inside. Defaults to `~/.local/state/saarthi/hook.sock`; bound only when a profile is
     /// sandboxed. Keep it short: a socket path has at most 104 bytes on macOS.
@@ -416,6 +421,7 @@ async fn serve(args: Serve) -> Result<()> {
                 token,
                 name,
                 buffer_cap: args.buffer_events,
+                terminal: args.terminal.then(String::new),
             };
             hold = Some(hooks::Hold {
                 pending: pending.clone(),

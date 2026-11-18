@@ -35,6 +35,7 @@ Useful flags (all of them are in the [command line reference](../reference/cli.m
 | `--claude <path>` | The `claude` that started sessions run. Default `claude`, found on your login shell's PATH. |
 | `--profiles <file>` | Launch profiles a started session may run under, such as a sandbox. A file that does not parse is left out, with an error in the log, and sessions run on the host. See [Sandboxed sessions](#sandboxed-sessions). |
 | `--services <file>` | Local HTTP services on unix sockets, such as yajna's notebook server, that your clients reach through the hub. A file that does not parse is left out, with an error in the log. See [Local services](#local-services). |
+| `--terminal` | Let your clients open a shell on this machine: your login shell, in your home directory, through the hub. Off by default; a shell is your whole account. See [The terminal](../using/terminal.md). |
 | `--hook-socket <path>` | Where sandboxed sessions send their hooks. Default `~/.local/state/saarthi/hook.sock`. |
 | `--ignore-cwd <glob>` | Do not track sessions whose working directory matches, for example throwaway test sessions. Repeatable. |
 | `--hold-secs` | How long a permission dialog of a plain `claude` session waits for the phone before falling through to the terminal. Default 120. |

@@ -100,6 +100,7 @@ async fn the_core_lists_watches_answers_and_streams() {
         token: "t-node".into(),
         name: "mac".into(),
         buffer_cap: 1000,
+        terminal: None,
     };
     let spawner = saarthi_node::spawner::Spawner::new(
         "claude".into(),

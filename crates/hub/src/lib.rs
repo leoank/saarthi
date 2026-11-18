@@ -11,6 +11,7 @@ pub mod node_service;
 pub mod notify;
 pub mod search;
 pub mod services;
+pub mod terminal;
 pub mod tokens;
 
 use std::collections::HashMap;

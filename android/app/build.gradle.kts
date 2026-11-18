@@ -32,6 +32,7 @@ val buildCore by tasks.registering(Exec::class) {
     workingDir = rootDir.parentFile
     commandLine("sh", "android/build-core.sh")
     inputs.dir(rootDir.parentFile.resolve("crates"))
+    inputs.dir(rootDir.resolve("vt"))
     outputs.dir(layout.projectDirectory.dir("src/main/jniLibs"))
     outputs.dir(layout.buildDirectory.dir("generated/uniffi"))
 }

@@ -56,6 +56,10 @@ service ControlService {
   // (ADR-0052): the head first, then the body in pieces of at most 1 MB; back come the
   // answer's head and its body as it arrives, for as long as the service keeps it open.
   rpc ServiceRequest(stream ServiceRequestPart) returns (stream ServiceResponsePart);
+  // A shell on a node (ADR-0054): the first message names the node and the window size,
+  // then keystrokes and resizes go up and the shell's output comes down, until either side
+  // closes; the stream ending ends the shell.
+  rpc Terminal(stream TerminalUp) returns (stream saarthi.node.v1.TerminalOut);
 }
 
 message Node {
@@ -80,6 +84,8 @@ message Node {
   // The local HTTP services a client may reach through the hub (ADR-0052), as the node last
   // registered them; empty when it is not connected.
   repeated string services = 11;
+  // Whether it offers a shell (ADR-0054), as the node last registered.
+  bool terminal = 12;
 }
 
 message ListNodesRequest {}
@@ -308,6 +314,11 @@ message CommandResponse {
   string note = 3;
   string session_id = 4;        // Spawn only: the new session's id
   bool queued = 5;              // Prompt only: held in the session's queue
+}
+
+message TerminalUp {
+  string node_id = 1;                               // the first message only
+  saarthi.node.v1.TerminalIn in = 2;                // its size in the first; then keys, resizes
 }
 
 message ServiceRequestPart {

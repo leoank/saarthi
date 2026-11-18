@@ -635,7 +635,11 @@ body; an answer to a range request is handed to the web view at its offset (ADR-
 spawns yajna's interview command in a lab notebook (ADR-0060). A spawned session asks its questions
 through a tool the node serves it over MCP, held as pending questions like `AskUserQuestion`'s, and
 reports how full its context is after each turn (ADR-0061). A node started with `--terminal` opens a login shell under a PTY for a
-client's terminal stream (ADR-0054). Push to talk and spoken replies work in every
+client's terminal stream (ADR-0054); the hub joins the client's `Terminal` stream to the
+`TerminalStream` the node dials back. The app keeps the screen in libghostty-vt behind a
+JNI shim, statically linked, and draws its cells on a canvas each frame it changed
+([[EXP-20261114-raqjf0]]); the soft keyboard types into a view whose input connection
+keeps no text, so each key and commit goes to the shell as it comes. Push to talk and spoken replies work in every
 session (ADR-0055).
 
 ## Phases

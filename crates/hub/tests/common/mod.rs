@@ -217,6 +217,7 @@ async fn start_node_full(
         token: token.to_string(),
         name: "test-node".to_string(),
         buffer_cap: 10_000,
+        terminal: Some("/bin/sh".into()),
     };
     let wrappers =
         saarthi_node::wrapper::Wrappers::new(sessions.clone(), pending.clone(), outbox.clone());

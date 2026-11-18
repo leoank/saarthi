@@ -72,6 +72,8 @@ sealed interface Screen {
     data object History : Screen
     data object Tokens : Screen
     data class Health(val nodeId: String, val from: Screen) : Screen
+    /** A shell on a node (ADR-0054). */
+    data class Terminal(val nodeId: String, val from: Screen) : Screen
     data object Settings : Screen
     data object Notebooks : Screen
     data class Notebook(val nodeId: String, val namespace: String, val url: String) : Screen
@@ -167,6 +169,7 @@ fun App(
     BackHandler(enabled = screen != Screen.Home && !(screen == Screen.Settings && model.hubs.isEmpty())) {
         screen = when (val s = screen) {
             is Screen.Health -> s.from
+            is Screen.Terminal -> s.from
             is Screen.Notebook -> Screen.Notebooks
             is Screen.Session -> { model.close(); s.from }
             else -> Screen.Home
@@ -180,6 +183,7 @@ fun App(
                 screen = Screen.Session(it.nodeId, it.id)
             },
             openHealth = { screen = Screen.Health(it.id, Screen.Home) },
+            openTerminal = { screen = Screen.Terminal(it.id, Screen.Home) },
             spawned = { node, id -> spawned = node to id },
             openHistory = { screen = Screen.History },
             openTokens = { screen = Screen.Tokens },
@@ -211,6 +215,7 @@ fun App(
             openSession = { id -> spawnedFrom = s.from; spawned = s.nodeId to id },
         )
         is Screen.Health -> HealthScreen(model, snackbar, s.nodeId, back = { screen = s.from })
+        is Screen.Terminal -> TerminalScreen(model, s.nodeId, back = { screen = s.from })
         Screen.Tokens -> TokensScreen(model, snackbar, back = { screen = Screen.Home })
         Screen.Settings -> SettingsScreen(
             model, snackbar,

@@ -48,6 +48,7 @@ impl Hub {
         let connected = spawning.is_some();
         let (spawn_roots, profiles) = spawning.unwrap_or_default();
         let services = self.live.services(&id).await.unwrap_or_default();
+        let terminal = self.live.terminal(&id).await;
         Node {
             id,
             name,
@@ -60,6 +61,7 @@ impl Hub {
             tailnet,
             tailnet_peer,
             services,
+            terminal,
         }
     }
 
@@ -663,6 +665,18 @@ impl ControlService for Hub {
         }
         tracing::info!(%client, unregister = r.unregister, "push endpoint");
         Ok(Response::new(RegisterPushResponse {}))
+    }
+
+    type TerminalStream = crate::terminal::ToClientStream;
+
+    async fn terminal(
+        &self,
+        request: Request<tonic::Streaming<TerminalUp>>,
+    ) -> Result<Response<Self::TerminalStream>, Status> {
+        let client = self.client(&request)?;
+        crate::terminal::open(self, &client, request.into_inner())
+            .await
+            .map(Response::new)
     }
 
     type ServiceRequestStream = crate::services::ToClientStream;

@@ -122,6 +122,37 @@
             dontFixup = true;
           });
 
+          # libghostty-vt, Ghostty's terminal state library, for the app's terminal screen
+          # (ADR-0054): built with Zig for arm64 Android at the app's minSdk, from nixpkgs'
+          # Ghostty source and Zig dependency cache, unpatched ([[EXP-20261114-raqjf0]],
+          # RUN-20261114-s2jk7j). The app links its static archive into libvtjni.so.
+          libghostty-vt-android = pkgs.stdenv.mkDerivation {
+            pname = "libghostty-vt-android";
+            inherit (pkgs.ghostty) version src;
+            nativeBuildInputs = [ pkgs.zig_0_17 ];
+            dontConfigure = true;
+            dontSetZigDefaultFlags = true;
+            # An Android ELF: the host's strip and patchelf have no business with it.
+            dontFixup = true;
+            buildPhase = ''
+              runHook preBuild
+              export ZIG_GLOBAL_CACHE_DIR=$TMPDIR/zig-global
+              export ANDROID_NDK_HOME=${sdk}/ndk/${android.ndk-bundle.version}
+              zig build \
+                --system ${pkgs.ghostty.deps} \
+                --cache-dir $TMPDIR/zig-cache \
+                --prefix $out \
+                -Demit-lib-vt=true \
+                -Dapp-runtime=none \
+                -Demit-xcframework=false \
+                -Dversion-string=${pkgs.ghostty.version} \
+                -Doptimize=ReleaseFast \
+                -Dtarget=aarch64-linux-android.26
+              runHook postBuild
+            '';
+            installPhase = "true";
+          };
+
           # The workspace source, shared by the checks and the binary packages:
           # spikes/, docs/ and android/ stay out of it, but for the app's demo
           # recording, which the core's tests read.
@@ -156,7 +187,7 @@
 
           # The deployable binaries, the defaults of the hub and node modules.
           packages = rec {
-            inherit libtailscale libtailscale-android;
+            inherit libtailscale libtailscale-android libghostty-vt-android;
             saarthi-hub = mkBin "saarthi-hub" "saarthi-hub";
             saarthi = mkBin "saarthi" "saarthi";
             # The user guide for GitHub Pages: mdBook, with the command-line reference and
@@ -207,6 +238,9 @@
             # app's jniLibs. The host's archive is for the bindings generator's host build.
             LIBTAILSCALE_ANDROID_LIB_DIR = "${libtailscale-android}/lib";
             LIBTAILSCALE_LIB_DIR = "${libtailscale}/lib";
+            # The terminal renderer's library (ADR-0054); build-core.sh links it into
+            # libvtjni.so.
+            LIBGHOSTTY_VT_ANDROID = "${libghostty-vt-android}";
             ANDROID_HOME = sdk;
             ANDROID_SDK_ROOT = sdk;
             ANDROID_NDK_HOME = "${sdk}/ndk/${android.ndk-bundle.version}";

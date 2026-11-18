@@ -99,6 +99,7 @@ async fn the_core_reads_a_nodes_notebooks_and_streams_its_answers() {
         token: "t-node".into(),
         name: "mac".into(),
         buffer_cap: 1000,
+        terminal: None,
     };
     tokio::spawn(saarthi_node::link::run(cfg, rx, parts));
 

@@ -43,6 +43,8 @@ import uniffi.saarthi_core.PendingInfo
 import uniffi.saarthi_core.Role
 import uniffi.saarthi_core.SessionInfo
 import uniffi.saarthi_core.SessionListener
+import uniffi.saarthi_core.TerminalHandle
+import uniffi.saarthi_core.TerminalListener
 import uniffi.saarthi_core.Subscription
 import uniffi.saarthi_core.WatchListener
 
@@ -586,6 +588,22 @@ class HubModel(app: Application) : AndroidViewModel(app) {
         val follow = then?.takeIf { t -> t.isNotBlank() }
         if (follow == null) withHub { done(it.interrupt(s.nodeId, s.id, null), "Interrupted") }
         else send(s, follow, sent) { PromptSent(it.interrupt(s.nodeId, s.id, follow), false) }
+    }
+
+    /** Opens a shell on a node (ADR-0054); null, with the listener told why, when it cannot. */
+    suspend fun openTerminal(nodeId: String, cols: Int, rows: Int, listener: TerminalListener): TerminalHandle? {
+        val h = hub ?: run {
+            listener.onEnded("Not connected to the hub")
+            return null
+        }
+        return try {
+            h.terminal(nodeId, cols.toUInt(), rows.toUInt(), listener)
+        } catch (e: kotlinx.coroutines.CancellationException) {
+            throw e
+        } catch (e: Exception) {
+            listener.onEnded(describe(e))
+            null
+        }
     }
 
     /** Deletes an ended session from the hub for good (ADR-0065); [done] once it is gone. */

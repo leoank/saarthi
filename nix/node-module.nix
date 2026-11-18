@@ -48,6 +48,7 @@ let
   ]) cfg.ignoreCwd
   ++ lib.optional cfg.claudeUsage "--claude-usage"
   ++ lib.optional cfg.keepAwake "--keep-awake"
+  ++ lib.optional cfg.terminal "--terminal"
   ++ lib.concatMap (r: [
     "--spawn-root"
     r
@@ -169,6 +170,16 @@ in
         Darwin, a `systemd-inhibit` lock on Linux, which needs a polkit rule for the user;
         ADR-0045), so a turn finishes and the hub link holds when the screen turns off
         (ADR-0031).
+      '';
+    };
+
+    terminal = lib.mkOption {
+      type = lib.types.bool;
+      default = false;
+      description = ''
+        Offer a terminal to the owner's clients (ADR-0054): the app opens the user's login
+        shell on this machine, in their home directory, through the hub. A shell is the
+        whole account, so it is off unless asked for.
       '';
     };
 
