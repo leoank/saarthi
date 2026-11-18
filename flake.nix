@@ -174,7 +174,7 @@
           # check already builds and tests everything.
           mkBin = pname: bin: pkgs.rustPlatform.buildRustPackage {
             inherit pname;
-            version = "0.16.2";
+            version = "0.17.0";
             src = saarthiSrc;
             inherit cargoLock;
             nativeBuildInputs = [ pkgs.protobuf ];
@@ -284,7 +284,7 @@
           # The cargo workspace, built and tested; spikes/ and docs/ stay out of the source.
           checks.workspace = pkgs.rustPlatform.buildRustPackage {
             pname = "saarthi";
-            version = "0.16.2";
+            version = "0.17.0";
             src = lib.fileset.toSource {
               root = ./.;
               fileset = lib.fileset.unions [ ./Cargo.toml ./Cargo.lock ./crates ./android/app/src/main/assets/demo.json ];
