@@ -103,10 +103,17 @@ fun WorkspaceBar(current: Workspace, needsYou: Int, select: (Workspace) -> Unit)
 @Composable
 fun TerminalsScreen(model: HubModel, openShell: (Shell) -> Unit, newShell: (NodeInfo) -> Unit) {
     val nodes = model.nodes.sortedWith(compareByDescending<NodeInfo> { it.connected && it.terminal }.thenBy { it.name })
-    Scaffold(topBar = { TopAppBar(title = { Text("Terminals") }) }) { padding ->
+    Scaffold(
+        topBar = {
+            TopAppBar(title = {
+                val n = nodes.count { it.connected && it.terminal }
+                PromptLine(model.hubName, "~/term", "❯_ ${model.shells.size} open · $n ${if (n == 1) "machine offers" else "machines offer"} a shell")
+            })
+        },
+    ) { padding ->
         LazyColumn(Modifier.fillMaxSize().padding(padding), contentPadding = PaddingValues(horizontal = 16.dp, vertical = 8.dp)) {
             if (model.shells.isNotEmpty()) {
-                item(key = "open") { Text("Open", style = MaterialTheme.typography.titleSmall, color = Flame.Terminals, modifier = Modifier.padding(vertical = 8.dp)) }
+                item(key = "open") { SectionTitle("open", count = model.shells.size) }
                 items(model.shells, key = { "s${it.id}" }) { sh ->
                     Row(
                         verticalAlignment = Alignment.CenterVertically,
@@ -128,8 +135,8 @@ fun TerminalsScreen(model: HubModel, openShell: (Shell) -> Unit, newShell: (Node
                         IconButton(onClick = { model.closeShell(sh) }) { Icon(Icons.Filled.Close, "Close the shell on ${sh.nodeName}", tint = Flame.Dim) }
                     }
                 }
-                item(key = "machines") { Text("Machines", style = MaterialTheme.typography.titleSmall, color = Flame.Dim, modifier = Modifier.padding(top = 16.dp, bottom = 8.dp)) }
             }
+            item(key = "machines") { SectionTitle("machines") }
             if (nodes.isEmpty()) {
                 item { Text("No machines yet.", color = Flame.Dim, modifier = Modifier.padding(vertical = 16.dp)) }
             }

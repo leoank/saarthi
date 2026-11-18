@@ -32,7 +32,6 @@ import androidx.compose.material3.CardDefaults
 import androidx.compose.material3.CircularProgressIndicator
 import androidx.compose.material3.DropdownMenu
 import androidx.compose.material3.DropdownMenuItem
-import androidx.compose.material3.ExtendedFloatingActionButton
 import androidx.compose.material3.ExperimentalMaterial3Api
 import androidx.compose.material3.Icon
 import androidx.compose.material3.IconButton
@@ -50,6 +49,14 @@ import androidx.compose.runtime.remember
 import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
+import androidx.compose.foundation.background
+import androidx.compose.ui.unit.sp
+import androidx.compose.ui.text.font.FontWeight
+import androidx.compose.ui.text.withStyle
+import androidx.compose.ui.text.SpanStyle
+import androidx.compose.ui.graphics.Color
+import androidx.compose.ui.graphics.Brush
+import androidx.compose.foundation.lazy.itemsIndexed
 import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.unit.dp
 import kotlinx.coroutines.delay
@@ -84,22 +91,20 @@ fun HomeScreen(
         topBar = {
             TopAppBar(
                 title = {
-                    Column {
-                        Text("Sessions")
-                        Text(
-                            when (model.link) {
-                                Link.Connected -> model.hubName
-                                Link.Connecting -> "Connecting to ${model.hubName}…"
-                                Link.Reconnecting -> if (model.reconnecting) "Reconnecting to ${model.hubName}…" else model.hubName
-                                Link.Disconnected -> "Not connected to ${model.hubName}"
-                            },
-                            style = MaterialTheme.typography.bodySmall,
-                            color = if (model.link == Link.Connected || model.link == Link.Connecting || !model.reconnecting && model.link == Link.Reconnecting)
-                                MaterialTheme.colorScheme.onSurfaceVariant
-                            else MaterialTheme.colorScheme.error,
-                            modifier = Modifier.clickable(enabled = model.link == Link.Disconnected, onClick = openSettings),
-                        )
-                    }
+                    val up = model.nodes.count { it.connected }
+                    val ok = model.link == Link.Connected || model.link == Link.Connecting || !model.reconnecting && model.link == Link.Reconnecting
+                    PromptLine(
+                        model.hubName,
+                        "~/agents",
+                        when (model.link) {
+                            Link.Connected -> "● $up/${model.nodes.size} machines up · ${model.sessions.size} sessions"
+                            Link.Connecting -> "○ connecting…"
+                            Link.Reconnecting -> if (model.reconnecting) "○ reconnecting…" else "● hub · $up machines up"
+                            Link.Disconnected -> "✕ not connected · settings ›"
+                        },
+                        statusColor = if (ok) Flame.Dim else Flame.Bad,
+                        onStatus = if (model.link == Link.Disconnected) openSettings else null,
+                    )
                 },
                 actions = {
                     IconButton(onClick = openHistory) { Icon(Icons.Filled.History, "History") }
@@ -125,11 +130,7 @@ fun HomeScreen(
         snackbarHost = { SnackbarHost(snackbar) },
         floatingActionButton = {
             if (spawnable.isNotEmpty()) {
-                ExtendedFloatingActionButton(
-                    onClick = { newSession = true },
-                    icon = { Icon(Icons.Filled.Add, null) },
-                    text = { Text("New session") },
-                )
+                ActionButton("new session", onClick = { newSession = true })
             }
         },
     ) { padding ->
@@ -158,23 +159,23 @@ fun HomeScreen(
                     top = 8.dp,
                     bottom = if (spawnable.isNotEmpty()) 96.dp else 8.dp,
                 ),
-                verticalArrangement = Arrangement.spacedBy(8.dp),
+                verticalArrangement = Arrangement.spacedBy(0.dp),
                 modifier = Modifier.fillMaxSize(),
             ) {
                 item(key = "scope") { ScopeChips(model) }
                 if (waiting.isNotEmpty()) {
-                    item(key = "waiting") { SectionTitle("Needs you · ${waiting.size}", Modifier.padding(top = 0.dp)) }
+                    item(key = "waiting") { SectionTitle("Needs you", count = waiting.size, hot = true) }
                     items(waiting, key = { "p" + it.id }) { p ->
                         val s = model.sessions.firstOrNull { it.id == p.sessionId && it.nodeId == p.nodeId }
                         val where = listOfNotNull(model.node(p.nodeId)?.name, s?.title()).joinToString(" / ")
-                        PendingCard(model, p, where, Modifier.clickable(enabled = s != null) { s?.let(openSession) })
+                        PendingCard(model, p, where, Modifier.padding(bottom = 8.dp).clickable(enabled = s != null) { s?.let(openSession) })
                     }
                 }
                 for ((name, list) in listOf("Working" to working, "Ready" to ready)) {
                     if (list.isEmpty()) continue
-                    item(key = "t$name") { SectionTitle("$name · ${list.size}") }
-                    items(list, key = { "s" + it.nodeId + it.id }) { s ->
-                        SessionCard(s, model.pendingFor(s).size, if (oneNode) null else model.node(s.nodeId)?.name) { openSession(s) }
+                    item(key = "t$name") { SectionTitle(name, count = list.size) }
+                    itemsIndexed(list, key = { _, it -> "s" + it.nodeId + it.id }) { i, s ->
+                        SessionRow(s, model.pendingFor(s).size, if (oneNode) null else model.node(s.nodeId)?.name, first = i == 0) { openSession(s) }
                     }
                 }
                 if (live.isEmpty() && waiting.isEmpty() && model.nodes.isNotEmpty()) {
@@ -225,7 +226,7 @@ private fun NodeHeader(
         StatusDot(node.connected)
         Spacer(Modifier.width(10.dp))
         Column(Modifier.weight(1f)) {
-            Text(node.name, style = MaterialTheme.typography.titleMedium)
+            Text(node.name, fontFamily = Mono, style = MaterialTheme.typography.bodyLarge)
             Text(
                 listOfNotNull(
                     if (node.connected) "online" else "offline · last seen ${relative(node.lastSeenMs)}",
@@ -237,7 +238,7 @@ private fun NodeHeader(
                     },
                     if (waiting > 0) "$waiting waiting" else null,
                 ).joinToString(" · "),
-                style = MaterialTheme.typography.bodySmall,
+                style = MonoMeta,
                 color = MaterialTheme.colorScheme.onSurfaceVariant,
             )
         }
@@ -250,73 +251,86 @@ private fun NodeHeader(
 private fun ScopeChips(model: HubModel) {
     val repos = model.sessions.map { it.repo() }.filter { it.isNotBlank() }.distinct().sorted()
     if (model.nodes.size < 2 && repos.size < 2) return
-    LazyRow(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
+    LazyRow(horizontalArrangement = Arrangement.spacedBy(6.dp), modifier = Modifier.padding(bottom = 4.dp)) {
         item {
-            FilterChip(selected = model.scope.isEmpty(), onClick = { model.changeScope("") }, label = { Text("All") })
+            Tag("all", model.scope.isEmpty(), onClick = { model.changeScope("") })
         }
         items(model.nodes.sortedBy { it.name }, key = { "n" + it.id }) { n ->
-            FilterChip(
-                selected = model.scope == "node:${n.id}",
+            Tag(
+                n.name,
+                model.scope == "node:${n.id}",
                 onClick = { model.changeScope(if (model.scope == "node:${n.id}") "" else "node:${n.id}") },
-                label = { Text(n.name) },
-                leadingIcon = { StatusDot(n.connected, Modifier.size(8.dp)) },
+                mark = { StatusDot(n.connected) },
             )
         }
         items(repos, key = { "r$it" }) { r ->
-            FilterChip(
-                selected = model.scope == "repo:$r",
-                onClick = { model.changeScope(if (model.scope == "repo:$r") "" else "repo:$r") },
-                label = { Text(r) },
-            )
+            Tag(r, model.scope == "repo:$r", onClick = { model.changeScope(if (model.scope == "repo:$r") "" else "repo:$r") })
         }
     }
 }
 
+/** A session as a terminal row (ADR-0069): a gutter mark, the title as Claude or the owner
+ *  named it, its state as a word, `repo:branch · machine · age` in mono, and the last reply;
+ *  rows are set apart by dashed hairlines, and one that needs the owner gets an amber wash. */
 @Composable
-private fun SessionCard(s: SessionInfo, waiting: Int, machine: String?, onOpen: () -> Unit) {
-    Card(
-        Modifier.fillMaxWidth().clickable(onClick = onOpen),
-        colors = CardDefaults.cardColors(containerColor = MaterialTheme.colorScheme.surfaceContainer),
+private fun SessionRow(s: SessionInfo, waiting: Int, machine: String?, first: Boolean, onOpen: () -> Unit) {
+    val state = s.state(waiting)
+    Row(
+        Modifier
+            .fillMaxWidth()
+            .then(if (first) Modifier else Modifier.dashedTop())
+            .then(
+                if (state == SessionState.INPUT) Modifier.background(Brush.horizontalGradient(listOf(Flame.soft(Flame.Hot, 0.08f), Color.Transparent)))
+                else Modifier,
+            )
+            .clickable(onClick = onOpen)
+            .padding(start = 2.dp, end = 4.dp, top = 10.dp, bottom = 10.dp),
     ) {
-        Row(verticalAlignment = Alignment.CenterVertically, modifier = Modifier.padding(horizontal = 16.dp, vertical = 12.dp)) {
-            Column(Modifier.weight(1f)) {
-                Text(s.title(), style = MaterialTheme.typography.titleMedium, maxLines = 1, overflow = TextOverflow.Ellipsis)
-                Text(
-                    listOfNotNull(machine, s.place().ifBlank { null }).joinToString(" · "),
-                    style = MaterialTheme.typography.bodySmall,
-                    color = MaterialTheme.colorScheme.onSurfaceVariant,
-                    maxLines = 1,
-                    overflow = TextOverflow.StartEllipsis,
-                )
-                Row(verticalAlignment = Alignment.CenterVertically, modifier = Modifier.padding(top = 2.dp)) {
-                    StatePill(s.state(waiting))
-                    Spacer(Modifier.width(8.dp))
-                    Text(
-                        listOfNotNull("started ${relative(s.startedMs)}", s.profile.ifEmpty { null }).joinToString(" · "),
-                        style = MaterialTheme.typography.bodySmall,
-                        color = MaterialTheme.colorScheme.onSurfaceVariant,
-                        maxLines = 1,
-                        overflow = TextOverflow.Ellipsis,
-                    )
-                }
-                if (s.lastReply.isNotBlank()) {
-                    Text(
-                        s.lastReply,
-                        style = MaterialTheme.typography.bodySmall,
-                        color = MaterialTheme.colorScheme.onSurfaceVariant,
-                        maxLines = 2,
-                        overflow = TextOverflow.Ellipsis,
-                        modifier = Modifier.padding(top = 4.dp),
-                    )
-                }
+        Box(Modifier.width(16.dp).padding(top = 2.dp)) {
+            when (state) {
+                SessionState.INPUT -> Text("▌", fontFamily = Mono, fontSize = 13.sp, color = Flame.Hot)
+                SessionState.RUN -> Spinner()
+                else -> Text("·", fontFamily = Mono, fontSize = 13.sp, color = Flame.Dim)
             }
-            if (waiting > 0) Badge(Modifier.padding(end = 8.dp)) { Text("$waiting") }
-            if (s.wrapped || s.spawned) {
-                Icon(
-                    if (s.wrapped) Icons.Filled.Terminal else Icons.Filled.RocketLaunch,
-                    contentDescription = if (s.wrapped) "Under saarthi run" else "Spawned from a client",
-                    tint = MaterialTheme.colorScheme.onSurfaceVariant,
-                    modifier = Modifier.size(18.dp),
+        }
+        Column(Modifier.weight(1f)) {
+            Row(verticalAlignment = Alignment.CenterVertically) {
+                Text(
+                    s.title(),
+                    style = MaterialTheme.typography.titleSmall,
+                    fontWeight = FontWeight.SemiBold,
+                    maxLines = 1,
+                    overflow = TextOverflow.Ellipsis,
+                    modifier = Modifier.weight(1f),
+                )
+                if (s.wrapped || s.spawned) {
+                    Text(if (s.wrapped) "run " else "spawn ", fontFamily = Mono, fontSize = 10.sp, color = Flame.Dim)
+                }
+                StatePill(state)
+            }
+            Text(
+                androidx.compose.ui.text.buildAnnotatedString {
+                    if (s.gitBranch.isNotBlank()) {
+                        withStyle(SpanStyle(color = Flame.Soft)) { append(s.repo()) }
+                        append(":")
+                        withStyle(SpanStyle(color = Flame.Nitya)) { append(s.gitBranch) }
+                    } else append(s.parentPath())
+                    for (part in listOfNotNull(machine, relative(s.startedMs), s.profile.ifEmpty { null })) append(" · $part")
+                },
+                style = MonoMeta,
+                color = Flame.Dim,
+                maxLines = 1,
+                overflow = TextOverflow.Ellipsis,
+                modifier = Modifier.padding(top = 1.dp),
+            )
+            if (s.lastReply.isNotBlank()) {
+                Text(
+                    s.lastReply,
+                    style = MaterialTheme.typography.bodySmall,
+                    color = Flame.Soft,
+                    maxLines = 2,
+                    overflow = TextOverflow.Ellipsis,
+                    modifier = Modifier.padding(top = 4.dp),
                 )
             }
         }

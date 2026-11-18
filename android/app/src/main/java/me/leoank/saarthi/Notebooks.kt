@@ -23,7 +23,6 @@ import androidx.compose.foundation.verticalScroll
 import androidx.compose.material.icons.filled.Add
 import androidx.compose.material.icons.filled.Close
 import androidx.compose.material3.Button
-import androidx.compose.material3.ExtendedFloatingActionButton
 import androidx.compose.material3.OutlinedTextField
 import androidx.compose.material3.OutlinedTextFieldDefaults
 import androidx.compose.ui.window.Dialog
@@ -105,7 +104,10 @@ fun NotebooksScreen(
     Scaffold(
         topBar = {
             TopAppBar(
-                title = { Text("Notebooks") },
+                title = {
+                    val n = model.nodes.count { NOTEBOOK_SERVICE in it.services }
+                    PromptLine(model.hubName, "~/notes", if (n == 1) "▤ 1 machine with notebooks" else "▤ $n machines with notebooks")
+                },
                 actions = {
                     IconButton(onClick = { model.loadNotebooks() }) { Icon(Icons.Filled.Refresh, "Refresh") }
                 },
@@ -114,11 +116,7 @@ fun NotebooksScreen(
         snackbarHost = { SnackbarHost(snackbar) },
         floatingActionButton = {
             if (labs.isNotEmpty()) {
-                ExtendedFloatingActionButton(
-                    onClick = { newProject = true },
-                    icon = { Icon(Icons.Filled.Add, null) },
-                    text = { Text("New project") },
-                )
+                ActionButton("new project", onClick = { newProject = true })
             }
         },
     ) { padding ->
