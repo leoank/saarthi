@@ -83,6 +83,7 @@ spawns, with the owner's answers of 2026-11-07.
 | [ADR-0066](ADR-0066-a-resume-catches-up-or-forks-never-merges.md) | A resume catches up or forks, never merges | accepted |
 | [ADR-0067](ADR-0067-a-node-serves-a-session-s-changes-through-yajna-serve.md) | A node serves a session's changes through yajna-serve | accepted |
 | [ADR-0068](ADR-0068-workspaces-in-a-dark-blue-flame-app.md) | Workspaces in a dark, blue-flame app | accepted |
+| [ADR-0069](ADR-0069-a-terminal-look.md) | A terminal look | accepted |
 
 Each record:
 
