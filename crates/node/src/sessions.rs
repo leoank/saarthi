@@ -304,8 +304,9 @@ impl Sessions {
     /// Applies a registry scan: records update their sessions, and a session that was in the
     /// registry and has left it has ended.
     pub async fn apply_registry(&self, live: &[Record]) {
+        let one_each = one_per_session(live);
         let mut entries = self.entries.lock().await;
-        for record in live.iter().filter(|r| !self.ignored(&r.cwd)) {
+        for record in one_each.iter().filter(|r| !self.ignored(&r.cwd)) {
             let entry = entries
                 .entry(record.session_id.clone())
                 .or_insert_with(|| Entry::new(&record.session_id));
@@ -418,6 +419,29 @@ fn status(registry_status: &str) -> SessionStatus {
     }
 }
 
+/// One record per session. Two processes can have one session open (`claude --resume` of a
+/// session still running in another terminal), each with a record of its own; taken one
+/// after the other they flipped the session's pid, start and status on every scan, and every
+/// flip went to the clients. The newest process stands for the session, busy if either is.
+fn one_per_session(live: &[Record]) -> Vec<Record> {
+    let mut out: Vec<Record> = Vec::new();
+    for r in live {
+        match out.iter_mut().find(|o| o.session_id == r.session_id) {
+            None => out.push(r.clone()),
+            Some(o) => {
+                let busy = o.status == "busy" || r.status == "busy";
+                if (r.started_at, r.pid) > (o.started_at, o.pid) {
+                    *o = r.clone();
+                }
+                if busy {
+                    o.status = "busy".into();
+                }
+            }
+        }
+    }
+    out
+}
+
 /// `<claude dir>/projects/<cwd with every non-alphanumeric replaced by "-">/<session>.jsonl`
 /// (EXP-0002), for sessions found in the registry before any hook named the path.
 pub fn transcript_path(claude_dir: &Path, cwd: &str, session_id: &str) -> PathBuf {
@@ -447,6 +471,36 @@ mod tests {
             }
         }
         out
+    }
+
+    #[tokio::test]
+    async fn a_session_open_in_two_processes_does_not_flip_between_them() {
+        let dir = tempfile::tempdir().unwrap();
+        let (outbox, mut rx) = Outbox::new(100);
+        let sessions = Sessions::new(dir.path().to_path_buf(), outbox, Duration::from_secs(60), Vec::new());
+        let record = |pid: u32, started_at: i64, status: &str| Record {
+            pid,
+            session_id: "s".into(),
+            cwd: "/w".into(),
+            started_at,
+            status: status.into(),
+            messaging_socket_path: String::new(),
+            claude_dir: None,
+            profile: String::new(),
+        };
+        let (old, new) = (record(93263, 100, "idle"), record(50259, 200, "idle"));
+        sessions.apply_registry(&[old.clone(), new.clone()]).await;
+        let first = drain_sessions(&mut rx);
+        assert_eq!((first.last().unwrap().pid, first.last().unwrap().started_ms), (50259, 200), "the newest stands for it");
+        // The same two in the other order, scan after scan: nothing changes, nothing is sent.
+        for _ in 0..3 {
+            sessions.apply_registry(&[new.clone(), old.clone()]).await;
+            sessions.apply_registry(&[old.clone(), new.clone()]).await;
+        }
+        assert!(drain_sessions(&mut rx).is_empty());
+        // Either one working makes the session busy.
+        sessions.apply_registry(&[record(93263, 100, "busy"), new.clone()]).await;
+        assert_eq!(drain_sessions(&mut rx).last().unwrap().status(), SessionStatus::Busy);
     }
 
     #[test]
