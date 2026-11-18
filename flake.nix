@@ -123,10 +123,11 @@
           });
 
           # The workspace source, shared by the checks and the binary packages:
-          # spikes/, docs/ and android/ stay out of it.
+          # spikes/, docs/ and android/ stay out of it, but for the app's demo
+          # recording, which the core's tests read.
           saarthiSrc = lib.fileset.toSource {
             root = ./.;
-            fileset = lib.fileset.unions [ ./Cargo.toml ./Cargo.lock ./crates ];
+            fileset = lib.fileset.unions [ ./Cargo.toml ./Cargo.lock ./crates ./android/app/src/main/assets/demo.json ];
           };
           # One release binary of the workspace. `bin` is the binary name; the
           # node's `saarthi` and the hub's `saarthi-hub` are each built on their own so
@@ -246,7 +247,7 @@
             version = "0.15.0";
             src = lib.fileset.toSource {
               root = ./.;
-              fileset = lib.fileset.unions [ ./Cargo.toml ./Cargo.lock ./crates ];
+              fileset = lib.fileset.unions [ ./Cargo.toml ./Cargo.lock ./crates ./android/app/src/main/assets/demo.json ];
             };
             cargoLock.lockFile = ./Cargo.lock;
             nativeBuildInputs = [ pkgs.protobuf ];
