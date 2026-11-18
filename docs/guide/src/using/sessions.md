@@ -102,12 +102,18 @@ that session's draft: leave the session, open others, and it is there when you c
 also after the app restarts. What happens when you send depends on the session:
 
 - **Under `saarthi run`**: the prompt is typed into the session's terminal, exactly as if
-  you had typed it. If Claude is working, Claude Code queues it until the turn ends
-  (*Send queues after this turn*).
+  you had typed it.
 - **Started from the app**: the prompt goes to the process's input as your next turn.
 - **Started with plain `claude`**: the prompt goes through Claude Code's own messaging
   socket and arrives as a message from another session; Claude sees it that way. The
   prompt bar says so before you send.
+
+While Claude is working, send becomes *Queue* (a clock) and the stop button turns red.
+A queued prompt waits on the node, not in Claude Code, and shows as a bubble above the
+prompt bar until the turn ends; then the node sends the oldest, one per turn. Each bubble
+has *Send now*, which hands it to Claude straight away (Claude takes it at its next step,
+without stopping the turn), and a cross that drops it. The queue is the same on every
+device, and survives the app closing; a restart of the node loses it (ADR-0062).
 
 A session in bypass-permissions mode holds socket messages for approval at its
 terminal. The app tells you when that has happened rather than pretending the prompt

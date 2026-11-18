@@ -20,6 +20,7 @@ service ControlService {
   rpc Resolve(ResolveRequest) returns (CommandResponse);
   rpc Prompt(PromptRequest) returns (CommandResponse);
   rpc Interrupt(InterruptRequest) returns (CommandResponse);
+  rpc Unqueue(UnqueueRequest) returns (CommandResponse);
   // Ends any session's process (ADR-0034).
   rpc Kill(KillRequest) returns (CommandResponse);
   // Starts a headless session on a node; the response carries its id.
@@ -139,6 +140,14 @@ message PromptRequest {
   string node_id = 1;
   string session_id = 2;
   string text = 3;
+  bool queue = 4;               // hold it while the session works (node Prompt.queue)
+}
+
+message UnqueueRequest {
+  string node_id = 1;
+  string session_id = 2;
+  string queued_id = 3;
+  bool send = 4;                // deliver it now; else discard it
 }
 
 message InterruptRequest {
@@ -243,6 +252,7 @@ message CommandResponse {
   string error = 2;
   string note = 3;
   string session_id = 4;        // Spawn only: the new session's id
+  bool queued = 5;              // Prompt only: held in the session's queue
 }
 
 message ServiceRequestPart {

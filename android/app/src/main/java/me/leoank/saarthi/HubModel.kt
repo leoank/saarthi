@@ -30,6 +30,8 @@ import uniffi.saarthi_core.HistoryItem
 import uniffi.saarthi_core.Hub
 import uniffi.saarthi_core.Item
 import uniffi.saarthi_core.ModelTotals
+import uniffi.saarthi_core.PromptSent
+import uniffi.saarthi_core.QueuedPrompt
 import uniffi.saarthi_core.NodeInfo
 import uniffi.saarthi_core.NotebookInfo
 import uniffi.saarthi_core.PendingInfo
@@ -243,6 +245,10 @@ class HubModel(app: Application) : AndroidViewModel(app) {
     /** How full each spawned session's context was after its last turn, while the app runs. */
     private val contexts = mutableStateMapOf<String, ContextUsage>()
     fun contextOf(s: SessionInfo): ContextUsage? = contexts[key(s)]
+
+    /** The prompts the node holds for each session until it is next idle, as it last said. */
+    private val queues = mutableStateMapOf<String, List<QueuedPrompt>>()
+    fun queueOf(s: SessionInfo): List<QueuedPrompt> = queues[key(s)].orEmpty()
     private var lastSeq = 0uL
 
     val health = mutableStateListOf<HealthPoint>()
@@ -460,26 +466,33 @@ class HubModel(app: Application) : AndroidViewModel(app) {
         withHub { noted(it.answer(p.nodeId, p.id, answers)) }
 
     /** [sent]: the hub took it, so the bar may let it go. */
-    fun prompt(s: SessionInfo, text: String, sent: () -> Unit) = send(s, text, sent) { it.prompt(s.nodeId, s.id, text) }
+    /** While Claude works the node holds the prompt until the turn ends, in the session's
+     *  queue (phase PHS-20261117-f22kxe item 7); an older node delivers it at once. */
+    fun prompt(s: SessionInfo, text: String, sent: () -> Unit) =
+        send(s, text, sent) { it.prompt(s.nodeId, s.id, text, s.busy) }
     fun interrupt(s: SessionInfo, then: String?, sent: () -> Unit = {}) {
         val follow = then?.takeIf { t -> t.isNotBlank() }
         if (follow == null) withHub { done(it.interrupt(s.nodeId, s.id, null), "Interrupted") }
-        else send(s, follow, sent) { it.interrupt(s.nodeId, s.id, follow) }
+        else send(s, follow, sent) { PromptSent(it.interrupt(s.nodeId, s.id, follow), false) }
     }
+
+    /** A queued prompt handed to Claude now, which takes it at its next step, or dropped. */
+    fun unqueue(s: SessionInfo, q: QueuedPrompt, send: Boolean) =
+        withHub { noted(it.unqueue(s.nodeId, s.id, q.id, send)) }
 
     /** A prompt stays in the bar until the hub takes it, waiting out a reconnect for up to
      *  [SEND_WAIT_MS]; then it shows with one tick, and the transcript's echo turns it into
      *  the real turn with two. It is sent once: a failure or no answer leaves it in the bar
      *  with the reason, for the person to send again, since a call that got no answer may
      *  still have arrived. */
-    private fun send(s: SessionInfo, text: String, sent: () -> Unit, call: suspend (Hub) -> String) {
+    private fun send(s: SessionInfo, text: String, sent: () -> Unit, call: suspend (Hub) -> PromptSent) {
         val key = "${s.nodeId}/${s.id}"
         if (key in outgoing) return
         outgoing[key] = text
         notSent.remove(key)
         viewModelScope.launch {
             var called = false
-            val outcome: Result<String>? = withTimeoutOrNull(SEND_WAIT_MS) {
+            val outcome: Result<PromptSent>? = withTimeoutOrNull(SEND_WAIT_MS) {
                 snapshotFlow { link }.first { it == Link.Connected || it == Link.Disconnected }
                 val h = hub ?: return@withTimeoutOrNull Result.failure(IllegalStateException("not connected to the hub"))
                 called = true
@@ -498,7 +511,9 @@ class HubModel(app: Application) : AndroidViewModel(app) {
                 outcome == null -> notSent[key] = "Not sent · no connection to the hub for 45 s"
                 error != null -> notSent[key] = "Not sent · ${if (error is Exception) describe(error) else error.toString()}"
                 else -> {
-                    sending.add(Sent(text, System.currentTimeMillis(), outcome.getOrNull()?.ifEmpty { null }))
+                    val r = outcome.getOrThrow()
+                    // A queued prompt shows in the queue above the bar, not as sent.
+                    if (!r.queued) sending.add(Sent(text, System.currentTimeMillis(), r.note.ifEmpty { null }))
                     if (draft(s.nodeId, s.id) == text) setDraft(s.nodeId, s.id, "")
                     sent()
                 }
@@ -637,6 +652,7 @@ class HubModel(app: Application) : AndroidViewModel(app) {
                 if (loading) backlog.addAll(items) else conversation.addAll(items)
             }
             override fun onContext(context: ContextUsage) = onMain { contexts[key(s)] = context }
+            override fun onQueue(queued: List<QueuedPrompt>) = onMain { queues[key(s)] = queued }
             override fun onUsage(totals: List<ModelTotals>) = onMain {
                 cache?.let { c -> c.usage.clear(); c.usage.addAll(totals) }
                 if (openSession?.id != s.id) return@onMain

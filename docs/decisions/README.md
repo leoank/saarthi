@@ -76,6 +76,7 @@ spawns, with the owner's answers of 2026-11-07.
 | [ADR-0059](ADR-0059-a-node-restores-a-transcript-from-the-hub-to-resume.md) | A node restores a transcript from the hub to resume a session | accepted |
 | [ADR-0060](ADR-0060-a-new-project-is-a-spawned-interview-in-messages.md) | A new project from the app is a spawned interview, asked in messages | accepted, amended by ADR-0061 |
 | [ADR-0061](ADR-0061-spawned-sessions-ask-through-a-question-tool-the-node-serves.md) | Spawned sessions ask through a question tool the node serves | accepted |
+| [ADR-0062](ADR-0062-the-node-holds-prompts-queued-while-a-session-works.md) | The node holds prompts queued while a session works | accepted |
 
 Each record:
 

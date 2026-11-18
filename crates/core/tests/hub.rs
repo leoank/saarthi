@@ -31,6 +31,7 @@ struct Conversation(Mutex<Vec<Item>>);
 impl SessionListener for Conversation {
     fn on_usage(&self, _totals: Vec<saarthi_core::ModelTotals>) {}
     fn on_context(&self, _context: saarthi_core::ContextUsage) {}
+    fn on_queue(&self, _queued: Vec<saarthi_core::QueuedPrompt>) {}
     fn on_items(&self, items: Vec<Item>, _last_seq: u64) {
         self.0.lock().unwrap().extend(items);
     }
@@ -114,6 +115,7 @@ async fn the_core_lists_watches_answers_and_streams() {
         spawner,
         keep_awake: Default::default(),
         services: Default::default(),
+        queue: saarthi_node::queue::Queue::new(sessions.clone()),
     };
     tokio::spawn(saarthi_node::link::run(cfg, rx, parts));
     let hooks_listener = tokio::net::TcpListener::bind("127.0.0.1:0").await.unwrap();

@@ -17,7 +17,7 @@ use serde_json::Value;
 use tokio::sync::watch;
 use tonic::transport::Channel;
 
-pub use conversation::{ContextUsage, Conversation, Item, ModelTotals, Role};
+pub use conversation::{ContextUsage, Conversation, Item, ModelTotals, QueuedPrompt, Role};
 pub use tailnet::TailnetLogin;
 
 uniffi::setup_scaffolding!();
@@ -308,6 +308,8 @@ pub trait SessionListener: Send + Sync {
     fn on_usage(&self, totals: Vec<ModelTotals>);
     /// How full a spawned session's context is, after each of its turns.
     fn on_context(&self, context: ContextUsage);
+    /// The prompts the node holds for the session, the whole list, whenever it changes.
+    fn on_queue(&self, queued: Vec<QueuedPrompt>);
     fn on_error(&self, message: String);
 }
 
@@ -494,24 +496,36 @@ impl Hub {
             .await
     }
 
+    /// Sends a prompt; with `queue`, the node holds it while the session works and it shows
+    /// in the session's queue instead (`on_queue`).
     pub async fn prompt(
         &self,
         node_id: String,
         session_id: String,
         text: String,
-    ) -> Result<String, CoreError> {
+        queue: bool,
+    ) -> Result<PromptSent, CoreError> {
         let req = PromptRequest {
             node_id,
             session_id,
             text,
+            queue,
         };
-        outcome(
-            self.client
-                .clone()
-                .prompt(self.req(req))
-                .await?
-                .into_inner(),
-        )
+        let r = self.client.clone().prompt(self.req(req)).await?.into_inner();
+        let queued = r.queued;
+        Ok(PromptSent { note: outcome(r)?, queued })
+    }
+
+    /// Takes a queued prompt off a session's queue: delivered now when `send`, else dropped.
+    pub async fn unqueue(
+        &self,
+        node_id: String,
+        session_id: String,
+        queued_id: String,
+        send: bool,
+    ) -> Result<String, CoreError> {
+        let req = UnqueueRequest { node_id, session_id, queued_id, send };
+        outcome(self.client.clone().unqueue(self.req(req)).await?.into_inner())
     }
 
     pub async fn interrupt(
@@ -850,6 +864,9 @@ impl Hub {
                             if let Some(context) = conversation.take_context() {
                                 listener.on_context(context);
                             }
+                            if let Some(queued) = conversation.take_queue() {
+                                listener.on_queue(queued);
+                            }
                         }
                         Ok(None) => return listener.on_error("the hub closed the stream".into()),
                         Err(s) => return listener.on_error(s.message().to_string()),
@@ -914,6 +931,13 @@ fn notebooks(node_id: &str, body: &[u8]) -> Result<Vec<NotebookInfo>, CoreError>
         })
         .filter(|n| !n.namespace.is_empty() && n.url.starts_with('/'))
         .collect())
+}
+
+/// What became of a prompt: the node's note, and whether it was queued rather than sent.
+#[derive(Debug, Clone, PartialEq, uniffi::Record)]
+pub struct PromptSent {
+    pub note: String,
+    pub queued: bool,
 }
 
 fn outcome(r: CommandResponse) -> Result<String, CoreError> {

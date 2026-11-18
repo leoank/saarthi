@@ -8,7 +8,7 @@ use saarthi_proto::control::v1::control_service_server::ControlService;
 use saarthi_proto::control::v1::*;
 use saarthi_proto::event::v1::{Event, resolution};
 use saarthi_proto::node::v1::{
-    self as node, CommandResult, Interrupt, Kill, Prompt, Resume, SetKeepAwake, Spawn, command,
+    self as node, CommandResult, Interrupt, Kill, Prompt, Resume, SetKeepAwake, Spawn, Unqueue, command,
 };
 use tokio::sync::broadcast::error::RecvError;
 use tokio_stream::Stream;
@@ -99,6 +99,7 @@ fn response(r: CommandResult) -> Response<CommandResponse> {
         error: r.error,
         note: r.note,
         session_id: String::new(),
+        queued: r.queued,
     })
 }
 
@@ -305,7 +306,7 @@ impl ControlService for Hub {
     ) -> Result<Response<CommandResponse>, Status> {
         self.client(&request)?;
         let r = request.into_inner();
-        let action = command::Action::Prompt(Prompt { text: r.text });
+        let action = command::Action::Prompt(Prompt { text: r.text, queue: r.queue });
         Ok(response(
             self.live.command(&r.node_id, &r.session_id, action).await?,
         ))
@@ -320,6 +321,18 @@ impl ControlService for Hub {
         let action = command::Action::Interrupt(Interrupt {
             then_prompt: r.then_prompt,
         });
+        Ok(response(
+            self.live.command(&r.node_id, &r.session_id, action).await?,
+        ))
+    }
+
+    async fn unqueue(
+        &self,
+        request: Request<UnqueueRequest>,
+    ) -> Result<Response<CommandResponse>, Status> {
+        self.client(&request)?;
+        let r = request.into_inner();
+        let action = command::Action::Unqueue(Unqueue { queued_id: r.queued_id, send: r.send });
         Ok(response(
             self.live.command(&r.node_id, &r.session_id, action).await?,
         ))

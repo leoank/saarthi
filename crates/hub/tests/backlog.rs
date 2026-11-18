@@ -43,6 +43,7 @@ async fn a_large_backlog_is_resent_on_one_link() {
         spawner: saarthi_node::spawner::Spawner::new("claude".into(), "/bin/sh".into(), &[], None, Default::default(), sessions.clone()),
         keep_awake: Default::default(),
         services: Default::default(),
+        queue: saarthi_node::queue::Queue::new(sessions.clone()),
     };
     let cfg = link::Config {
         hub: format!("http://{addr}"),

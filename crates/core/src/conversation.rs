@@ -137,6 +137,16 @@ pub struct Conversation {
     changed: bool,
     /// How full the context was when the node last asked, not yet taken (ADR-0061).
     context: Option<ContextUsage>,
+    /// The session's queued prompts when the node last reported them, not yet taken.
+    queue: Option<Vec<QueuedPrompt>>,
+}
+
+/// A prompt the node holds until its session is next idle (phase PHS-20261117-f22kxe item 7).
+#[derive(Debug, Clone, PartialEq, uniffi::Record)]
+pub struct QueuedPrompt {
+    pub id: String,
+    pub text: String,
+    pub time_ms: i64,
 }
 
 /// How full a spawned session's context is, as Claude Code reports it after a turn: the
@@ -157,6 +167,7 @@ impl Conversation {
             totals: map,
             changed: false,
             context: None,
+            queue: None,
         }
     }
 
@@ -167,6 +178,20 @@ impl Conversation {
             if let (Some(used), Some(max)) = (v["total_tokens"].as_u64(), v["max_tokens"].as_u64()) {
                 self.context = Some(ContextUsage { used_tokens: used, max_tokens: max });
             }
+            return Vec::new();
+        }
+        if e.source() == EventSource::Daemon && e.kind == "queue" {
+            let v: Value = serde_json::from_str(&e.payload_json).unwrap_or_default();
+            let items = v["items"].as_array().into_iter().flatten();
+            self.queue = Some(
+                items
+                    .map(|q| QueuedPrompt {
+                        id: q["id"].as_str().unwrap_or_default().to_string(),
+                        text: q["text"].as_str().unwrap_or_default().to_string(),
+                        time_ms: q["time_ms"].as_i64().unwrap_or_default(),
+                    })
+                    .collect(),
+            );
             return Vec::new();
         }
         if e.source() == EventSource::Daemon && e.kind == "usage" {
@@ -209,6 +234,11 @@ impl Conversation {
     /// How full the context is, when the node reported it since the last call.
     pub fn take_context(&mut self) -> Option<ContextUsage> {
         self.context.take()
+    }
+
+    /// The session's queued prompts, when the node reported them since the last call.
+    pub fn take_queue(&mut self) -> Option<Vec<QueuedPrompt>> {
+        self.queue.take()
     }
 
     /// The session's totals by model when they changed since the last call.
@@ -874,6 +904,20 @@ mod tests {
             ..event(EventSource::Transcript, "system", serde_json::json!({"subtype": "turn_duration", "durationMs": 900}))
         });
         assert_eq!(turn[0].text, "900 ms · 500 in · 50 out · $0.001");
+    }
+
+    #[test]
+    fn the_nodes_queue_report_is_the_whole_queue() {
+        let mut c = Conversation::default();
+        let report = |items: serde_json::Value| Event {
+            payload_json: serde_json::json!({ "items": items }).to_string(),
+            ..event(EventSource::Daemon, "queue", serde_json::json!({}))
+        };
+        assert!(c.push(&report(serde_json::json!([{"id": "q1", "text": "then this", "time_ms": 5}]))).is_empty());
+        assert_eq!(c.take_queue(), Some(vec![QueuedPrompt { id: "q1".into(), text: "then this".into(), time_ms: 5 }]));
+        assert_eq!(c.take_queue(), None);
+        c.push(&report(serde_json::json!([])));
+        assert_eq!(c.take_queue(), Some(vec![]));
     }
 
     #[test]

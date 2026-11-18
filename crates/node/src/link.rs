@@ -49,6 +49,8 @@ pub struct Parts {
     pub keep_awake: Arc<AtomicBool>,
     /// The local services clients reach through the hub (ADR-0052).
     pub services: Arc<crate::services::Services>,
+    /// Prompts held while their sessions work (phase PHS-20261117-f22kxe item 7).
+    pub queue: Arc<crate::queue::Queue>,
 }
 
 /// Runs until the outbox closes, which happens only when the node shuts down.
@@ -273,6 +275,7 @@ async fn stream(
                                 note: String::new(),
                                 probe_json,
                                 gone: false,
+                                queued: false,
                             })
                             .await;
                     });
@@ -296,34 +299,30 @@ async fn stream(
 /// Carries out one command from the hub. Ok carries a note for the person, if any.
 async fn act(cmd: &Command, parts: &Parts) -> CommandResult {
     let mut gone = false;
+    let mut queued = false;
     let Parts {
         sessions,
         pending,
         wrappers,
         spawner,
         keep_awake,
+        queue,
         ..
     } = parts;
     let id = &cmd.session_id;
     let outcome = match &cmd.action {
         Some(command::Action::Resolve(r)) => pending.resolve(r).await.map(|()| String::new()),
-        Some(command::Action::Prompt(p)) if sessions.is_spawned(id).await => {
-            spawner.prompt(id, &p.text).await.map(|()| String::new())
+        Some(command::Action::Prompt(p)) if p.queue && sessions.busy(id).await => {
+            queue.push(id, &p.text).await;
+            queued = true;
+            Ok(String::new())
         }
-        Some(command::Action::Prompt(p)) => {
-            if sessions.is_wrapped(&cmd.session_id).await {
-                // Typed at the terminal, so Claude sees the person's own prompt (ADR-0027).
-                let typed = ToWrapper::Prompt {
-                    text: p.text.clone(),
-                };
-                wrappers
-                    .command(&cmd.session_id, typed)
-                    .await
-                    .map(|()| String::new())
-            } else {
-                prompt(sessions, &cmd.session_id, &p.text).await
-            }
-        }
+        Some(command::Action::Prompt(p)) => deliver(sessions, spawner, wrappers, id, &p.text).await,
+        Some(command::Action::Unqueue(u)) => match queue.take(id, &u.queued_id).await {
+            Some(text) if u.send => deliver(sessions, spawner, wrappers, id, &text).await,
+            Some(_) => Ok(String::new()),
+            None => Ok("it was no longer queued".into()),
+        },
         Some(command::Action::Interrupt(i)) if sessions.is_spawned(id).await => spawner
             .interrupt(id, i.then_prompt.as_deref())
             .await
@@ -389,6 +388,7 @@ async fn act(cmd: &Command, parts: &Parts) -> CommandResult {
         note,
         probe_json: String::new(),
         gone,
+        queued,
     }
 }
 
@@ -405,6 +405,34 @@ async fn terminate(sessions: &Sessions, id: &str) -> Result<String, String> {
         return Err(format!("SIGTERM to {pid}: {}", std::io::Error::last_os_error()));
     }
     Ok(format!("sent SIGTERM to pid {pid}; the session ends when Claude Code exits"))
+}
+
+/// Starts delivering prompts queued while their sessions work, as each is next idle.
+pub fn run_queue(parts: &Parts) -> tokio::task::JoinHandle<()> {
+    let (sessions, spawner, wrappers) = (parts.sessions.clone(), parts.spawner.clone(), parts.wrappers.clone());
+    tokio::spawn(crate::queue::run(parts.queue.clone(), move |id: String, text: String| {
+        let (sessions, spawner, wrappers) = (sessions.clone(), spawner.clone(), wrappers.clone());
+        async move { deliver(&sessions, &spawner, &wrappers, &id, &text).await }
+    }))
+}
+
+/// Hands a prompt to a session now, the way its kind takes one; Ok carries a note.
+pub async fn deliver(
+    sessions: &Sessions,
+    spawner: &Spawner,
+    wrappers: &Wrappers,
+    id: &str,
+    text: &str,
+) -> Result<String, String> {
+    if sessions.is_spawned(id).await {
+        spawner.prompt(id, text).await.map(|()| String::new())
+    } else if sessions.is_wrapped(id).await {
+        // Typed at the terminal, so Claude sees the person's own prompt (ADR-0027).
+        let typed = ToWrapper::Prompt { text: text.to_string() };
+        wrappers.command(id, typed).await.map(|()| String::new())
+    } else {
+        prompt(sessions, id, text).await
+    }
 }
 
 async fn prompt(sessions: &Sessions, session_id: &str, text: &str) -> Result<String, String> {

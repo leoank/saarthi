@@ -165,6 +165,7 @@ async fn a_client_allows_and_answers_what_the_node_holds() {
         node_id: open[0].node_id.clone(),
         session_id: "s1".into(),
         text: "hi".into(),
+        queue: false,
     };
     let r = c.prompt(req(prompt)).await.unwrap().into_inner();
     assert!(!r.ok && !r.error.is_empty());
@@ -274,6 +275,7 @@ async fn a_prompt_reaches_the_sessions_messaging_socket() {
         node_id: nodes[0].id.clone(),
         session_id: "s1".into(),
         text: "now run the linter".into(),
+        queue: false,
     };
     let r = c.prompt(req(prompt)).await.unwrap().into_inner();
     assert!(r.ok, "{}", r.error);

@@ -433,7 +433,9 @@ async fn serve(args: Serve) -> Result<()> {
                 spawner,
                 keep_awake: keep_awake.clone(),
                 services: services.clone(),
+                queue: saarthi_node::queue::Queue::new(sessions.clone()),
             };
+            link::run_queue(&parts);
             tokio::spawn(link::run(cfg, rx, parts))
         }
         _ => tokio::spawn(sink::stdout(rx)),

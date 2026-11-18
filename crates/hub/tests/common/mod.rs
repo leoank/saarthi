@@ -228,7 +228,9 @@ async fn start_node_full(
         spawner,
         keep_awake: Default::default(),
         services,
+        queue: saarthi_node::queue::Queue::new(sessions.clone()),
     };
+    link::run_queue(&parts);
     let task = tokio::spawn(link::run(cfg, rx, parts));
     let listener = TcpListener::bind("127.0.0.1:0").await.unwrap();
     let hooks = listener.local_addr().unwrap();

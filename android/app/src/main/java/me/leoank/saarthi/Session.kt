@@ -42,6 +42,7 @@ import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.automirrored.filled.ArrowBack
 import androidx.compose.material.icons.filled.Build
 import androidx.compose.material.icons.filled.Close
+import androidx.compose.material.icons.filled.Schedule
 import androidx.compose.material.icons.filled.Done
 import androidx.compose.material.icons.filled.DoneAll
 import androidx.compose.material.icons.filled.Edit
@@ -105,6 +106,7 @@ import androidx.compose.ui.window.Dialog
 import androidx.compose.ui.window.DialogProperties
 import kotlinx.coroutines.delay
 import kotlinx.coroutines.launch
+import uniffi.saarthi_core.QueuedPrompt
 import uniffi.saarthi_core.Item
 import uniffi.saarthi_core.Role
 import uniffi.saarthi_core.SessionInfo
@@ -223,6 +225,10 @@ fun SessionScreen(
                         val maxBody = (LocalConfiguration.current.screenHeightDp * 0.35f).dp
                         for (p in waiting) {
                             PendingCard(model, p, null, Modifier.padding(horizontal = 12.dp, vertical = 4.dp), maxBody = maxBody)
+                        }
+                        // Prompts the node holds until this turn ends, oldest first.
+                        for (q in model.queueOf(s)) {
+                            QueuedBubble(q, sendNow = { model.unqueue(s, q, true) }, discard = { model.unqueue(s, q, false) })
                         }
                         PromptBar(
                             text, { text = it },
@@ -1033,7 +1039,7 @@ private fun PromptBar(
                 answering -> "Claude asks · tap an option, or type its number or your own answer" to MaterialTheme.colorScheme.tertiary
                 waiting -> "Waiting for you · answer the card above" to MaterialTheme.colorScheme.tertiary
                 !stoppable -> "Started outside saarthi run · Claude sees this as a message from another session · no stop from here" to MaterialTheme.colorScheme.onSurfaceVariant
-                busy -> "Claude is working · Send queues after this turn · the stop button interrupts" to MaterialTheme.colorScheme.onSurfaceVariant
+                busy -> "Claude is working · Queue holds a prompt for when this turn ends · the stop button interrupts" to MaterialTheme.colorScheme.onSurfaceVariant
                 else -> null to MaterialTheme.colorScheme.onSurfaceVariant
             }
             state?.let {
@@ -1091,8 +1097,8 @@ private fun PromptBar(
                     RoundButton(
                         onClick = stop,
                         enabled = true,
-                        container = MaterialTheme.colorScheme.secondaryContainer,
-                        content = MaterialTheme.colorScheme.onSecondaryContainer,
+                        container = MaterialTheme.colorScheme.error,
+                        content = MaterialTheme.colorScheme.onError,
                     ) {
                         Icon(Icons.Filled.Stop, if (text.isBlank()) "Interrupt" else "Interrupt, then send", Modifier.size(18.dp))
                     }
@@ -1104,7 +1110,8 @@ private fun PromptBar(
                     container = MaterialTheme.colorScheme.primary,
                     content = MaterialTheme.colorScheme.onPrimary,
                 ) {
-                    Icon(Icons.Filled.ArrowUpward, "Send", Modifier.size(20.dp))
+                    if (busy && !resuming) Icon(Icons.Filled.Schedule, "Queue", Modifier.size(20.dp))
+                    else Icon(Icons.Filled.ArrowUpward, "Send", Modifier.size(20.dp))
                 }
             }
         }
@@ -1112,6 +1119,31 @@ private fun PromptBar(
 }
 
 private val ROUND_BUTTON = 36.dp
+
+/** A prompt the node holds until the turn ends: *Send now* hands it to Claude, which takes it
+ *  at its next step; the cross drops it. */
+@Composable
+private fun QueuedBubble(q: QueuedPrompt, sendNow: () -> Unit, discard: () -> Unit) {
+    Row(
+        verticalAlignment = Alignment.CenterVertically,
+        modifier = Modifier
+            .fillMaxWidth()
+            .padding(horizontal = 12.dp, vertical = 3.dp)
+            .background(MaterialTheme.colorScheme.surfaceContainer, RoundedCornerShape(14.dp))
+            .padding(start = 14.dp, end = 2.dp),
+    ) {
+        Icon(Icons.Filled.Schedule, "Queued", Modifier.size(14.dp), tint = MaterialTheme.colorScheme.onSurfaceVariant)
+        Text(
+            q.text,
+            style = MaterialTheme.typography.bodyMedium,
+            maxLines = 2,
+            overflow = TextOverflow.Ellipsis,
+            modifier = Modifier.weight(1f).padding(horizontal = 10.dp, vertical = 8.dp),
+        )
+        TextButton(onClick = sendNow) { Text("Send now") }
+        IconButton(onClick = discard) { Icon(Icons.Filled.Close, "Discard", Modifier.size(18.dp)) }
+    }
+}
 
 /** A round button whose icon sits at its exact centre; dimmed while disabled. */
 @Composable

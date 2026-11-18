@@ -158,12 +158,23 @@ message Command {
     SetKeepAwake set_keep_awake = 8;
     Resume resume = 9;
     Probe probe = 10;
+    Unqueue unqueue = 11;
   }
 }
 
 // Delivered over the session's messaging socket; works for bare and wrapped sessions.
 message Prompt {
   string text = 1;
+  // Held by the node while the session works, and delivered when it is next idle; the
+  // queue goes out as the session's daemon `queue` event (phase PHS-20261117-f22kxe item 7).
+  bool queue = 2;
+}
+
+// A queued prompt taken off the queue: delivered at once (Claude Code takes it at its next
+// step, as a prompt typed during a turn) when `send`, else discarded.
+message Unqueue {
+  string queued_id = 1;
+  bool send = 2;
 }
 
 // Wrapped and spawned sessions. A follow-up prompt, if any, is sent after the interrupt.
@@ -239,4 +250,6 @@ message CommandResult {
   // Kill only: the session is not running on this node (it went away with a reboot, a crash or
   // a wipe); the hub ends it.
   bool gone = 6;
+  // Prompt only: held in the session's queue rather than delivered.
+  bool queued = 7;
 }

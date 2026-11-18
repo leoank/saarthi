@@ -132,6 +132,21 @@ impl Sessions {
         entries.get(id).is_some_and(|e| e.session.ended_ms.is_none())
     }
 
+    /// Whether a live session is idle, waiting for a prompt; None for one that is not live.
+    pub async fn idle(&self, id: &str) -> Option<bool> {
+        let entries = self.entries.lock().await;
+        let e = entries.get(id).filter(|e| e.session.ended_ms.is_none())?;
+        Some(e.session.status() == SessionStatus::Idle)
+    }
+
+    /// Whether a live session is working on a turn.
+    pub async fn busy(&self, id: &str) -> bool {
+        let entries = self.entries.lock().await;
+        entries
+            .get(id)
+            .is_some_and(|e| e.session.ended_ms.is_none() && e.session.status() == SessionStatus::Busy)
+    }
+
     pub async fn is_spawned(&self, id: &str) -> bool {
         let entries = self.entries.lock().await;
         entries.get(id).is_some_and(|e| e.spawned)

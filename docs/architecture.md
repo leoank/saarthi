@@ -455,6 +455,11 @@ typed prompt and the model answers its user, not a peer; the client says which p
 session has before sending. [[EXP-20261025-25f4bf]] checks typed prompts while idle, while a
 turn runs (Claude Code queues typed input) and in bypass mode.
 
+A prompt sent while the session works can instead be queued on the node (ADR-0062): the
+node holds it, reports the session's queue as a daemon `queue` event, and delivers the
+oldest when the session is next idle, one per turn; `Unqueue` sends one at once or drops
+it.
+
 An interrupt has no socket message type, so it goes hub to daemon to PTY and needs the
 wrapper. The sequence that works ([[EXP-20261016-rq1403]]): Escape to interrupt, pause, Ctrl-U to
 empty the input box (Claude Code refills it with the interrupted prompt), then, if a new
