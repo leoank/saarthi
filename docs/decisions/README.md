@@ -77,6 +77,7 @@ spawns, with the owner's answers of 2026-11-07.
 | [ADR-0060](ADR-0060-a-new-project-is-a-spawned-interview-in-messages.md) | A new project from the app is a spawned interview, asked in messages | accepted, amended by ADR-0061 |
 | [ADR-0061](ADR-0061-spawned-sessions-ask-through-a-question-tool-the-node-serves.md) | Spawned sessions ask through a question tool the node serves | accepted |
 | [ADR-0062](ADR-0062-the-node-holds-prompts-queued-while-a-session-works.md) | The node holds prompts queued while a session works | accepted |
+| [ADR-0063](ADR-0063-search-across-sessions-with-a-contentless-fts5-index-at-the-hub.md) | Search across sessions with a contentless FTS5 index at the hub, and paged sessions | accepted |
 
 Each record:
 

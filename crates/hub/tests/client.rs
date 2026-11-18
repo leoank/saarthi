@@ -98,6 +98,7 @@ async fn a_client_streams_a_session_reads_health_and_is_notified() {
             node_id: node_id.clone(),
             session_id: "s1".into(),
             after_seq: 0,
+            ..Default::default()
         }))
         .await
         .unwrap()
@@ -121,6 +122,7 @@ async fn a_client_streams_a_session_reads_health_and_is_notified() {
             node_id: node_id.clone(),
             session_id: "s1".into(),
             after_seq: live.seq - 1,
+            ..Default::default()
         }))
         .await
         .unwrap()

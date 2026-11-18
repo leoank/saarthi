@@ -57,7 +57,8 @@ class MainActivity : ComponentActivity() {
  *  named by ids so the screen follows the live SessionInfo. */
 sealed interface Screen {
     data object Home : Screen
-    data class Session(val nodeId: String, val sessionId: String, val from: Screen = Home) : Screen
+    /** [find]: words to search the session for as it opens, from a search's hit. */
+    data class Session(val nodeId: String, val sessionId: String, val from: Screen = Home, val find: String? = null) : Screen
     data object History : Screen
     data object Tokens : Screen
     data class Health(val nodeId: String, val from: Screen) : Screen
@@ -172,13 +173,13 @@ fun App(requested: Pair<String, String>?, consumed: () -> Unit, model: HubModel 
         Screen.History -> HistoryScreen(
             model, snackbar,
             back = { screen = Screen.Home },
-            openSession = {
+            openSession = { it, find ->
                 model.open(it)
-                screen = Screen.Session(it.nodeId, it.id, Screen.History)
+                screen = Screen.Session(it.nodeId, it.id, Screen.History, find)
             },
         )
         is Screen.Session -> SessionScreen(
-            model, snackbar, s.nodeId, s.sessionId,
+            model, snackbar, s.nodeId, s.sessionId, s.find,
             back = { model.close(); screen = s.from },
             openHealth = { screen = Screen.Health(s.nodeId, s) },
         )

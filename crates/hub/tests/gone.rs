@@ -128,6 +128,20 @@ async fn a_session_carries_its_title_and_branch_from_its_transcript() {
     }
     assert_eq!((s.title.as_str(), s.title_source.as_str(), s.git_branch.as_str()), ("Parser rework", "name", "feat/parser"));
     assert_eq!(s.last_reply, "Fixed it: the parser now handles tabs.");
+    // Search finds it by a word of the reply, once the index has caught up (ADR-0063).
+    let mut c = ControlServiceClient::connect(format!("http://{addr}")).await.unwrap();
+    let mut hits = Vec::new();
+    for _ in 0..250 {
+        let q = saarthi_proto::control::v1::SearchRequest { query: "handles ta".into(), node_id: String::new(), limit: 0 };
+        hits = c.search(req(q)).await.unwrap().into_inner().hits;
+        if !hits.is_empty() {
+            break;
+        }
+        tokio::time::sleep(Duration::from_millis(50)).await;
+    }
+    assert_eq!(hits.len(), 1, "never found by search");
+    assert_eq!(hits[0].session.as_ref().unwrap().id, "titled");
+    assert!(hits[0].snippet.contains("handles tabs"), "{}", hits[0].snippet);
     // The node's next report of the session, without a title, keeps the hub's.
     let mut busy = record("titled");
     busy.status = "busy".into();

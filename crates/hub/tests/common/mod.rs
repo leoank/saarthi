@@ -118,6 +118,7 @@ impl HubProc {
                     claude_api: Arc::new(saarthi_hub::claude_api::ClaudeApi::new(&upstream)),
                     live: Live::new(),
                 };
+                tokio::spawn(saarthi_hub::search::run_index(hub.db.clone()));
                 if let Some((node, every)) = probes {
                     tokio::spawn(saarthi_hub::run_usage_probes(
                         hub.clone(),

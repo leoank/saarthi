@@ -171,6 +171,11 @@ One Rust binary, tonic for gRPC, sqlx on SQLite in WAL mode.
   end are all events. An event is stored once by its node and seq, and a transcript line
   once per session by its uuid, so a restarted node re-reading its transcripts adds
   nothing (ADR-0020).
+- **Search index.** Contentless FTS5 indexes over the words of prompts and replies and over
+  session titles and folders, filled and kept current by one background task; `Search`
+  ranks sessions by their best match, titles first and older sessions lower. A session's
+  stream can start at its last lines (`tail`) and page back (`before_seq`), so a client
+  opens a long session without its whole history (ADR-0063).
 - **Secrets.** Named Claude tokens and the tokens nodes and clients present, read from
   agenix files at start; the database holds only the Claude tokens' fingerprints, dates and
   the nodes' defaults. Tailnet auth keys later. See "Credentials".

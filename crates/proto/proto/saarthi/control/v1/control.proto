@@ -30,6 +30,8 @@ service ControlService {
   // Sessions newest first, live and ended, with what a list of them shows: the opening
   // user lines and the latest usage totals, as stored (ADR-0036).
   rpc History(HistoryRequest) returns (HistoryResponse);
+  // Sessions whose transcript or title match the words typed, best first (ADR-0063).
+  rpc Search(SearchRequest) returns (SearchResponse);
   // Turns a node's keep-awake hold on or off.
   rpc SetKeepAwake(SetKeepAwakeRequest) returns (CommandResponse);
 
@@ -120,6 +122,12 @@ message StreamSessionRequest {
   string node_id = 1;
   string session_id = 2;
   uint64 after_seq = 3;
+  // Paging (phase PHS-20261117-f22kxe item 9). With after_seq 0, start with the last `tail`
+  // transcript lines rather than the whole record (0 for all of it), the node's latest
+  // usage, context and queue reports from before them first. With before_seq too, send only
+  // that page, the `tail` lines before before_seq, and end the stream.
+  uint32 tail = 4;
+  uint64 before_seq = 5;
 }
 
 message GetHealthRequest {
@@ -187,6 +195,22 @@ message HistoryRequest {
   string node_id = 1;           // empty for every node
   int64 before_ms = 2;          // sessions started before this; 0 for now
   uint32 limit = 3;             // at most this many; 0 for 50
+}
+
+message SearchRequest {
+  string query = 1;             // every word must match; the last may be the start of one
+  string node_id = 2;           // empty for every node
+  uint32 limit = 3;             // at most this many; 0 for 30
+}
+
+message SearchResponse {
+  repeated SearchHit hits = 1;
+}
+
+message SearchHit {
+  saarthi.event.v1.Session session = 1;
+  string snippet = 2;           // the words around the best match; empty for a title match
+  uint64 seq = 3;               // that transcript line's seq; 0 for a title match
 }
 
 message HistoryResponse {

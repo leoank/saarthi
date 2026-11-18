@@ -123,6 +123,7 @@ async fn main() -> Result<()> {
             first,
         ));
     }
+    tokio::spawn(saarthi_hub::search::run_index(hub.db.clone()));
     let reminders = hub.clone();
     tokio::spawn(async move {
         let mut hourly = tokio::time::interval(std::time::Duration::from_secs(3600));

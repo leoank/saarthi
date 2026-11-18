@@ -198,6 +198,31 @@ impl ControlService for Hub {
         let db = self.db.clone();
         let stream = async_stream(move |tx| async move {
             let mut last = r.after_seq;
+            // A page: from its first line, after the reports it needs; a page asked for by
+            // its end stops there.
+            let paged = r.after_seq == 0 && (r.tail > 0 || r.before_seq > 0);
+            let end = if r.before_seq > 0 { r.before_seq } else { u64::MAX };
+            if paged {
+                let seeded = async {
+                    let start = db.page_start(&r.node_id, &r.session_id, r.before_seq, r.tail).await?;
+                    let seeds = if start > 0 { db.page_seeds(&r.node_id, &r.session_id, start).await? } else { Vec::new() };
+                    anyhow::Ok((start, seeds))
+                };
+                match seeded.await {
+                    Ok((start, seeds)) => {
+                        last = start.saturating_sub(1);
+                        for e in seeds {
+                            if tx.send(Ok(e)).await.is_err() {
+                                return;
+                            }
+                        }
+                    }
+                    Err(e) => {
+                        let _ = tx.send(Err(internal(e))).await;
+                        return;
+                    }
+                }
+            }
             loop {
                 let stored = match db
                     .session_events(&r.node_id, &r.session_id, last, 500)
@@ -211,6 +236,9 @@ impl ControlService for Hub {
                 };
                 let done = stored.len() < 500;
                 for e in stored {
+                    if e.seq >= end {
+                        return;
+                    }
                     last = e.seq;
                     if tx.send(Ok(e)).await.is_err() {
                         return;
@@ -219,6 +247,9 @@ impl ControlService for Hub {
                 if done {
                     break;
                 }
+            }
+            if end != u64::MAX {
+                return;
             }
             loop {
                 match live.recv().await {
@@ -444,6 +475,23 @@ impl ControlService for Hub {
                 .map_err(internal)?;
         }
         Ok(response(result))
+    }
+
+    async fn search(&self, request: Request<SearchRequest>) -> Result<Response<SearchResponse>, Status> {
+        self.client(&request)?;
+        let r = request.into_inner();
+        let limit = if r.limit > 0 { r.limit.min(100) } else { 30 } as usize;
+        let hits = self
+            .db
+            .search(&r.query, &r.node_id, limit, crate::node_service::now_ms())
+            .await
+            .map_err(internal)?;
+        Ok(Response::new(SearchResponse {
+            hits: hits
+                .into_iter()
+                .map(|h| SearchHit { session: Some(h.session), snippet: h.snippet, seq: h.seq })
+                .collect(),
+        }))
     }
 
     async fn history(

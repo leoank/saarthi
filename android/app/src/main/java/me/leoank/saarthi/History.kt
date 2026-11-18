@@ -1,6 +1,12 @@
 package me.leoank.saarthi
 
 import androidx.compose.foundation.clickable
+import uniffi.saarthi_core.SearchHit
+import kotlinx.coroutines.delay
+import androidx.compose.foundation.shape.RoundedCornerShape
+import androidx.compose.material3.OutlinedTextField
+import androidx.compose.material.icons.filled.Close
+import androidx.compose.material.icons.filled.Search
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.PaddingValues
@@ -54,9 +60,15 @@ private val dayFormat: DateTimeFormatter = DateTimeFormatter.ofPattern("EEEE d M
  *  filter chips (ADR-0036). A row opens the session; an ended one can be resumed there. */
 @OptIn(ExperimentalMaterial3Api::class)
 @Composable
-fun HistoryScreen(model: HubModel, snackbar: SnackbarHostState, back: () -> Unit, openSession: (SessionInfo) -> Unit) {
+fun HistoryScreen(model: HubModel, snackbar: SnackbarHostState, back: () -> Unit, openSession: (SessionInfo, String?) -> Unit) {
     var nodeId by rememberSaveable { mutableStateOf("") }
+    var query by rememberSaveable { mutableStateOf("") }
     LaunchedEffect(nodeId) { model.loadHistory(nodeId) }
+    // Searched a moment after typing stops, on the node the chips pick (ADR-0063).
+    LaunchedEffect(query, nodeId) {
+        delay(250)
+        model.search(query.trim(), nodeId)
+    }
     Scaffold(
         topBar = {
             TopAppBar(
@@ -67,6 +79,18 @@ fun HistoryScreen(model: HubModel, snackbar: SnackbarHostState, back: () -> Unit
         snackbarHost = { SnackbarHost(snackbar) },
     ) { padding ->
         Column(Modifier.fillMaxSize().padding(padding)) {
+            OutlinedTextField(
+                value = query,
+                onValueChange = { query = it },
+                placeholder = { Text("Search every session") },
+                leadingIcon = { Icon(Icons.Filled.Search, null) },
+                trailingIcon = {
+                    if (query.isNotEmpty()) IconButton(onClick = { query = "" }) { Icon(Icons.Filled.Close, "Clear") }
+                },
+                singleLine = true,
+                shape = RoundedCornerShape(28.dp),
+                modifier = Modifier.fillMaxWidth().padding(horizontal = 16.dp, vertical = 4.dp),
+            )
             if (model.nodes.size > 1) {
                 LazyRow(
                     horizontalArrangement = Arrangement.spacedBy(8.dp),
@@ -77,6 +101,22 @@ fun HistoryScreen(model: HubModel, snackbar: SnackbarHostState, back: () -> Unit
                         FilterChip(selected = nodeId == n.id, onClick = { nodeId = n.id }, label = { Text(n.name) })
                     }
                 }
+            }
+            if (query.isNotBlank()) {
+                if (model.searching) LinearProgressIndicator(Modifier.fillMaxWidth())
+                LazyColumn(
+                    contentPadding = PaddingValues(horizontal = 16.dp, vertical = 8.dp),
+                    verticalArrangement = Arrangement.spacedBy(8.dp),
+                    modifier = Modifier.fillMaxSize(),
+                ) {
+                    if (model.searchHits.isEmpty() && !model.searching && model.searched == query.trim()) {
+                        item { Empty("Nothing matches", "Search looks at what you typed and what Claude replied, and at session titles and folders.") }
+                    }
+                    items(model.searchHits, key = { "s" + it.session.nodeId + it.session.id }) { hit ->
+                        SearchRow(hit, model.node(hit.session.nodeId)?.name ?: "node") { openSession(hit.session, query.trim()) }
+                    }
+                }
+                return@Column
             }
             if (model.historyLoading && model.history.isEmpty()) LinearProgressIndicator(Modifier.fillMaxWidth())
             val days = model.history.groupBy { day(it.session.startedMs) }
@@ -94,7 +134,7 @@ fun HistoryScreen(model: HubModel, snackbar: SnackbarHostState, back: () -> Unit
                 for ((d, rows) in days) {
                     item(key = "d$d") { SectionTitle(dayLabel(d)) }
                     items(rows, key = { "h" + it.session.nodeId + it.session.id }) { h ->
-                        HistoryRow(h, model.node(h.session.nodeId)?.name ?: "node") { openSession(h.session) }
+                        HistoryRow(h, model.node(h.session.nodeId)?.name ?: "node") { openSession(h.session, null) }
                     }
                 }
                 if (model.historyMore && model.history.isNotEmpty()) {
@@ -155,6 +195,42 @@ private fun HistoryRow(h: HistoryItem, node: String, onOpen: () -> Unit) {
                 style = MaterialTheme.typography.bodySmall,
                 color = MaterialTheme.colorScheme.onSurfaceVariant,
             )
+        }
+    }
+}
+
+/** A session a search found: its title or folder, where it ran, and the words around the
+ *  match. */
+@Composable
+private fun SearchRow(hit: SearchHit, node: String, onOpen: () -> Unit) {
+    val s = hit.session
+    Card(
+        Modifier.fillMaxWidth().clickable(onClick = onOpen),
+        colors = CardDefaults.cardColors(containerColor = MaterialTheme.colorScheme.surfaceContainer),
+    ) {
+        Column(Modifier.padding(horizontal = 16.dp, vertical = 12.dp)) {
+            Text(
+                s.title.ifBlank { s.name() },
+                style = MaterialTheme.typography.titleSmall,
+                maxLines = 2,
+                overflow = TextOverflow.Ellipsis,
+            )
+            Text(
+                listOfNotNull(node, s.place().ifEmpty { null }, dayLabel(day(s.startedMs))).joinToString(" · "),
+                style = MaterialTheme.typography.bodySmall,
+                color = MaterialTheme.colorScheme.onSurfaceVariant,
+                maxLines = 1,
+                overflow = TextOverflow.Ellipsis,
+            )
+            if (hit.snippet.isNotEmpty()) {
+                Text(
+                    hit.snippet,
+                    style = MaterialTheme.typography.bodyMedium,
+                    maxLines = 3,
+                    overflow = TextOverflow.Ellipsis,
+                    modifier = Modifier.padding(top = 6.dp),
+                )
+            }
         }
     }
 }

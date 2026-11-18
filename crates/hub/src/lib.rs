@@ -8,6 +8,7 @@ pub mod db;
 pub mod live;
 pub mod node_service;
 pub mod notify;
+pub mod search;
 pub mod services;
 pub mod tokens;
 

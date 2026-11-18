@@ -200,7 +200,7 @@ async fn the_core_lists_watches_answers_and_streams() {
     let convo = Arc::new(Conversation::default());
     tokio::time::sleep(Duration::from_millis(200)).await;
     let _stream = core
-        .stream_session(node_id.clone(), "s1".into(), 0, Vec::new(), convo.clone())
+        .stream_session(node_id.clone(), "s1".into(), 0, 0, Vec::new(), convo.clone())
         .await
         .unwrap();
     outbox
@@ -223,6 +223,28 @@ async fn the_core_lists_watches_answers_and_streams() {
     })
     .await;
     assert_eq!(texts, ["first", "second"]);
+
+    // Paged: a stream with a tail of one line starts at the last, and older pages bring in
+    // what came before, until there is no more (phase PHS-20261117-f22kxe item 9).
+    let tail = Arc::new(Conversation::default());
+    let _tail = core
+        .stream_session(node_id.clone(), "s1".into(), 0, 1, Vec::new(), tail.clone())
+        .await
+        .unwrap();
+    let shown = until("the last line", || {
+        let items = tail.0.lock().unwrap();
+        items.iter().find(|i| i.role == Role::User).cloned()
+    })
+    .await;
+    tokio::time::sleep(Duration::from_millis(200)).await;
+    assert_eq!(tail.0.lock().unwrap().iter().filter(|i| i.role == Role::User).count(), 1);
+    assert_eq!(shown.text, "second");
+    let page = core.older(node_id.clone(), "s1".into(), shown.seq, 1).await.unwrap();
+    let older: Vec<&str> = page.items.iter().filter(|i| i.role == Role::User).map(|i| i.text.as_str()).collect();
+    assert_eq!((older, page.more), (vec!["first"], true));
+    assert_eq!(page.first_seq, page.items.iter().find(|i| i.role == Role::User).unwrap().seq);
+    let none = core.older(node_id.clone(), "s1".into(), page.first_seq, 1).await.unwrap();
+    assert!(none.items.iter().all(|i| i.role != Role::User) && !none.more, "{none:?}");
 
     // A command the node refuses comes back with its reason.
     let refused = core.interrupt(node_id, "s1".into(), None).await;

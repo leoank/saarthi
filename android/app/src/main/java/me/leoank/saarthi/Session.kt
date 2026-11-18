@@ -1,6 +1,17 @@
 package me.leoank.saarthi
 
 import kotlin.math.roundToInt
+import androidx.compose.ui.graphics.StrokeCap
+import androidx.compose.ui.geometry.Offset
+import androidx.compose.ui.draw.drawBehind
+import androidx.compose.foundation.gestures.awaitFirstDown
+import androidx.compose.foundation.gestures.awaitEachGesture
+import androidx.compose.ui.input.pointer.pointerInput
+import androidx.compose.foundation.layout.offset
+import androidx.compose.runtime.withFrameNanos
+import androidx.compose.runtime.rememberUpdatedState
+import androidx.compose.ui.focus.focusRequester
+import androidx.compose.ui.focus.FocusRequester
 import androidx.compose.foundation.layout.widthIn
 import androidx.compose.foundation.layout.BoxWithConstraints
 import androidx.compose.material.icons.filled.ContentCopy
@@ -123,6 +134,7 @@ fun SessionScreen(
     snackbar: SnackbarHostState,
     nodeId: String,
     sessionId: String,
+    findFirst: String?,
     back: () -> Unit,
     openHealth: () -> Unit,
 ) {
@@ -133,6 +145,12 @@ fun SessionScreen(
     var menu by remember { mutableStateOf(false) }
     var confirmKill by remember { mutableStateOf(false) }
     var showUsage by remember { mutableStateOf(false) }
+    // Search in this session: the words, null while not searching; which match is shown.
+    var find by remember(nodeId, sessionId) { mutableStateOf(findFirst) }
+    // Matches count from the oldest; null is the newest, where a search starts, so lines
+    // arriving in a live session do not move the one shown.
+    var findAt by remember(nodeId, sessionId) { mutableStateOf<Int?>(null) }
+    var findCount by remember(nodeId, sessionId) { mutableStateOf(0) }
     val clipboard = LocalClipboardManager.current
     // The session's unsent draft, kept by the model so it outlives this screen.
     var text by remember(nodeId, sessionId) { mutableStateOf(model.draft(nodeId, sessionId)) }
@@ -146,6 +164,27 @@ fun SessionScreen(
             topBar = {
                 TopAppBar(
                     title = {
+                        if (find != null) {
+                            val focus = remember { FocusRequester() }
+                            LaunchedEffect(Unit) { focus.requestFocus() }
+                            BasicTextField(
+                                value = find.orEmpty(),
+                                onValueChange = { find = it; findAt = null },
+                                singleLine = true,
+                                textStyle = MaterialTheme.typography.titleMedium.copy(color = MaterialTheme.colorScheme.onSurface),
+                                cursorBrush = SolidColor(MaterialTheme.colorScheme.primary),
+                                decorationBox = { field ->
+                                    Box(contentAlignment = Alignment.CenterStart) {
+                                        if (find.isNullOrEmpty()) {
+                                            Text("Search this session", style = MaterialTheme.typography.titleMedium, color = MaterialTheme.colorScheme.onSurfaceVariant)
+                                        }
+                                        field()
+                                    }
+                                },
+                                modifier = Modifier.fillMaxWidth().focusRequester(focus),
+                            )
+                            return@TopAppBar
+                        }
                         Column {
                             Text(s.title(), maxLines = 1, overflow = TextOverflow.Ellipsis)
                             Text(
@@ -177,6 +216,26 @@ fun SessionScreen(
                     },
                     navigationIcon = { IconButton(onClick = back) { Icon(Icons.AutoMirrored.Filled.ArrowBack, "Back") } },
                     actions = {
+                        if (find != null) {
+                            if (find.orEmpty().trim().length >= 2) {
+                                Text(
+                                    if (findCount == 0) "none" else "${(findAt ?: (findCount - 1)) + 1} of $findCount",
+                                    style = MaterialTheme.typography.labelLarge,
+                                    color = MaterialTheme.colorScheme.onSurfaceVariant,
+                                )
+                            }
+                            // Up to the older match, down to the newer, around at the ends.
+                            val at = findAt ?: (findCount - 1)
+                            IconButton(onClick = { findAt = (at - 1).mod(findCount.coerceAtLeast(1)) }, enabled = findCount > 1) {
+                                Icon(Icons.Filled.KeyboardArrowUp, "Older match")
+                            }
+                            IconButton(onClick = { findAt = (at + 1).mod(findCount.coerceAtLeast(1)) }, enabled = findCount > 1) {
+                                Icon(Icons.Filled.KeyboardArrowDown, "Newer match")
+                            }
+                            IconButton(onClick = { find = null }) { Icon(Icons.Filled.Close, "Stop searching") }
+                            return@TopAppBar
+                        }
+                        IconButton(onClick = { find = ""; findAt = null }) { Icon(Icons.Filled.Search, "Search this session") }
                         WrapButton()
                         Box {
                             IconButton(onClick = { menu = true }) { Icon(Icons.Filled.MoreVert, "More") }
@@ -284,7 +343,10 @@ fun SessionScreen(
                     }
                 }
                 // *Edit and resend* puts a prompt back in the bar, in place of what was there.
-                Conversation(model, s, Modifier.weight(1f), edit = { text = it })
+                Conversation(
+                    model, s, Modifier.weight(1f), edit = { text = it },
+                    find = find, findAt = findAt, found = { n -> findCount = n; if ((findAt ?: 0) >= n) findAt = null },
+                )
             }
         }
     }
@@ -406,7 +468,15 @@ private fun folded(turn: Turn): List<Entry> {
 }
 
 @Composable
-private fun Conversation(model: HubModel, s: SessionInfo, modifier: Modifier, edit: (String) -> Unit) {
+private fun Conversation(
+    model: HubModel,
+    s: SessionInfo,
+    modifier: Modifier,
+    edit: (String) -> Unit,
+    find: String? = null,
+    findAt: Int? = null,
+    found: (Int) -> Unit = {},
+) {
     val list = rememberLazyListState()
     val scope = rememberCoroutineScope()
     val items = model.conversation
@@ -414,6 +484,8 @@ private fun Conversation(model: HubModel, s: SessionInfo, modifier: Modifier, ed
     // folds under its header unless opened (phase PHS-20261117-f22kxe item 1); the running
     // one stays open.
     val turns = remember(items.size) { turns(entries(items)) }
+    // Keys that stay with their rows when older pages come in above, so the list keeps its
+    // place: an item by its seq and its place among that seq's items, a header by its turn.
     val rows: List<Line> = buildList {
         for (t in turns) {
             t.prompt?.let { add(Line.Shown(it)) }
@@ -451,8 +523,57 @@ private fun Conversation(model: HubModel, s: SessionInfo, modifier: Modifier, ed
         }
     }
     val count = rows.size + sent.size + (if (working) 1 else 0)
+    // While searching, the match shown holds the view, not the end.
+    val searching = (find?.trim()?.length ?: 0) >= 2
     LaunchedEffect(count) {
-        if (count > 0 && stick) list.scrollToItem(count - 1, Int.MAX_VALUE)
+        if (count > 0 && stick && !searching) list.scrollToItem(count - 1, Int.MAX_VALUE)
+    }
+    // Search in the session: every entry whose text has the words, oldest first; the one
+    // shown (the newest unless one was picked) opens its turn if folded, and is scrolled to
+    // and marked.
+    val query = find?.trim().orEmpty()
+    val matches: List<Pair<Turn, Entry>> = remember(turns, query) {
+        if (query.length < 2) emptyList()
+        else turns.flatMap { t -> (listOfNotNull(t.prompt) + t.body).filter { it.item.text.contains(query, ignoreCase = true) }.map { t to it } }
+    }
+    LaunchedEffect(matches.size) { found(matches.size) }
+    val at = findAt ?: matches.lastIndex
+    val current = matches.getOrNull(at)?.second?.item?.seq
+    val latestRows by rememberUpdatedState(rows)
+    // Again once every older page is in: pages coming in above move what was found.
+    LaunchedEffect(current, query, model.olderMore) {
+        val (turn, entry) = matches.getOrNull(at) ?: return@LaunchedEffect
+        if (turn.foldable && model.turnOpen(s, turn.start) != true) model.setTurnOpen(s, turn.start, true)
+        stick = false
+        // The opened turn's rows arrive with the next composition.
+        repeat(30) {
+            val i = latestRows.indexOfFirst { it is Line.Shown && it.entry === entry }
+            if (i >= 0) {
+                list.animateScrollToItem(i)
+                return@LaunchedEffect
+            }
+            withFrameNanos { }
+        }
+    }
+    val keys = remember(rows) {
+        val seen = HashMap<ULong, Int>()
+        rows.map { line ->
+            when (line) {
+                is Line.Shown -> { val k = seen.merge(line.entry.item.seq, 1, Int::plus)!!; "${line.entry.item.seq}-$k" }
+                is Line.Header -> "turn-${line.turn.start}"
+            }
+        }
+    }
+    // Older pages: near the top, the next comes in; a search brings them all, so it finds
+    // what was said before the session opened.
+    val nearTop by remember { derivedStateOf { list.firstVisibleItemIndex <= 2 } }
+    LaunchedEffect(nearTop, model.olderMore, model.olderLoading, query.length >= 2, rows.isEmpty()) {
+        if ((nearTop || query.length >= 2) && rows.isNotEmpty() && model.olderMore && !model.olderLoading) model.loadOlder()
+    }
+    // The person's prompts, for the minimap at the edge.
+    val prompts = rows.mapIndexedNotNull { i, line -> if (line is Line.Shown && line.entry.item.role == Role.USER) i to line.entry.item.text else null }
+    val inView by remember {
+        derivedStateOf { list.layoutInfo.visibleItemsInfo.let { v -> if (v.isEmpty()) IntRange.EMPTY else v.first().index..v.last().index } }
     }
     Box(modifier.fillMaxSize()) {
         if (rows.isEmpty() && waiting.isEmpty()) {
@@ -466,12 +587,7 @@ private fun Conversation(model: HubModel, s: SessionInfo, modifier: Modifier, ed
             verticalArrangement = Arrangement.spacedBy(4.dp),
             modifier = Modifier.fillMaxSize(),
         ) {
-            itemsIndexed(rows, key = { i, line ->
-                when (line) {
-                    is Line.Shown -> "${line.entry.item.seq}-$i"
-                    is Line.Header -> "turn-${line.turn.start}"
-                }
-            }) { i, line ->
+            itemsIndexed(rows, key = { i, _ -> keys[i] }) { i, line ->
                 when (line) {
                     is Line.Header -> TurnHeader(
                         line.turn,
@@ -484,7 +600,13 @@ private fun Conversation(model: HubModel, s: SessionInfo, modifier: Modifier, ed
                         if (before != null && e.item.timeMs - before.timeMs > 10 * 60_000 || i == 0) {
                             Caption(whenLabel(e.item.timeMs), Modifier.padding(top = if (i == 0) 0.dp else 8.dp))
                         }
-                        ConversationRow(e, s.cwd, delivered = e.item.role == Role.USER && e.item.text in model.delivered, edit = edit)
+                        val marked = current != null && e.item.seq == current
+                        Box(
+                            if (marked) Modifier.background(MaterialTheme.colorScheme.tertiaryContainer.copy(alpha = 0.45f), RoundedCornerShape(10.dp))
+                            else Modifier,
+                        ) {
+                            ConversationRow(e, s.cwd, delivered = e.item.role == Role.USER && e.item.text in model.delivered, edit = edit)
+                        }
                     }
                 }
             }
@@ -493,6 +615,21 @@ private fun Conversation(model: HubModel, s: SessionInfo, modifier: Modifier, ed
             }
             if (working) item(key = "working") { Working() }
         }
+        }
+        // An older page coming in: over the list, so its rows keep their places.
+        if (model.olderLoading) {
+            CircularProgressIndicator(
+                Modifier.align(Alignment.TopCenter).padding(top = 48.dp).size(22.dp),
+                strokeWidth = 2.dp,
+            )
+        }
+        if (prompts.size >= 3 && (list.canScrollBackward || list.canScrollForward)) {
+            PromptMap(
+                prompts,
+                inView,
+                jump = { row -> stick = false; scope.launch { list.animateScrollToItem(row) } },
+                modifier = Modifier.align(Alignment.CenterEnd).fillMaxHeight().padding(vertical = 56.dp),
+            )
         }
         AnimatedVisibility(
             visible = !promptShown,
@@ -523,6 +660,78 @@ private fun Conversation(model: HubModel, s: SessionInfo, modifier: Modifier, ed
                 scope.launch { list.animateScrollToItem(count - 1, Int.MAX_VALUE) }
             }) {
                 Icon(Icons.Filled.KeyboardArrowDown, "Jump to latest")
+            }
+        }
+    }
+}
+
+/** The person's prompts as ticks down the right edge, those on screen bright: a touch or a
+ *  drag shows the nearest prompt beside it, and letting go scrolls there. */
+@Composable
+private fun PromptMap(prompts: List<Pair<Int, String>>, inView: IntRange, jump: (Int) -> Unit, modifier: Modifier) {
+    var touched by remember { mutableStateOf<Int?>(null) }
+    val bright = MaterialTheme.colorScheme.primary
+    val dim = MaterialTheme.colorScheme.onSurfaceVariant.copy(alpha = 0.45f)
+    val latest by rememberUpdatedState(prompts)
+    BoxWithConstraints(modifier.width(260.dp)) {
+        val height = maxHeight
+        fun at(k: Int): Float = if (prompts.size == 1) 0.5f else k.toFloat() / (prompts.size - 1)
+        Box(
+            Modifier
+                .align(Alignment.TopEnd)
+                .width(24.dp)
+                .fillMaxHeight()
+                .pointerInput(Unit) {
+                    fun nearest(y: Float): Int {
+                        val n = latest.size
+                        return if (n <= 1) 0 else ((y / size.height) * (n - 1)).roundToInt().coerceIn(0, n - 1)
+                    }
+                    awaitEachGesture {
+                        val down = awaitFirstDown()
+                        down.consume()
+                        touched = nearest(down.position.y)
+                        while (true) {
+                            val change = awaitPointerEvent().changes.firstOrNull() ?: break
+                            if (!change.pressed) break
+                            change.consume()
+                            touched = nearest(change.position.y)
+                        }
+                        touched?.let { k -> latest.getOrNull(k)?.let { jump(it.first) } }
+                        touched = null
+                    }
+                }
+                .drawBehind {
+                    prompts.forEachIndexed { k, (row, _) ->
+                        val y = size.height * at(k)
+                        val lit = row in inView
+                        drawLine(
+                            if (lit) bright else dim,
+                            start = Offset(size.width - 16.dp.toPx(), y),
+                            end = Offset(size.width - 4.dp.toPx(), y),
+                            strokeWidth = (if (lit) 3 else 2).dp.toPx(),
+                            cap = StrokeCap.Round,
+                        )
+                    }
+                },
+        )
+        touched?.let { k ->
+            Surface(
+                shape = RoundedCornerShape(12.dp),
+                color = MaterialTheme.colorScheme.inverseSurface,
+                shadowElevation = 3.dp,
+                modifier = Modifier
+                    .align(Alignment.TopEnd)
+                    .offset(x = (-30).dp, y = (height * at(k) - 18.dp).coerceAtLeast(0.dp))
+                    .widthIn(max = 220.dp),
+            ) {
+                Text(
+                    prompts.getOrNull(k)?.second.orEmpty(),
+                    style = MaterialTheme.typography.bodySmall,
+                    color = MaterialTheme.colorScheme.inverseOnSurface,
+                    maxLines = 2,
+                    overflow = TextOverflow.Ellipsis,
+                    modifier = Modifier.padding(horizontal = 10.dp, vertical = 6.dp),
+                )
             }
         }
     }

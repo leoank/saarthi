@@ -61,7 +61,8 @@ profile's token), as `claude -p` with its input and output owned by the node, so
 
 Tap a session to open it. The conversation reads loosely like the terminal:
 
-- your prompts as boxed lines, Claude's replies as formatted text, its thinking folded;
+- your prompts as cards on the right, Claude's replies as formatted text, its thinking
+  folded;
 - each tool call as one line, such as `Bash  cargo test`, with its output folded to a count
   of lines (or the error's first line) until you tap it;
 - an edit shows its diff, a long command its script: the first lines under the call, and
@@ -94,6 +95,17 @@ node has something to say.
 The header shows the session's tokens in and out and its estimated cost; *Usage* in the
 menu shows the totals per model. Time and tokens also appear under each turn.
 Costs are estimates from list prices, counted once per message, subagents included.
+
+### Finding your way
+
+A session opens with its last 300 transcript lines; older ones come in as you scroll
+towards the top, without moving what you are reading. The magnifier in the top bar
+searches the session: the count shows which match of how many, the arrows step to older
+and newer ones (a folded turn opens to show its match), and the newest comes first. A
+search brings in the session's older lines first, so it covers the whole session.
+
+Down the right edge, a tick for each of your prompts, those on screen brighter: touch or
+drag along it to see the nearest prompt, and let go to jump there.
 
 ### Wrapping long lines
 
@@ -155,6 +167,13 @@ machine. Each row shows the first thing typed in the session, its directory and 
 when it started, how long it ran, and its tokens and estimated cost; a terminal icon or a
 rocket says it ran under `saarthi run` or was started from the app. *Show older* at the
 bottom loads the next 50. Tap a row to read the whole conversation.
+
+The field at the top searches every session: what you typed, what Claude replied, and
+session titles and folders (not tool output). Every word must match; the last may be the
+start of one, so results come as you type. Sessions come best match first, a match in a
+title counting most and older sessions lower, each with the words around its match. Tap
+one to open it already searching for the same words. A line is searchable a second or
+two after it arrives (ADR-0063).
 
 ## Resuming a session
 

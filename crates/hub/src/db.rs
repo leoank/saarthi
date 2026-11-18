@@ -32,7 +32,7 @@ pub struct NodeRow {
 
 #[derive(Clone)]
 pub struct Db {
-    pool: SqlitePool,
+    pub(crate) pool: SqlitePool,
 }
 
 impl Db {
@@ -127,6 +127,49 @@ impl Db {
         .fetch_all(&self.pool)
         .await?;
         Ok(rows.iter().map(event_from).collect())
+    }
+
+    /// Where a page of a session's record starts that ends before `before_seq` (0: at its
+    /// end) and holds `lines` transcript lines: the seq of the first of them, or 0 when
+    /// there are no more than that, so the page is the whole rest.
+    pub async fn page_start(&self, node_id: &str, session_id: &str, before_seq: u64, lines: u32) -> Result<u64> {
+        let before = if before_seq == 0 { i64::MAX } else { before_seq as i64 };
+        let start: Option<i64> = sqlx::query_scalar(
+            "SELECT seq FROM events
+             WHERE node_id = ?1 AND session_id = ?2 AND source = ?3 AND seq < ?4
+             ORDER BY seq DESC LIMIT 1 OFFSET ?5",
+        )
+        .bind(node_id)
+        .bind(session_id)
+        .bind(EventSource::Transcript.as_str_name())
+        .bind(before)
+        .bind(i64::from(lines.max(1)) - 1)
+        .fetch_optional(&self.pool)
+        .await?;
+        Ok(start.unwrap_or(0) as u64)
+    }
+
+    /// The node's latest reports on a session from before `seq` that a page starting there
+    /// still needs: its usage totals, its context and its queue, oldest first.
+    pub async fn page_seeds(&self, node_id: &str, session_id: &str, seq: u64) -> Result<Vec<Event>> {
+        let mut seeds = Vec::new();
+        for kind in ["usage", "context", "queue"] {
+            let row = sqlx::query(
+                "SELECT seq, session_id, time_ms, source, kind, payload, line_id FROM events
+                 WHERE node_id = ?1 AND session_id = ?2 AND source = ?3 AND kind = ?4 AND seq < ?5
+                 ORDER BY seq DESC LIMIT 1",
+            )
+            .bind(node_id)
+            .bind(session_id)
+            .bind(EventSource::Daemon.as_str_name())
+            .bind(kind)
+            .bind(seq as i64)
+            .fetch_optional(&self.pool)
+            .await?;
+            seeds.extend(row.as_ref().map(event_from));
+        }
+        seeds.sort_by_key(|e| e.seq);
+        Ok(seeds)
     }
 
     /// A node's health samples since a time, oldest first.
@@ -635,6 +678,7 @@ impl Db {
             .bind(branch)
             .execute(&self.pool)
             .await?;
+        self.index_title(node_id, session_id).await?;
         self.session(node_id, session_id).await
     }
 
@@ -768,7 +812,7 @@ fn event_from(r: &sqlx::sqlite::SqliteRow) -> Event {
     }
 }
 
-fn session_from(r: &sqlx::sqlite::SqliteRow) -> Session {
+pub(crate) fn session_from(r: &sqlx::sqlite::SqliteRow) -> Session {
     Session {
         id: r.get("id"),
         node_id: r.get("node_id"),

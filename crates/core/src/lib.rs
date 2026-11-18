@@ -218,6 +218,24 @@ pub struct SessionInfo {
     pub last_reply: String,
 }
 
+/// A page of older conversation: its items, oldest first, and whether more may come before.
+#[derive(Debug, Clone, PartialEq, uniffi::Record)]
+pub struct OlderPage {
+    pub items: Vec<Item>,
+    /// Where the page starts: the next older page ends before it.
+    pub first_seq: u64,
+    pub more: bool,
+}
+
+/// A session a search found: the words around its best match (empty when its title
+/// matched) and that line's seq (0 then).
+#[derive(Debug, Clone, PartialEq, uniffi::Record)]
+pub struct SearchHit {
+    pub session: SessionInfo,
+    pub snippet: String,
+    pub seq: u64,
+}
+
 /// A session as a history list shows it (ADR-0036).
 #[derive(Debug, Clone, PartialEq, uniffi::Record)]
 pub struct HistoryItem {
@@ -628,6 +646,42 @@ impl Hub {
         Ok(r.sessions.into_iter().map(history_item).collect())
     }
 
+    /// The page of a session's conversation before `before_seq`: its last `lines` transcript
+    /// lines and what they show as, and whether there may be more before it.
+    pub async fn older(
+        &self,
+        node_id: String,
+        session_id: String,
+        before_seq: u64,
+        lines: u32,
+    ) -> Result<OlderPage, CoreError> {
+        let req = StreamSessionRequest { node_id, session_id, after_seq: 0, tail: lines, before_seq };
+        let mut stream = self.client.clone().stream_session(self.req(req)).await?.into_inner();
+        let mut conversation = Conversation::paged();
+        let (mut items, mut transcript, mut first_seq) = (Vec::new(), 0u32, before_seq);
+        while let Some(e) = stream.message().await? {
+            if e.source() == ev::EventSource::Transcript {
+                if transcript == 0 {
+                    first_seq = e.seq;
+                }
+                transcript += 1;
+            }
+            items.extend(conversation.push(&e));
+        }
+        Ok(OlderPage { items, first_seq, more: transcript >= lines })
+    }
+
+    /// Sessions whose transcript or title match `query`, best first, on one node or (empty)
+    /// every node (ADR-0063).
+    pub async fn search(&self, query: String, node_id: String) -> Result<Vec<SearchHit>, CoreError> {
+        let req = SearchRequest { query, node_id, limit: 0 };
+        let r = self.client.clone().search(self.req(req)).await?.into_inner();
+        Ok(r.hits
+            .into_iter()
+            .map(|h| SearchHit { session: session(h.session.unwrap_or_default()), snippet: h.snippet, seq: h.seq })
+            .collect())
+    }
+
     /// Switches a node's keep-awake hold on or off (ADR-0031).
     pub async fn set_keep_awake(&self, node_id: String, on: bool) -> Result<String, CoreError> {
         let req = SetKeepAwakeRequest { node_id, on };
@@ -827,18 +881,25 @@ impl Hub {
     /// then what happens, until the subscription is cancelled. `totals` seeds the usage
     /// state when resuming after a cached part, so the next turn's line counts only its own
     /// tokens.
+    ///
+    /// With `after_seq` 0 and `tail` above 0 it starts with only the last `tail` transcript
+    /// lines; [`Hub::older`] pages in what came before.
     pub async fn stream_session(
         &self,
         node_id: String,
         session_id: String,
         after_seq: u64,
+        tail: u32,
         totals: Vec<ModelTotals>,
         listener: Arc<dyn SessionListener>,
     ) -> Result<Arc<Subscription>, CoreError> {
+        let paged = after_seq == 0 && tail > 0;
         let req = StreamSessionRequest {
             node_id,
             session_id,
             after_seq,
+            tail,
+            before_seq: 0,
         };
         let mut stream = self
             .client
@@ -848,7 +909,7 @@ impl Hub {
             .into_inner();
         let (stop, mut stopped) = watch::channel(false);
         tokio::spawn(async move {
-            let mut conversation = Conversation::seeded(totals);
+            let mut conversation = if paged { Conversation::paged() } else { Conversation::seeded(totals) };
             loop {
                 tokio::select! {
                     _ = stopped.changed() => return,

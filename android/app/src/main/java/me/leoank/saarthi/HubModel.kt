@@ -32,6 +32,7 @@ import uniffi.saarthi_core.Item
 import uniffi.saarthi_core.ModelTotals
 import uniffi.saarthi_core.PromptSent
 import uniffi.saarthi_core.QueuedPrompt
+import uniffi.saarthi_core.SearchHit
 import uniffi.saarthi_core.NodeInfo
 import uniffi.saarthi_core.NotebookInfo
 import uniffi.saarthi_core.PendingInfo
@@ -106,6 +107,9 @@ data class Sent(
     val timeMs: Long,
     val note: String? = null,
 )
+
+/** How many transcript lines a session opens with, and each older page brings. */
+private const val TAIL = 300u
 
 /** How long a prompt waits in the bar for the hub to take it, the link's return included. */
 private const val SEND_WAIT_MS = 45_000L
@@ -267,6 +271,40 @@ class HubModel(app: Application) : AndroidViewModel(app) {
     /** Why the last page of history did not load; null once one does. */
     var historyError by mutableStateOf<String?>(null)
         private set
+
+    /** What the last search found (ADR-0063), for the query in [searched]. */
+    val searchHits = mutableStateListOf<SearchHit>()
+    var searched by mutableStateOf("")
+        private set
+    var searching by mutableStateOf(false)
+        private set
+    private var searchJob: Job? = null
+
+    /** Searches every session's titles and transcripts; a newer query replaces an older one. */
+    fun search(query: String, nodeId: String) {
+        searchJob?.cancel()
+        if (query.isBlank()) {
+            searchHits.clear()
+            searched = ""
+            return
+        }
+        searchJob = viewModelScope.launch {
+            val h = hub ?: return@launch
+            searching = true
+            try {
+                val hits = h.search(query, nodeId)
+                searchHits.clear()
+                searchHits.addAll(hits)
+                searched = query
+            } catch (e: kotlinx.coroutines.CancellationException) {
+                throw e
+            } catch (e: Exception) {
+                say(describe(e))
+            } finally {
+                searching = false
+            }
+        }
+    }
 
     private var hub: Hub? = null
     /** The live connection, for the notebook's web view, which calls the core itself;
@@ -604,7 +642,42 @@ class HubModel(app: Application) : AndroidViewModel(app) {
         conversation.addAll(cache.items)
         usage.addAll(cache.usage)
         lastSeq = cache.lastSeq
+        olderMore = true
+        olderBefore = null
         withHub { startStream(it, s, cache.lastSeq) }
+    }
+
+    /** Whether older items may come before what is loaded, and one page of them is coming
+     *  (phase PHS-20261117-f22kxe item 9): a session opens with its last [TAIL] lines. */
+    var olderMore by mutableStateOf(true)
+        private set
+    var olderLoading by mutableStateOf(false)
+        private set
+    private var olderBefore: ULong? = null
+
+    /** Brings in the page before what is loaded, at the top of the conversation. */
+    fun loadOlder() {
+        val s = openSession ?: return
+        if (olderLoading || !olderMore || loading) return
+        val before = olderBefore ?: conversation.firstOrNull()?.seq ?: return
+        olderLoading = true
+        viewModelScope.launch {
+            try {
+                val h = hub ?: return@launch
+                val page = h.older(s.nodeId, s.id, before, TAIL)
+                if (openSession?.id != s.id || openSession?.nodeId != s.nodeId) return@launch
+                conversation.addAll(0, page.items)
+                caches[key(s)]?.items?.addAll(0, page.items)
+                olderBefore = page.firstSeq
+                olderMore = page.more && page.firstSeq < before
+            } catch (e: kotlinx.coroutines.CancellationException) {
+                throw e
+            } catch (e: Exception) {
+                say(describe(e))
+            } finally {
+                olderLoading = false
+            }
+        }
     }
 
     private fun key(s: SessionInfo) = "${s.nodeId}_${s.id}"
@@ -635,7 +708,9 @@ class HubModel(app: Application) : AndroidViewModel(app) {
                 }
             }
         }
-        stream = h.streamSession(s.nodeId, s.id, after, cache?.usage?.toList() ?: emptyList(), object : SessionListener {
+        // A first open brings the last TAIL lines; older ones page in as the person scrolls up.
+        val tail = if (after == 0uL) TAIL else 0u
+        stream = h.streamSession(s.nodeId, s.id, after, tail, cache?.usage?.toList() ?: emptyList(), object : SessionListener {
             override fun onItems(items: List<Item>, lastSeq: ULong) = onMain {
                 cache?.let { c -> c.items.addAll(items); c.lastSeq = lastSeq }
                 if (openSession?.id != s.id) return@onMain

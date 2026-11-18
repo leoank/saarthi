@@ -139,6 +139,9 @@ pub struct Conversation {
     context: Option<ContextUsage>,
     /// The session's queued prompts when the node last reported them, not yet taken.
     queue: Option<Vec<QueuedPrompt>>,
+    /// A page that starts partway through the session: its first turn counts from the
+    /// totals the node reported before it, which come first, so the turn starts there.
+    unsettled: bool,
 }
 
 /// A prompt the node holds until its session is next idle (phase PHS-20261117-f22kxe item 7).
@@ -168,11 +171,22 @@ impl Conversation {
             changed: false,
             context: None,
             queue: None,
+            unsettled: false,
         }
+    }
+
+    /// A conversation from a page partway through a session (phase PHS-20261117-f22kxe item
+    /// 9): the reports before its first line seed its totals.
+    pub fn paged() -> Self {
+        Self { unsettled: true, ..Self::default() }
     }
 
     /// The items one event shows as, with the turn and usage state applied.
     pub fn push(&mut self, e: &Event) -> Vec<Item> {
+        if self.unsettled && e.source() != EventSource::Daemon {
+            self.unsettled = false;
+            self.turn_start = self.totals.clone();
+        }
         if e.source() == EventSource::Daemon && e.kind == "context" {
             let v: Value = serde_json::from_str(&e.payload_json).unwrap_or_default();
             if let (Some(used), Some(max)) = (v["total_tokens"].as_u64(), v["max_tokens"].as_u64()) {
