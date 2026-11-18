@@ -92,8 +92,11 @@ may have arrived). Allowing, denying or answering a request shows no
 confirmation: the card leaving is the confirmation, and a message appears only when the
 node has something to say.
 
-The header shows the session's tokens in and out and its estimated cost; *Usage* in the
-menu shows the totals per model. Time and tokens also appear under each turn.
+The header shows the session's tokens in and out and its estimated cost. *About this
+session* in the menu puts everything known about it on one sheet: its model and effort,
+machine, folder, repository and branch, how it was started, the Claude account, the session
+it continues, when it started and ended, its id (tap to copy), its context, its usage per
+model with the cost, and how much of it the hub holds. Time and tokens also appear under each turn.
 Costs are estimates from list prices, counted once per message, subagents included.
 
 ### Finding your way

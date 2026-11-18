@@ -21,6 +21,8 @@ service ControlService {
   rpc Prompt(PromptRequest) returns (CommandResponse);
   rpc Interrupt(InterruptRequest) returns (CommandResponse);
   rpc Unqueue(UnqueueRequest) returns (CommandResponse);
+  // What the hub holds of a session, for *About this session* (phase item 19).
+  rpc SessionAbout(SessionAboutRequest) returns (SessionAboutResponse);
   // Switches a session's model and effort (node SetModel).
   rpc SetModel(SetModelRequest) returns (CommandResponse);
   // Deletes an ended session from the hub's record, for good (ADR-0065).
@@ -165,6 +167,19 @@ message SetModelRequest {
   string session_id = 2;
   string model = 3;             // empty: unchanged
   string effort = 4;            // empty: unchanged
+}
+
+message SessionAboutRequest {
+  string node_id = 1;
+  string session_id = 2;
+}
+
+message SessionAboutResponse {
+  uint64 events = 1;            // everything stored for it: transcript lines, hooks, reports
+  uint64 bytes = 2;             // their payloads' size
+  uint64 transcript_lines = 3;
+  int64 first_ms = 4;           // when its first and last events arrived; 0 when none
+  int64 last_ms = 5;
 }
 
 message UnqueueRequest {

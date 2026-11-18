@@ -220,6 +220,17 @@ pub struct SessionInfo {
     pub parent_id: String,
 }
 
+/// How much the hub holds of a session: its events, their bytes, its transcript lines, and
+/// when the first and last arrived (0 when none).
+#[derive(Debug, Clone, PartialEq, uniffi::Record)]
+pub struct SessionAbout {
+    pub events: u64,
+    pub bytes: u64,
+    pub transcript_lines: u64,
+    pub first_ms: i64,
+    pub last_ms: i64,
+}
+
 /// What a resume did: the node's note, and the new session it forked into when the node's
 /// copy and the hub's had diverged (ADR-0066), empty when it resumed in place.
 #[derive(Debug, Clone, PartialEq, uniffi::Record)]
@@ -546,6 +557,13 @@ impl Hub {
         let r = self.client.clone().prompt(self.req(req)).await?.into_inner();
         let queued = r.queued;
         Ok(PromptSent { note: outcome(r)?, queued })
+    }
+
+    /// What the hub holds of a session (phase PHS-20261117-f22kxe item 19).
+    pub async fn session_about(&self, node_id: String, session_id: String) -> Result<SessionAbout, CoreError> {
+        let req = SessionAboutRequest { node_id, session_id };
+        let r = self.client.clone().session_about(self.req(req)).await?.into_inner();
+        Ok(SessionAbout { events: r.events, bytes: r.bytes, transcript_lines: r.transcript_lines, first_ms: r.first_ms, last_ms: r.last_ms })
     }
 
     /// Switches a session's model and effort (phase PHS-20261117-f22kxe item 18); empty
@@ -1039,6 +1057,12 @@ fn outcome(r: CommandResponse) -> Result<String, CoreError> {
     } else {
         Err(CoreError::Refused { reason: r.error })
     }
+}
+
+/// A model id as people say it: "Opus 5.5" for `claude-opus-5-5`.
+#[uniffi::export]
+pub fn model_name(id: String) -> String {
+    model_label(&id)
 }
 
 /// What the app's demo shows (phase PHS-20261117-f22kxe item 13): a node, a session on it

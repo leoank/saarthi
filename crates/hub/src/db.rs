@@ -138,6 +138,29 @@ impl Db {
         Ok(rows.iter().map(event_from).collect())
     }
 
+    /// How much the hub holds of a session: events, their bytes, transcript lines, and the
+    /// times of the first and last.
+    pub async fn session_about(&self, node_id: &str, session_id: &str) -> Result<(u64, u64, u64, i64, i64)> {
+        let r = sqlx::query(
+            "SELECT count(*) AS n, coalesce(sum(length(payload)), 0) AS bytes,
+                    coalesce(sum(source = ?3), 0) AS lines,
+                    coalesce(min(time_ms), 0) AS first, coalesce(max(time_ms), 0) AS last
+             FROM events WHERE node_id = ?1 AND session_id = ?2",
+        )
+        .bind(node_id)
+        .bind(session_id)
+        .bind(EventSource::Transcript.as_str_name())
+        .fetch_one(&self.pool)
+        .await?;
+        Ok((
+            r.get::<i64, _>("n") as u64,
+            r.get::<i64, _>("bytes") as u64,
+            r.get::<i64, _>("lines") as u64,
+            r.get("first"),
+            r.get("last"),
+        ))
+    }
+
     /// The uuid of the last transcript line the hub holds of a session, empty when none.
     pub async fn last_line_id(&self, node_id: &str, session_id: &str) -> Result<String> {
         let id: Option<String> = sqlx::query_scalar(

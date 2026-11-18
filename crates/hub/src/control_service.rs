@@ -375,6 +375,14 @@ impl ControlService for Hub {
         }))
     }
 
+    async fn session_about(&self, request: Request<SessionAboutRequest>) -> Result<Response<SessionAboutResponse>, Status> {
+        self.client(&request)?;
+        let r = request.into_inner();
+        let (events, bytes, transcript_lines, first_ms, last_ms) =
+            self.db.session_about(&r.node_id, &r.session_id).await.map_err(internal)?;
+        Ok(Response::new(SessionAboutResponse { events, bytes, transcript_lines, first_ms, last_ms }))
+    }
+
     async fn set_model(&self, request: Request<SetModelRequest>) -> Result<Response<CommandResponse>, Status> {
         self.client(&request)?;
         let r = request.into_inner();

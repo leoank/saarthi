@@ -2,6 +2,10 @@ package me.leoank.saarthi
 
 import kotlin.math.roundToInt
 import uniffi.saarthi_core.ModelInUse
+import uniffi.saarthi_core.modelName
+import androidx.compose.foundation.verticalScroll
+import androidx.compose.foundation.rememberScrollState
+import androidx.compose.material3.ModalBottomSheet
 import androidx.compose.foundation.layout.FlowRow
 import androidx.compose.material3.FilterChip
 import androidx.compose.material3.RadioButton
@@ -248,7 +252,7 @@ fun SessionScreen(
                         Box {
                             IconButton(onClick = { menu = true }) { Icon(Icons.Filled.MoreVert, "More") }
                             DropdownMenu(expanded = menu, onDismissRequest = { menu = false }) {
-                                DropdownMenuItem(text = { Text("Usage") }, onClick = { menu = false; showUsage = true })
+                                DropdownMenuItem(text = { Text("About this session") }, onClick = { menu = false; model.loadAbout(s); showUsage = true })
                                 DropdownMenuItem(text = { Text("Node health") }, onClick = { menu = false; openHealth() })
                                 // For `claude --resume <id>` at a terminal; the rest of the session's
                                 // facts come with About (phase PHS-20261117-f22kxe item 19).
@@ -368,32 +372,7 @@ fun SessionScreen(
     }
 
     if (showUsage) {
-        AlertDialog(
-            onDismissRequest = { showUsage = false },
-            title = { Text("Usage") },
-            text = {
-                Column {
-                    if (model.usage.isEmpty()) Text("No usage counted yet.")
-                    for (u in model.usage) {
-                        Text(u.model, style = MaterialTheme.typography.titleSmall, modifier = Modifier.padding(top = 8.dp))
-                        Text(
-                            "${thousands(u.inputTokens)} in · ${thousands(u.outputTokens)} out · " +
-                                "${thousands(u.cacheReadTokens)} cache read · ${thousands(u.cacheWriteTokens)} cache write\n" +
-                                "${u.messages} messages" + (if (u.costUsd > 0.0) " · ${dollars(u.costUsd)} estimated" else ""),
-                            style = MaterialTheme.typography.bodyMedium,
-                            color = MaterialTheme.colorScheme.onSurfaceVariant,
-                        )
-                    }
-                    Text(
-                        "Counted once per message by the daemon, subagents included; the cost is an estimate from list prices.",
-                        style = MaterialTheme.typography.bodySmall,
-                        color = MaterialTheme.colorScheme.onSurfaceVariant,
-                        modifier = Modifier.padding(top = 12.dp),
-                    )
-                }
-            },
-            confirmButton = { TextButton(onClick = { showUsage = false }) { Text("Close") } },
-        )
+        AboutSheet(model, s, node, ended, dismiss = { showUsage = false }) { clipboard.setText(AnnotatedString(s.id)) }
     }
 
     if (pickModel) {
@@ -1555,4 +1534,107 @@ private fun ModelPicker(now: ModelInUse?, dismiss: () -> Unit, pick: (String, St
         },
         dismissButton = { TextButton(onClick = dismiss) { Text("Cancel") } },
     )
+}
+
+/** Everything known about a session on one sheet (phase PHS-20261117-f22kxe item 19): what
+ *  it is and where, what it runs on, what it has used, and what the hub holds of it. */
+@OptIn(ExperimentalMaterial3Api::class)
+@Composable
+private fun AboutSheet(model: HubModel, s: SessionInfo, node: String, ended: Boolean, dismiss: () -> Unit, copyId: () -> Unit) {
+    ModalBottomSheet(onDismissRequest = dismiss) {
+        Column(
+            Modifier
+                .fillMaxWidth()
+                .verticalScroll(rememberScrollState())
+                .padding(start = 20.dp, end = 20.dp, bottom = 24.dp),
+        ) {
+            Text(s.title(), style = MaterialTheme.typography.titleLarge)
+            @Composable
+            fun section(name: String) = Text(
+                name,
+                style = MaterialTheme.typography.titleSmall,
+                color = MaterialTheme.colorScheme.primary,
+                modifier = Modifier.padding(top = 18.dp, bottom = 4.dp),
+            )
+            @Composable
+            fun row(label: String, value: String, onClick: (() -> Unit)? = null) {
+                if (value.isBlank()) return
+                Row(
+                    Modifier
+                        .fillMaxWidth()
+                        .then(if (onClick != null) Modifier.clickable(onClick = onClick) else Modifier)
+                        .padding(vertical = 4.dp),
+                ) {
+                    Text(label, style = MaterialTheme.typography.bodyMedium, color = MaterialTheme.colorScheme.onSurfaceVariant, modifier = Modifier.width(120.dp))
+                    Text(value, style = MaterialTheme.typography.bodyMedium, modifier = Modifier.weight(1f))
+                }
+            }
+            val days = java.time.format.DateTimeFormatter.ofPattern("d MMM yyyy, HH:mm")
+            fun at(ms: Long) = days.format(java.time.Instant.ofEpochMilli(ms).atZone(java.time.ZoneId.systemDefault()))
+
+            section("Session")
+            row("Agent", "Claude Code")
+            model.modelOf(s)?.let { m -> row("Model", listOf(m.label, effortLabel(m.effort)).filter { it.isNotEmpty() }.joinToString(" · ")) }
+            row("Machine", listOfNotNull(node, s.profile.ifEmpty { null }?.let { "profile $it" }).joinToString(" · "))
+            row("Folder", s.cwd)
+            row("Repository", listOf(s.repo(), s.gitBranch.takeIf { it != "HEAD" }.orEmpty()).filter { it.isNotBlank() }.joinToString(" / "))
+            row(
+                "Started from",
+                when {
+                    s.spawned -> "the app (headless)"
+                    s.wrapped -> "a terminal, under saarthi run"
+                    else -> "a terminal, plain claude"
+                },
+            )
+            row("Account", s.claudeToken.ifEmpty { "the machine's own login" })
+            row("Continues", s.parentId)
+            row("Started", at(s.startedMs))
+            s.endedMs?.let { row("Ended", at(it)) } ?: row("Status", if (ended) "ended" else "running")
+            row("Session id", s.id + "  (tap to copy)", onClick = copyId)
+
+            section("Usage")
+            model.contextOf(s)?.takeIf { it.maxTokens > 0uL }?.let {
+                row("Context", "${(it.usedTokens.toDouble() * 100 / it.maxTokens.toDouble()).roundToInt()}% · ${thousands(it.usedTokens)} of ${thousands(it.maxTokens)} tokens")
+            }
+            // A `<synthetic>` entry (Claude Code's own error notices) used nothing.
+            val usage = model.usage.filterNot { it.model.startsWith("<") }
+            if (usage.isEmpty()) row("Tokens", "none counted yet")
+            for (u in usage) {
+                row(
+                    modelName(u.model),
+                    "${thousands(u.inputTokens)} in · ${thousands(u.outputTokens)} out · ${thousands(u.cacheReadTokens)} cache read · " +
+                        "${thousands(u.cacheWriteTokens)} cache write · ${u.messages} messages" +
+                        (if (u.costUsd > 0.0) " · ${dollars(u.costUsd)}" else ""),
+                )
+            }
+            val cost = usage.sumOf { it.costUsd }
+            if (usage.size > 1 && cost > 0.0) row("Total", dollars(cost))
+            model.queueOf(s).size.takeIf { it > 0 }?.let { row("Queued", "$it prompts waiting for the turn to end") }
+            Text(
+                "Counted once per message by the daemon, subagents included; the cost is an estimate from list prices.",
+                style = MaterialTheme.typography.bodySmall,
+                color = MaterialTheme.colorScheme.onSurfaceVariant,
+                modifier = Modifier.padding(top = 4.dp),
+            )
+
+            section("On the hub")
+            val about = model.about
+            if (about == null) row("Stored", "…")
+            else {
+                row("Stored", "${thousands(about.events)} events · ${bytes(about.bytes)} · ${thousands(about.transcriptLines)} transcript lines")
+                if (about.firstMs > 0) row("Between", "${at(about.firstMs)} and ${at(about.lastMs)}")
+            }
+        }
+    }
+}
+
+/** A size as people read it: "812 KB", "12.4 MB". */
+private fun bytes(n: ULong): String {
+    val b = n.toDouble()
+    return when {
+        b < 1024 -> "${n} B"
+        b < 1024 * 1024 -> "${(b / 1024).roundToInt()} KB"
+        b < 1024.0 * 1024 * 1024 -> "%.1f MB".format(b / 1024 / 1024)
+        else -> "%.2f GB".format(b / 1024 / 1024 / 1024)
+    }
 }

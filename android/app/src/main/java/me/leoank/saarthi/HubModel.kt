@@ -36,6 +36,7 @@ import uniffi.saarthi_core.ModelTotals
 import uniffi.saarthi_core.PromptSent
 import uniffi.saarthi_core.QueuedPrompt
 import uniffi.saarthi_core.SearchHit
+import uniffi.saarthi_core.SessionAbout
 import uniffi.saarthi_core.NodeInfo
 import uniffi.saarthi_core.NotebookInfo
 import uniffi.saarthi_core.PendingInfo
@@ -252,6 +253,15 @@ class HubModel(app: Application) : AndroidViewModel(app) {
     /** How full each spawned session's context was after its last turn, while the app runs. */
     private val contexts = mutableStateMapOf<String, ContextUsage>()
     fun contextOf(s: SessionInfo): ContextUsage? = contexts[key(s)]
+
+    /** What the hub holds of the session *About this session* shows, once it has come. */
+    var about by mutableStateOf<SessionAbout?>(null)
+        private set
+
+    fun loadAbout(s: SessionInfo) {
+        about = null
+        withHub { about = it.sessionAbout(s.nodeId, s.id) }
+    }
 
     /** Each session's model and effort as its transcript last said, or as just switched to. */
     private val models = mutableStateMapOf<String, ModelInUse>()

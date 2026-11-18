@@ -145,6 +145,14 @@ async fn a_session_carries_its_title_and_branch_from_its_transcript() {
     assert_eq!(hits.len(), 1, "never found by search");
     assert_eq!(hits[0].session.as_ref().unwrap().id, "titled");
     assert!(hits[0].snippet.contains("handles tabs"), "{}", hits[0].snippet);
+    // What the hub holds of it, for About this session.
+    let about = c
+        .session_about(req(saarthi_proto::control::v1::SessionAboutRequest { node_id: s.node_id.clone(), session_id: "titled".into() }))
+        .await
+        .unwrap()
+        .into_inner();
+    assert!(about.transcript_lines >= 3 && about.events >= about.transcript_lines && about.bytes > 100, "{about:?}");
+    assert!(about.first_ms > 0 && about.last_ms >= about.first_ms);
     // The node's next report of the session, without a title, keeps the hub's.
     let mut busy = record("titled");
     busy.status = "busy".into();
