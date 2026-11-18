@@ -31,6 +31,7 @@ import uniffi.saarthi_core.HealthPoint
 import uniffi.saarthi_core.HistoryItem
 import uniffi.saarthi_core.Hub
 import uniffi.saarthi_core.Item
+import uniffi.saarthi_core.ModelInUse
 import uniffi.saarthi_core.ModelTotals
 import uniffi.saarthi_core.PromptSent
 import uniffi.saarthi_core.QueuedPrompt
@@ -251,6 +252,21 @@ class HubModel(app: Application) : AndroidViewModel(app) {
     /** How full each spawned session's context was after its last turn, while the app runs. */
     private val contexts = mutableStateMapOf<String, ContextUsage>()
     fun contextOf(s: SessionInfo): ContextUsage? = contexts[key(s)]
+
+    /** Each session's model and effort as its transcript last said, or as just switched to. */
+    private val models = mutableStateMapOf<String, ModelInUse>()
+    fun modelOf(s: SessionInfo): ModelInUse? = models[key(s)]
+
+    /** Switches a session's model and effort (phase PHS-20261117-f22kxe item 18); shown at
+     *  once, and corrected by the session's next reply. */
+    fun setModel(s: SessionInfo, model: String, effort: String) = withHub {
+        it.setModel(s.nodeId, s.id, model, effort)
+        val was = models[key(s)]
+        models[key(s)] = ModelInUse(
+            label = model.ifEmpty { null }?.replaceFirstChar { c -> c.uppercase() } ?: was?.label.orEmpty(),
+            effort = effort.ifEmpty { was?.effort.orEmpty() },
+        )
+    }
 
     /** The prompts the node holds for each session until it is next idle, as it last said. */
     private val queues = mutableStateMapOf<String, List<QueuedPrompt>>()
@@ -803,6 +819,7 @@ class HubModel(app: Application) : AndroidViewModel(app) {
             }
             override fun onContext(context: ContextUsage) = onMain { contexts[key(s)] = context }
             override fun onQueue(queued: List<QueuedPrompt>) = onMain { queues[key(s)] = queued }
+            override fun onModel(model: ModelInUse) = onMain { models[key(s)] = model }
             override fun onUsage(totals: List<ModelTotals>) = onMain {
                 cache?.let { c -> c.usage.clear(); c.usage.addAll(totals) }
                 if (openSession?.id != s.id) return@onMain

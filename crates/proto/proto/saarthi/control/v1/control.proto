@@ -21,6 +21,8 @@ service ControlService {
   rpc Prompt(PromptRequest) returns (CommandResponse);
   rpc Interrupt(InterruptRequest) returns (CommandResponse);
   rpc Unqueue(UnqueueRequest) returns (CommandResponse);
+  // Switches a session's model and effort (node SetModel).
+  rpc SetModel(SetModelRequest) returns (CommandResponse);
   // Deletes an ended session from the hub's record, for good (ADR-0065).
   rpc DeleteSession(DeleteSessionRequest) returns (CommandResponse);
   // Ends any session's process (ADR-0034).
@@ -156,6 +158,13 @@ message PromptRequest {
 message DeleteSessionRequest {
   string node_id = 1;
   string session_id = 2;
+}
+
+message SetModelRequest {
+  string node_id = 1;
+  string session_id = 2;
+  string model = 3;             // empty: unchanged
+  string effort = 4;            // empty: unchanged
 }
 
 message UnqueueRequest {

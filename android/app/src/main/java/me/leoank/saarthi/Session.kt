@@ -1,6 +1,10 @@
 package me.leoank.saarthi
 
 import kotlin.math.roundToInt
+import uniffi.saarthi_core.ModelInUse
+import androidx.compose.foundation.layout.FlowRow
+import androidx.compose.material3.FilterChip
+import androidx.compose.material3.RadioButton
 import androidx.compose.ui.graphics.StrokeCap
 import androidx.compose.ui.geometry.Offset
 import androidx.compose.ui.draw.drawBehind
@@ -147,6 +151,7 @@ fun SessionScreen(
     var menu by remember { mutableStateOf(false) }
     var confirmKill by remember { mutableStateOf(false) }
     var confirmDelete by remember { mutableStateOf(false) }
+    var pickModel by remember { mutableStateOf(false) }
     var showUsage by remember { mutableStateOf(false) }
     // Search in this session: the words, null while not searching; which match is shown.
     var find by remember(nodeId, sessionId) { mutableStateOf(findFirst) }
@@ -307,6 +312,9 @@ fun SessionScreen(
                             waiting = waiting.isNotEmpty(),
                             answering = asked != null,
                             outgoing = "${s.nodeId}/${s.id}" in model.outgoing,
+                            modelInUse = model.modelOf(s),
+                            // A session started outside saarthi run: shown, not switched.
+                            pickModel = if (s.wrapped || s.spawned) ({ pickModel = true }) else null,
                             reconnecting = model.reconnecting,
                             notSent = model.notSent["${s.nodeId}/${s.id}"],
                             send = {
@@ -386,6 +394,13 @@ fun SessionScreen(
             },
             confirmButton = { TextButton(onClick = { showUsage = false }) { Text("Close") } },
         )
+    }
+
+    if (pickModel) {
+        ModelPicker(model.modelOf(s), dismiss = { pickModel = false }) { m, e ->
+            pickModel = false
+            model.setModel(s, m, e)
+        }
     }
 
     if (confirmDelete) {
@@ -1296,6 +1311,8 @@ private fun PromptBar(
     outgoing: Boolean = false,
     reconnecting: Boolean = false,
     notSent: String? = null,
+    modelInUse: ModelInUse? = null,
+    pickModel: (() -> Unit)? = null,
     send: () -> Unit,
     stop: () -> Unit,
 ) {
@@ -1314,15 +1331,20 @@ private fun PromptBar(
                 busy -> "Claude is working · Queue holds a prompt for when this turn ends · the stop button interrupts" to MaterialTheme.colorScheme.onSurfaceVariant
                 else -> null to MaterialTheme.colorScheme.onSurfaceVariant
             }
-            state?.let {
-                Text(
-                    it,
-                    style = MaterialTheme.typography.labelSmall,
-                    color = tint,
-                    maxLines = 2,
-                    overflow = TextOverflow.Ellipsis,
-                    modifier = Modifier.padding(start = 16.dp, bottom = 6.dp),
-                )
+            // The state line, with the model and effort on the right (phase item 18).
+            val chip = modelInUse?.takeIf { it.label.isNotEmpty() }
+            if (state != null || chip != null) {
+                Row(verticalAlignment = Alignment.CenterVertically, modifier = Modifier.fillMaxWidth().padding(bottom = 6.dp)) {
+                    Text(
+                        state.orEmpty(),
+                        style = MaterialTheme.typography.labelSmall,
+                        color = tint,
+                        maxLines = 2,
+                        overflow = TextOverflow.Ellipsis,
+                        modifier = Modifier.weight(1f).padding(start = 16.dp),
+                    )
+                    chip?.let { ModelChip(it, pickModel) }
+                }
             }
             // The composer: a rounded card with the text and the round buttons on one centre
             // line while it is one line; as it grows, the buttons stay at the bottom.
@@ -1453,6 +1475,84 @@ fun DeleteDialog(dismiss: () -> Unit, delete: () -> Unit) {
             )
         },
         confirmButton = { TextButton(onClick = delete) { Text("Delete", color = MaterialTheme.colorScheme.error) } },
+        dismissButton = { TextButton(onClick = dismiss) { Text("Cancel") } },
+    )
+}
+
+/** The session's model and effort, "Opus 5.5 · High"; a tap offers to switch them when the
+ *  node can (phase PHS-20261117-f22kxe item 18). */
+@Composable
+private fun ModelChip(m: ModelInUse, pick: (() -> Unit)?) {
+    Surface(
+        onClick = { pick?.invoke() },
+        enabled = pick != null,
+        shape = RoundedCornerShape(12.dp),
+        color = MaterialTheme.colorScheme.surfaceContainerHigh,
+        modifier = Modifier.padding(end = 4.dp),
+    ) {
+        Text(
+            listOf(m.label, effortLabel(m.effort)).filter { it.isNotEmpty() }.joinToString(" · "),
+            style = MaterialTheme.typography.labelMedium,
+            color = MaterialTheme.colorScheme.onSurfaceVariant,
+            modifier = Modifier.padding(horizontal = 10.dp, vertical = 4.dp),
+        )
+    }
+}
+
+/** An effort level as people say it: "Extra high" for `xhigh`. */
+private fun effortLabel(e: String): String = if (e == "xhigh") "Extra high" else e.replaceFirstChar { it.uppercase() }
+
+private val MODELS = listOf("default" to "Default", "opus" to "Opus", "sonnet" to "Sonnet", "haiku" to "Haiku")
+private val EFFORTS = listOf("low", "medium", "high", "xhigh", "max")
+
+/** Picks a model and an effort for the session; what is not changed is left as it is. */
+@Composable
+private fun ModelPicker(now: ModelInUse?, dismiss: () -> Unit, pick: (String, String) -> Unit) {
+    var model by remember { mutableStateOf("") }
+    var effort by remember { mutableStateOf("") }
+    AlertDialog(
+        onDismissRequest = dismiss,
+        title = { Text("Model and effort") },
+        text = {
+            Column {
+                now?.let {
+                    Text(
+                        "Now: " + listOf(it.label, effortLabel(it.effort)).filter { v -> v.isNotEmpty() }.joinToString(" · "),
+                        style = MaterialTheme.typography.bodySmall,
+                        color = MaterialTheme.colorScheme.onSurfaceVariant,
+                    )
+                }
+                Text("Model", style = MaterialTheme.typography.titleSmall, modifier = Modifier.padding(top = 12.dp, bottom = 4.dp))
+                for ((value, label) in MODELS) {
+                    Row(
+                        verticalAlignment = Alignment.CenterVertically,
+                        modifier = Modifier.fillMaxWidth().clickable { model = if (model == value) "" else value },
+                    ) {
+                        RadioButton(selected = model == value, onClick = { model = if (model == value) "" else value })
+                        Text(label)
+                    }
+                }
+                Text("Effort", style = MaterialTheme.typography.titleSmall, modifier = Modifier.padding(top = 12.dp, bottom = 4.dp))
+                FlowRow(horizontalArrangement = Arrangement.spacedBy(6.dp)) {
+                    for (e in EFFORTS) {
+                        FilterChip(
+                            selected = effort == e,
+                            onClick = { effort = if (effort == e) "" else e },
+                            label = { Text(effortLabel(e)) },
+                        )
+                    }
+                }
+                Text(
+                    "From the next reply on. A session under saarthi run gets /model and /effort typed at its terminal.",
+                    style = MaterialTheme.typography.bodySmall,
+                    color = MaterialTheme.colorScheme.onSurfaceVariant,
+                    modifier = Modifier.padding(top = 12.dp),
+                )
+            }
+        },
+        confirmButton = {
+            TextButton(onClick = { pick(model, effort) }, enabled = model.isNotEmpty() || effort.isNotEmpty()) { Text("Switch") }
+        },
         dismissButton = { TextButton(onClick = dismiss) { Text("Cancel") } },
     )
 }

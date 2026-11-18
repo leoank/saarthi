@@ -159,7 +159,17 @@ message Command {
     Resume resume = 9;
     Probe probe = 10;
     Unqueue unqueue = 11;
+    SetModel set_model = 12;
   }
+}
+
+// Switches a session's model and reasoning effort (phase PHS-20261117-f22kxe item 18,
+// EXP-20261118-298ryc): a spawned session by the SDK's `set_model` and `apply_flag_settings`
+// control requests, a wrapped one by typing `/model` and `/effort`; refused for a session
+// the node cannot type into. Empty leaves that one as it is.
+message SetModel {
+  string model = 1;             // what `/model` takes: `opus`, `sonnet`, `haiku`, `default` or an id
+  string effort = 2;            // `low`, `medium`, `high`, `xhigh` or `max`
 }
 
 // Delivered over the session's messaging socket; works for bare and wrapped sessions.

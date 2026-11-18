@@ -139,9 +139,40 @@ pub struct Conversation {
     context: Option<ContextUsage>,
     /// The session's queued prompts when the node last reported them, not yet taken.
     queue: Option<Vec<QueuedPrompt>>,
+    /// The model and effort the session last replied with or was switched to, and what was
+    /// last handed on.
+    model: Option<ModelInUse>,
+    model_sent: Option<ModelInUse>,
     /// A page that starts partway through the session: its first turn counts from the
     /// totals the node reported before it, which come first, so the turn starts there.
     unsettled: bool,
+}
+
+/// The model a session replies with and its reasoning effort, as its transcript says (phase
+/// PHS-20261117-f22kxe item 18): `label` as people say it ("Opus 5.5"), `effort` as Claude
+/// Code writes it (`low` to `max`), empty when not known.
+#[derive(Debug, Clone, PartialEq, uniffi::Record)]
+pub struct ModelInUse {
+    pub label: String,
+    pub effort: String,
+}
+
+/// "Opus 5.5" for `claude-opus-5-5`, "Haiku 4.5" for `claude-haiku-4-5-20251001`: the family
+/// and its version, without the date or a context suffix; anything else as it is.
+pub fn model_label(id: &str) -> String {
+    let bare = id.split('[').next().unwrap_or(id).trim();
+    let Some(rest) = bare.strip_prefix("claude-") else {
+        return bare.to_string();
+    };
+    let mut parts = rest.split('-');
+    let family = parts.next().unwrap_or_default();
+    let version: Vec<&str> = parts.take_while(|p| p.len() < 6 && p.chars().all(|c| c.is_ascii_digit())).collect();
+    let mut name: String = family.chars().take(1).flat_map(char::to_uppercase).chain(family.chars().skip(1)).collect();
+    if !version.is_empty() {
+        name.push(' ');
+        name.push_str(&version.join("."));
+    }
+    name
 }
 
 /// A prompt the node holds until its session is next idle (phase PHS-20261117-f22kxe item 7).
@@ -171,6 +202,8 @@ impl Conversation {
             changed: false,
             context: None,
             queue: None,
+            model: None,
+            model_sent: None,
             unsettled: false,
         }
     }
@@ -183,6 +216,9 @@ impl Conversation {
 
     /// The items one event shows as, with the turn and usage state applied.
     pub fn push(&mut self, e: &Event) -> Vec<Item> {
+        if e.source() == EventSource::Transcript {
+            self.note_model(&e.kind, &e.payload_json);
+        }
         if self.unsettled && e.source() != EventSource::Daemon {
             self.unsettled = false;
             self.turn_start = self.totals.clone();
@@ -248,6 +284,54 @@ impl Conversation {
     /// How full the context is, when the node reported it since the last call.
     pub fn take_context(&mut self) -> Option<ContextUsage> {
         self.context.take()
+    }
+
+    /// Keeps the model and effort a transcript line names: a reply's, or a `/model` or
+    /// `/effort` command's answer, which comes before the next reply.
+    fn note_model(&mut self, kind: &str, payload: &str) {
+        let current = self.model.clone().unwrap_or(ModelInUse { label: String::new(), effort: String::new() });
+        let next = match kind {
+            "assistant" => {
+                let v: Value = serde_json::from_str(payload).unwrap_or_default();
+                let id = v["message"]["model"].as_str().unwrap_or_default();
+                if id.is_empty() || id.starts_with('<') {
+                    return;
+                }
+                ModelInUse { label: model_label(id), effort: v["effort"].as_str().map(str::to_string).unwrap_or(current.effort) }
+            }
+            _ if payload.contains("<local-command-stdout>Set model to ")
+                || payload.contains("<local-command-stdout>Set effort level to ") =>
+            {
+                let after = |marker: &str| {
+                    payload.split(marker).nth(1).map(|rest| {
+                        rest.split(['<', '(', ':', '\\', '"']).next().unwrap_or_default().split(" and ").next().unwrap_or_default().trim().to_string()
+                    })
+                };
+                // "Set model to `sonnet (claude-sonnet-5-5)`": the id in brackets when there is one.
+                let set = payload.split("Set model to ").nth(1).map(|rest| {
+                    match rest.split("(claude-").nth(1).and_then(|r| r.split([')', '`']).next()) {
+                        Some(id) => model_label(&format!("claude-{id}")),
+                        None => after("Set model to ").unwrap_or_default().trim_matches('`').to_string(),
+                    }
+                });
+                ModelInUse {
+                    label: set.filter(|l| !l.is_empty()).unwrap_or(current.label),
+                    effort: after("Set effort level to ").map(|e| e.to_lowercase()).filter(|e| !e.is_empty()).unwrap_or(current.effort),
+                }
+            }
+            _ => return,
+        };
+        self.model = Some(next);
+    }
+
+    /// The model and effort, when they changed since the last call.
+    pub fn take_model(&mut self) -> Option<ModelInUse> {
+        let now = self.model.clone()?;
+        if self.model_sent.as_ref() == Some(&now) {
+            return None;
+        }
+        self.model_sent = Some(now.clone());
+        Some(now)
     }
 
     /// The session's queued prompts, when the node reported them since the last call.
@@ -918,6 +1002,32 @@ mod tests {
             ..event(EventSource::Transcript, "system", serde_json::json!({"subtype": "turn_duration", "durationMs": 900}))
         });
         assert_eq!(turn[0].text, "900 ms · 500 in · 50 out · $0.001");
+    }
+
+    #[test]
+    fn the_model_and_effort_come_from_replies_and_switches() {
+        assert_eq!(model_label("claude-opus-5-5"), "Opus 5.5");
+        assert_eq!(model_label("claude-haiku-4-5-20251001"), "Haiku 4.5");
+        assert_eq!(model_label("claude-sonnet-5-5[1m]"), "Sonnet 5.5");
+        assert_eq!(model_label("gpt-x"), "gpt-x");
+        let mut c = Conversation::default();
+        let line = |kind: &str, v: serde_json::Value| Event { payload_json: v.to_string(), ..event(EventSource::Transcript, kind, serde_json::json!({})) };
+        c.push(&line("assistant", serde_json::json!({"type": "assistant", "effort": "high", "message": {"model": "claude-opus-5-5", "content": []}})));
+        assert_eq!(c.take_model(), Some(ModelInUse { label: "Opus 5.5".into(), effort: "high".into() }));
+        assert_eq!(c.take_model(), None, "unchanged since");
+        // A `/model` answer comes before the next reply; an `/effort` one keeps the model.
+        c.push(&line("user", serde_json::json!({"type": "user", "message": {"content": "<local-command-stdout>Set model to Sonnet 5.5 and saved as your default</local-command-stdout>"}})));
+        assert_eq!(c.take_model().unwrap().label, "Sonnet 5.5");
+        // As `set_model` in a headless session writes it.
+        c.push(&line("user", serde_json::json!({"type": "user", "message": {"content": "<local-command-stdout>Set model to `haiku (claude-haiku-5-5)`</local-command-stdout>"}})));
+        assert_eq!(c.take_model().unwrap().label, "Haiku 5.5");
+        c.push(&line("user", serde_json::json!({"type": "user", "message": {"content": "<local-command-stdout>Set model to Sonnet 5.5 and saved as your default</local-command-stdout>"}})));
+        c.take_model();
+        c.push(&line("system", serde_json::json!({"type": "system", "content": "<local-command-stdout>Set effort level to low: this session only</local-command-stdout>"})));
+        assert_eq!(c.take_model(), Some(ModelInUse { label: "Sonnet 5.5".into(), effort: "low".into() }));
+        // A synthetic reply (an error) names no model.
+        c.push(&line("assistant", serde_json::json!({"type": "assistant", "message": {"model": "<synthetic>", "content": []}})));
+        assert_eq!(c.take_model(), None);
     }
 
     #[test]

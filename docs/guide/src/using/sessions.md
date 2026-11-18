@@ -126,6 +126,13 @@ also after the app restarts. What happens when you send depends on the session:
   socket and arrives as a message from another session; Claude sees it that way. The
   prompt bar says so before you send.
 
+Above the prompt bar, on the right, a chip shows the model the session replies with and
+its reasoning effort, *Opus 5.5 · High*, from its latest reply (or a `/model` or `/effort`
+it just answered). Tap it to switch either: a session started from the app switches at
+once, through Claude Code's own controls; one under `saarthi run` gets `/model` and
+`/effort` typed at its terminal. The next reply is the new model's. A session started with
+plain `claude` shows the chip but cannot be switched from here.
+
 While Claude is working, send becomes *Queue* (a clock) and the stop button turns red.
 A queued prompt waits on the node, not in Claude Code, and shows as a bubble above the
 prompt bar until the turn ends; then the node sends the oldest, one per turn. Each bubble

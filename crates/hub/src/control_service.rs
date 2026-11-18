@@ -8,7 +8,7 @@ use saarthi_proto::control::v1::control_service_server::ControlService;
 use saarthi_proto::control::v1::*;
 use saarthi_proto::event::v1::{Event, resolution};
 use saarthi_proto::node::v1::{
-    self as node, CommandResult, Interrupt, Kill, Prompt, Resume, SetKeepAwake, Spawn, Unqueue, command,
+    self as node, CommandResult, Interrupt, Kill, Prompt, Resume, SetKeepAwake, SetModel, Spawn, Unqueue, command,
 };
 use tokio::sync::broadcast::error::RecvError;
 use tokio_stream::Stream;
@@ -373,6 +373,13 @@ impl ControlService for Hub {
             crate::keep::Deleted::Live => refused("the session is still running: end it first"),
             crate::keep::Deleted::Missing => refused("the hub has no such session"),
         }))
+    }
+
+    async fn set_model(&self, request: Request<SetModelRequest>) -> Result<Response<CommandResponse>, Status> {
+        self.client(&request)?;
+        let r = request.into_inner();
+        let action = command::Action::SetModel(SetModel { model: r.model, effort: r.effort });
+        Ok(response(self.live.command(&r.node_id, &r.session_id, action).await?))
     }
 
     async fn unqueue(

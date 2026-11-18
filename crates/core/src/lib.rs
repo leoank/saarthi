@@ -17,7 +17,7 @@ use serde_json::Value;
 use tokio::sync::watch;
 use tonic::transport::Channel;
 
-pub use conversation::{ContextUsage, Conversation, Item, ModelTotals, QueuedPrompt, Role};
+pub use conversation::{ContextUsage, Conversation, Item, ModelInUse, ModelTotals, QueuedPrompt, Role, model_label};
 pub use tailnet::TailnetLogin;
 
 uniffi::setup_scaffolding!();
@@ -340,6 +340,8 @@ pub trait SessionListener: Send + Sync {
     fn on_context(&self, context: ContextUsage);
     /// The prompts the node holds for the session, the whole list, whenever it changes.
     fn on_queue(&self, queued: Vec<QueuedPrompt>);
+    /// The model and effort the session replies with, whenever they change.
+    fn on_model(&self, model: ModelInUse);
     fn on_error(&self, message: String);
 }
 
@@ -544,6 +546,13 @@ impl Hub {
         let r = self.client.clone().prompt(self.req(req)).await?.into_inner();
         let queued = r.queued;
         Ok(PromptSent { note: outcome(r)?, queued })
+    }
+
+    /// Switches a session's model and effort (phase PHS-20261117-f22kxe item 18); empty
+    /// leaves one as it is.
+    pub async fn set_model(&self, node_id: String, session_id: String, model: String, effort: String) -> Result<String, CoreError> {
+        let req = SetModelRequest { node_id, session_id, model, effort };
+        outcome(self.client.clone().set_model(self.req(req)).await?.into_inner())
     }
 
     /// Deletes an ended session from the hub, for good (ADR-0065).
@@ -947,6 +956,9 @@ impl Hub {
                             }
                             if let Some(queued) = conversation.take_queue() {
                                 listener.on_queue(queued);
+                            }
+                            if let Some(model) = conversation.take_model() {
+                                listener.on_model(model);
                             }
                         }
                         Ok(None) => return listener.on_error("the hub closed the stream".into()),

@@ -320,6 +320,26 @@ async fn act(cmd: &Command, parts: &Parts) -> CommandResult {
             Ok(String::new())
         }
         Some(command::Action::Prompt(p)) => deliver(sessions, spawner, wrappers, id, &p.text).await,
+        Some(command::Action::SetModel(m)) if !valid_model(&m.model) || !valid_effort(&m.effort) => {
+            Err(format!("not a model or effort Claude Code takes: {:?} {:?}", m.model, m.effort))
+        }
+        Some(command::Action::SetModel(m)) if sessions.is_spawned(id).await => {
+            spawner.set_model(id, &m.model, &m.effort).await.map(|()| String::new())
+        }
+        // Typed at the terminal, as the person would (ADR-0027).
+        Some(command::Action::SetModel(m)) if sessions.is_wrapped(id).await => {
+            let mut typed = Ok(String::new());
+            for (command, value) in [("/model", &m.model), ("/effort", &m.effort)] {
+                if !value.is_empty() && typed.is_ok() {
+                    let text = ToWrapper::Prompt { text: format!("{command} {value}") };
+                    typed = wrappers.command(id, text).await.map(|()| String::new());
+                }
+            }
+            typed
+        }
+        Some(command::Action::SetModel(_)) => {
+            Err("the session was started outside saarthi run, so its model can only be changed at its terminal".into())
+        }
         Some(command::Action::Unqueue(u)) => match queue.take(id, &u.queued_id).await {
             Some(text) if u.send => deliver(sessions, spawner, wrappers, id, &text).await,
             Some(_) => Ok(String::new()),
@@ -417,6 +437,16 @@ async fn terminate(sessions: &Sessions, id: &str) -> Result<String, String> {
         return Err(format!("SIGTERM to {pid}: {}", std::io::Error::last_os_error()));
     }
     Ok(format!("sent SIGTERM to pid {pid}; the session ends when Claude Code exits"))
+}
+
+/// A model as `/model` and `set_model` take it: an alias or an id; nothing to type into a
+/// terminal beyond that.
+fn valid_model(m: &str) -> bool {
+    m.len() <= 64 && m.chars().all(|c| c.is_ascii_alphanumeric() || "-_.[]".contains(c))
+}
+
+fn valid_effort(e: &str) -> bool {
+    matches!(e, "" | "low" | "medium" | "high" | "xhigh" | "max")
 }
 
 /// Starts delivering prompts queued while their sessions work, as each is next idle.

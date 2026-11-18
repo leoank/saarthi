@@ -766,6 +766,22 @@ impl Spawner {
     }
 
     /// Stops the running turn; a follow-up prompt, if any, starts the next one.
+    /// Switches a running session's model and effort through the SDK's control requests
+    /// (EXP-20261118-298ryc); the next reply is the new model's, at the new effort.
+    pub async fn set_model(&self, id: &str, model: &str, effort: &str) -> Result<(), String> {
+        let request = |body: serde_json::Value| {
+            let line = json!({"type": "control_request", "request_id": format!("model-{}", uuid::Uuid::new_v4().simple()), "request": body});
+            format!("{line}\n")
+        };
+        if !model.is_empty() {
+            self.send(id, request(json!({"subtype": "set_model", "model": model}))).await?;
+        }
+        if !effort.is_empty() {
+            self.send(id, request(json!({"subtype": "apply_flag_settings", "settings": {"effortLevel": effort}}))).await?;
+        }
+        Ok(())
+    }
+
     pub async fn interrupt(&self, id: &str, then_prompt: Option<&str>) -> Result<(), String> {
         self.send(id, interrupt_line()).await?;
         if let Some(text) = then_prompt.filter(|t| !t.trim().is_empty()) {
