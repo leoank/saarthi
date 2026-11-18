@@ -223,6 +223,9 @@ message Resume {
   // The launch profile the session ran under, from the hub's record; empty for the host. A
   // node restoring the transcript from the hub puts it there.
   string profile = 5;
+  // The uuid of the last transcript line the hub holds of it (ADR-0066): a node whose
+  // transcript lacks it catches up from the hub's copy, or forks when the two diverged.
+  string last_line_id = 6;
 }
 
 // Node-level: one throwaway Haiku turn under a Claude token, for the account's rate-limit
@@ -252,4 +255,6 @@ message CommandResult {
   bool gone = 6;
   // Prompt only: held in the session's queue rather than delivered.
   bool queued = 7;
+  // Resume only: the new session a resume forked into, when the copies diverged (ADR-0066).
+  string session_id = 8;
 }

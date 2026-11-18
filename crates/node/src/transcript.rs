@@ -255,6 +255,37 @@ impl Meta {
     }
 }
 
+/// What a resume does with a node's transcript that lacks the hub's last line (ADR-0066).
+#[derive(Debug, PartialEq)]
+pub enum CatchUp {
+    /// The hub's copy has the node's last line: append the hub's lines from this index.
+    From(usize),
+    /// Neither has the other's last line: the copies diverged.
+    Fork,
+}
+
+/// The uuid of a raw transcript line, without parsing it.
+fn uuid_of(raw: &str) -> Option<&str> {
+    let at = raw.find("\"uuid\":\"")? + 8;
+    raw[at..].find('"').map(|end| &raw[at..at + end])
+}
+
+/// The uuid of the last line of a transcript that has one.
+pub fn last_uuid(transcript: &str) -> Option<&str> {
+    transcript.lines().rev().find_map(uuid_of)
+}
+
+/// Whether a node behind the hub catches up, from where, or the copies diverged.
+pub fn catch_up(hub_lines: &[String], node_last: Option<&str>) -> CatchUp {
+    let Some(last) = node_last else {
+        return CatchUp::From(0);
+    };
+    match hub_lines.iter().position(|l| uuid_of(l) == Some(last)) {
+        Some(i) => CatchUp::From(i + 1),
+        None => CatchUp::Fork,
+    }
+}
+
 /// The session a fork came from. `--fork-session` copies the parent's lines under the new
 /// id, so they do not name it, but they keep their uuids: the fork's first message is the
 /// parent's. Of the transcripts beside it made before it, the earliest that starts with
@@ -487,6 +518,16 @@ mod tests {
         m.observe(r#"{"type":"agent-name","agentName":"","sessionId":"s"}"#);
         let v: Value = serde_json::from_str(&m.changed().unwrap()).unwrap();
         assert_eq!(v["title"], "Fix the parser");
+    }
+
+    #[test]
+    fn a_node_behind_catches_up_and_one_that_diverged_forks() {
+        let hub: Vec<String> = ["a", "b", "c", "d"].iter().map(|u| format!(r#"{{"type":"user","uuid":"{u}"}}"#)).collect();
+        let node = "{\"type\":\"mode\"}\n{\"type\":\"user\",\"uuid\":\"a\"}\n{\"type\":\"user\",\"uuid\":\"b\"}\n{\"type\":\"custom-title\"}\n";
+        assert_eq!(last_uuid(node), Some("b"));
+        assert_eq!(catch_up(&hub, last_uuid(node)), CatchUp::From(2));
+        assert_eq!(catch_up(&hub, Some("x")), CatchUp::Fork);
+        assert_eq!(catch_up(&hub, None), CatchUp::From(0));
     }
 
     #[tokio::test]

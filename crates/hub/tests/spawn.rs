@@ -431,5 +431,42 @@ async fn a_session_resumes_on_a_node_that_lost_its_transcript_from_the_hubs_copy
         .map(|l| serde_json::from_str(l).unwrap())
         .collect();
     assert_eq!(restored, lines[..3], "the conversation as it was, attachment and all");
+
+    // ADR-0066. Behind: this node's copy stops at the prompt; the resume catches it up.
+    let end = |c: &mut ControlServiceClient<Channel>| {
+        let kill = KillRequest { node_id: node.id.clone(), session_id: id.clone() };
+        let mut c = c.clone();
+        async move { assert!(c.kill(req(kill)).await.unwrap().into_inner().ok) }
+    };
+    let resume = |prompt: &str| ResumeRequest {
+        node_id: node.id.clone(),
+        session_id: id.clone(),
+        prompt: prompt.into(),
+        model: String::new(),
+        claude_token: None,
+    };
+    let read = |path: &std::path::Path| -> Vec<serde_json::Value> {
+        std::fs::read_to_string(path).unwrap().lines().map(|l| serde_json::from_str(l).unwrap()).collect()
+    };
+    end(&mut c).await;
+    session(&mut c, &id, true).await;
+    std::fs::write(&transcript, format!("{}\n", lines[0])).unwrap();
+    let r = c.resume(req(resume("go on"))).await.unwrap().into_inner();
+    assert!(r.ok && r.session_id.is_empty(), "{} {}", r.error, r.session_id);
+    assert_eq!(read(&transcript), lines[..3], "caught up, not rewritten");
+
+    // Diverged: this node's copy went on without the hub; the hub's resumes as a new session.
+    end(&mut c).await;
+    session(&mut c, &id, true).await;
+    let elsewhere = serde_json::json!({"type": "user", "uuid": "x1", "parentUuid": "u1", "message": {"role": "user", "content": "something else"}});
+    std::fs::write(&transcript, format!("{}\n{elsewhere}\n", lines[0])).unwrap();
+    let r = c.resume(req(resume("and then"))).await.unwrap().into_inner();
+    assert!(r.ok && !r.session_id.is_empty(), "{} {}", r.error, r.session_id);
+    assert!(r.note.contains("new session"), "{}", r.note);
+    assert_eq!(read(&transcript), [lines[0].clone(), elsewhere], "this node's copy untouched");
+    let fork = saarthi_node::sessions::transcript_path(&claude_dir, &cwd, &r.session_id);
+    assert_eq!(read(&fork), lines[..3], "the hub's copy, under the new id");
+    let forked = session(&mut c, &r.session_id, false).await;
+    assert_eq!(forked.cwd, cwd);
     hub.stop();
 }

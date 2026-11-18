@@ -276,6 +276,7 @@ async fn stream(
                                 probe_json,
                                 gone: false,
                                 queued: false,
+                                session_id: String::new(),
                             })
                             .await;
                     });
@@ -300,6 +301,7 @@ async fn stream(
 async fn act(cmd: &Command, parts: &Parts) -> CommandResult {
     let mut gone = false;
     let mut queued = false;
+    let mut forked = String::new();
     let Parts {
         sessions,
         pending,
@@ -363,9 +365,18 @@ async fn act(cmd: &Command, parts: &Parts) -> CommandResult {
             .await
             .map(|()| String::new()),
         Some(command::Action::Resume(r)) => spawner
-            .resume(id, &r.cwd, &r.prompt, &r.model, r.claude_token.as_ref(), &r.profile)
+            .resume(id, &r.cwd, &r.prompt, &r.model, r.claude_token.as_ref(), &r.profile, &r.last_line_id)
             .await
-            .map(|()| String::new()),
+            .map(|fork| match fork {
+                Some(fork) => {
+                    let note = "this machine's copy of the session and the hub's went different ways, so the hub's \
+                        resumed as a new session; this machine's copy is untouched"
+                        .to_string();
+                    forked = fork;
+                    note
+                }
+                None => String::new(),
+            }),
         Some(command::Action::SetKeepAwake(k)) => {
             keep_awake.store(k.on, Ordering::Relaxed);
             tracing::info!(on = k.on, "keep-awake switched from a client");
@@ -389,6 +400,7 @@ async fn act(cmd: &Command, parts: &Parts) -> CommandResult {
         probe_json: String::new(),
         gone,
         queued,
+        session_id: forked,
     }
 }
 

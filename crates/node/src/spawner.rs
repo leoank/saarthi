@@ -273,6 +273,12 @@ impl Spawner {
     /// same id and transcript, its context kept (EXP-20261106-62st4b). Refused while the
     /// session runs, and when this node has no transcript of it there. It runs under the
     /// profile whose config directory holds its transcript, so a sandboxed session stays one.
+    ///
+    /// The hub names the last line it holds (`last_line_id`, ADR-0066): a transcript here that
+    /// lacks it catches up from the hub's copy, or, when the two diverged, the session forks
+    /// into a new one from the hub's copy, whose id comes back; this transcript is left as it
+    /// was. Lines of two copies are never merged.
+    #[allow(clippy::too_many_arguments)]
     pub async fn resume(
         self: &Arc<Self>,
         id: &str,
@@ -281,7 +287,8 @@ impl Spawner {
         model: &str,
         claude_token: Option<&ClaudeToken>,
         ran_in: &str,
-    ) -> Result<(), String> {
+        last_line_id: &str,
+    ) -> Result<Option<String>, String> {
         if uuid::Uuid::parse_str(id).is_err() {
             return Err("the session id is not a UUID".into());
         }
@@ -290,13 +297,21 @@ impl Spawner {
         }
         let dir = self.allowed(cwd, false)?;
         let has = |claude_dir: &Path| crate::sessions::transcript_path(claude_dir, &dir.to_string_lossy(), id).exists();
-        let profile = if has(self.sessions.claude_dir()) {
-            None
+        let local = if has(self.sessions.claude_dir()) {
+            Some(None)
         } else {
-            match self.contained.profiles.all().find(|p| p.claude_dir().is_some_and(|d| has(&d))) {
-                Some(p) => Some(p.clone()),
-                None => self.restore(id, &dir, ran_in).await?,
+            self.contained.profiles.all().find(|p| p.claude_dir().is_some_and(|d| has(&d))).map(|p| Some(p.clone()))
+        };
+        let profile = match local {
+            Some(profile) => {
+                let claude_dir = profile.as_ref().and_then(|p| p.claude_dir()).unwrap_or_else(|| self.sessions.claude_dir().to_path_buf());
+                if let Some(fork) = self.reconcile(id, &dir, &claude_dir, last_line_id).await? {
+                    self.start(&fork, &dir, prompt, model, "", "--resume", profile.as_ref(), claude_token).await?;
+                    return Ok(Some(fork));
+                }
+                profile
             }
+            None => self.restore(id, &dir, ran_in).await?,
         };
         self.start(
             id,
@@ -309,6 +324,63 @@ impl Spawner {
             claude_token,
         )
         .await
+        .map(|()| None)
+    }
+
+    /// Brings this node's transcript of `id` level with the hub's before a resume (ADR-0066):
+    /// nothing when it has the hub's last line; the hub's later lines appended when it is
+    /// behind; when the copies diverged, the hub's copy written as a new session, whose id
+    /// it returns.
+    async fn reconcile(&self, id: &str, dir: &Path, claude_dir: &Path, last_line_id: &str) -> Result<Option<String>, String> {
+        if last_line_id.is_empty() {
+            return Ok(None);
+        }
+        let path = crate::sessions::transcript_path(claude_dir, &dir.to_string_lossy(), id);
+        let local = tokio::fs::read_to_string(&path)
+            .await
+            .map_err(|e| format!("could not read the transcript {}: {e}", path.display()))?;
+        if local.contains(&format!("\"uuid\":\"{last_line_id}\"")) {
+            return Ok(None);
+        }
+        let Some(api) = self.hub_api.get() else {
+            return Ok(None);
+        };
+        let lines = api
+            .session_transcript(id)
+            .await
+            .map_err(|e| format!("this node's transcript is behind the hub's, and the hub's did not come: {e}"))?;
+        // Never written while a process has it open.
+        if self.sessions.is_live(id).await || self.procs.lock().await.contains_key(id) {
+            return Err("the session is running".into());
+        }
+        match crate::transcript::catch_up(&lines, crate::transcript::last_uuid(&local)) {
+            crate::transcript::CatchUp::From(from) => {
+                let mut more = String::new();
+                for line in &lines[from..] {
+                    more.push_str(line);
+                    more.push('\n');
+                }
+                let mut text = local;
+                if !text.is_empty() && !text.ends_with('\n') {
+                    text.push('\n');
+                }
+                text.push_str(&more);
+                tokio::fs::write(&path, text)
+                    .await
+                    .map_err(|e| format!("could not catch the transcript up: {e}"))?;
+                tracing::info!(session = %id, lines = lines.len() - from, "caught a transcript up with the hub's to resume");
+                Ok(None)
+            }
+            crate::transcript::CatchUp::Fork => {
+                let fork = uuid::Uuid::new_v4().to_string();
+                let to = crate::sessions::transcript_path(claude_dir, &dir.to_string_lossy(), &fork);
+                tokio::fs::write(&to, crate::transcript::rebuild(&lines))
+                    .await
+                    .map_err(|e| format!("could not write the forked transcript {}: {e}", to.display()))?;
+                tracing::info!(session = %id, %fork, "this node's transcript and the hub's diverged; resuming the hub's as a new session");
+                Ok(Some(fork))
+            }
+        }
     }
 
     /// Writes the transcript of session `id` in `dir` from the hub's copy, for a node that
@@ -1171,7 +1243,7 @@ echo closed >> LOG
         std::fs::create_dir_all(transcript.parent().unwrap()).unwrap();
         std::fs::write(&transcript, "").unwrap();
         std::fs::remove_file(&log).unwrap();
-        spawner.resume(&id, &cwd, "go on", "", None, "").await.unwrap();
+        spawner.resume(&id, &cwd, "go on", "", None, "", "").await.unwrap();
         let text = log_has(&log, "go on").await;
         assert!(text.contains(&format!("--resume {id}")), "{text}");
         assert!(text.contains("proxy=403"), "resumed inside the sandbox, with its proxy: {text}");
@@ -1186,7 +1258,7 @@ echo closed >> LOG
         let cwd_s = cwd.to_string_lossy().into_owned();
         let err = f
             .spawner
-            .resume(&id, &cwd_s, "", "", None, "")
+            .resume(&id, &cwd_s, "", "", None, "", "")
             .await
             .unwrap_err();
         assert!(err.contains("no transcript"), "{err}");
@@ -1195,7 +1267,7 @@ echo closed >> LOG
         std::fs::create_dir_all(transcript.parent().unwrap()).unwrap();
         std::fs::write(&transcript, "").unwrap();
         f.spawner
-            .resume(&id, &cwd_s, "go on", "", None, "")
+            .resume(&id, &cwd_s, "go on", "", None, "", "")
             .await
             .unwrap();
         let log = log_has(&f.log, "go on").await;
@@ -1206,7 +1278,7 @@ echo closed >> LOG
 
         let err = f
             .spawner
-            .resume(&id, &cwd_s, "", "", None, "")
+            .resume(&id, &cwd_s, "", "", None, "", "")
             .await
             .unwrap_err();
         assert!(err.contains("still running"), "{err}");

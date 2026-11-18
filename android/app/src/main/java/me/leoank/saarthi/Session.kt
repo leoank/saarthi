@@ -137,6 +137,8 @@ fun SessionScreen(
     findFirst: String?,
     back: () -> Unit,
     openHealth: () -> Unit,
+    /** Opens another session of the same node, by id: one a resume forked into. */
+    openSession: (String) -> Unit = {},
 ) {
     val live = model.sessions.firstOrNull { it.nodeId == nodeId && it.id == sessionId }
     val s = live ?: model.openSession ?: return
@@ -262,7 +264,7 @@ fun SessionScreen(
                                 if (ended && model.resumable(s)) {
                                     DropdownMenuItem(
                                         text = { Text("Resume") },
-                                        onClick = { menu = false; model.resume(s, "") },
+                                        onClick = { menu = false; model.resume(s, "", openSession) },
                                     )
                                 }
                                 if (!ended) {
@@ -328,7 +330,7 @@ fun SessionScreen(
                         busy = false,
                         waiting = false,
                         resuming = true,
-                        send = { model.resume(s, text.trim()); text = "" },
+                        send = { model.resume(s, text.trim(), openSession); text = "" },
                         stop = {},
                     )
                 }

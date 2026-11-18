@@ -138,6 +138,20 @@ impl Db {
         Ok(rows.iter().map(event_from).collect())
     }
 
+    /// The uuid of the last transcript line the hub holds of a session, empty when none.
+    pub async fn last_line_id(&self, node_id: &str, session_id: &str) -> Result<String> {
+        let id: Option<String> = sqlx::query_scalar(
+            "SELECT line_id FROM events WHERE node_id = ?1 AND session_id = ?2 AND source = ?3 AND line_id IS NOT NULL
+             ORDER BY seq DESC LIMIT 1",
+        )
+        .bind(node_id)
+        .bind(session_id)
+        .bind(EventSource::Transcript.as_str_name())
+        .fetch_optional(&self.pool)
+        .await?;
+        Ok(id.unwrap_or_default())
+    }
+
     /// Where a page of a session's record starts that ends before `before_seq` (0: at its
     /// end) and holds `lines` transcript lines: the seq of the first of them, or 0 when
     /// there are no more than that, so the page is the whole rest.

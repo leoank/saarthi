@@ -220,6 +220,14 @@ pub struct SessionInfo {
     pub parent_id: String,
 }
 
+/// What a resume did: the node's note, and the new session it forked into when the node's
+/// copy and the hub's had diverged (ADR-0066), empty when it resumed in place.
+#[derive(Debug, Clone, PartialEq, uniffi::Record)]
+pub struct Resumed {
+    pub note: String,
+    pub session_id: String,
+}
+
 /// A page of older conversation: its items, oldest first, and whether more may come before.
 #[derive(Debug, Clone, PartialEq, uniffi::Record)]
 pub struct OlderPage {
@@ -628,7 +636,7 @@ impl Hub {
         prompt: String,
         model: String,
         claude_token: Option<String>,
-    ) -> Result<String, CoreError> {
+    ) -> Result<Resumed, CoreError> {
         let req = ResumeRequest {
             node_id,
             session_id,
@@ -636,7 +644,9 @@ impl Hub {
             model,
             claude_token,
         };
-        outcome(self.client.clone().resume(self.req(req)).await?.into_inner())
+        let r = self.client.clone().resume(self.req(req)).await?.into_inner();
+        let forked = r.session_id.clone();
+        Ok(Resumed { note: outcome(r)?, session_id: forked })
     }
 
     /// Sessions newest first, live and ended, started before `before_ms` (0 for now), at

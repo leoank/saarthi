@@ -208,6 +208,7 @@ fun App(
             model, snackbar, s.nodeId, s.sessionId, s.find,
             back = { model.close(); screen = s.from },
             openHealth = { screen = Screen.Health(s.nodeId, s) },
+            openSession = { id -> spawnedFrom = s.from; spawned = s.nodeId to id },
         )
         is Screen.Health -> HealthScreen(model, snackbar, s.nodeId, back = { screen = s.from })
         Screen.Tokens -> TokensScreen(model, snackbar, back = { screen = Screen.Home })

@@ -478,21 +478,27 @@ impl ControlService for Hub {
             None => (session.claude_token, "the session's last; pick another"),
         };
         let claude_token = self.claude_token(&name, why)?;
+        let last_line_id = self.db.last_line_id(&r.node_id, &r.session_id).await.map_err(internal)?;
         let action = command::Action::Resume(Resume {
             cwd: session.cwd,
             prompt: r.prompt,
             model: r.model,
             claude_token,
             profile: session.profile,
+            last_line_id,
         });
         let result = self.live.command(&r.node_id, &r.session_id, action).await?;
+        let forked = result.session_id.clone();
         if result.ok {
             self.db
                 .set_session_claude_token(&r.node_id, &r.session_id, &name)
                 .await
                 .map_err(internal)?;
         }
-        Ok(response(result))
+        let mut response = response(result);
+        // A resume that forked (ADR-0066) names the new session.
+        response.get_mut().session_id = forked;
+        Ok(response)
     }
 
     async fn search(&self, request: Request<SearchRequest>) -> Result<Response<SearchResponse>, Status> {

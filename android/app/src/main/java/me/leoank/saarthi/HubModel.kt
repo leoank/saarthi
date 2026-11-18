@@ -675,9 +675,13 @@ class HubModel(app: Application) : AndroidViewModel(app) {
 
     /** Continues a finished session in place (ADR-0036); its screen turns live when the
      *  watch reports it running. A blank prompt resumes it idle. */
-    fun resume(s: SessionInfo, prompt: String) = withHub {
+    /** [forked]: the new session's id, when the node's copy and the hub's had diverged and
+     *  the hub's resumed as a new session (ADR-0066). */
+    fun resume(s: SessionInfo, prompt: String, forked: (String) -> Unit = {}) = withHub {
         // Under the token the session last ran under.
-        done(it.resume(s.nodeId, s.id, prompt.trim(), "", null), "Resumed")
+        val r = it.resume(s.nodeId, s.id, prompt.trim(), "", null)
+        done(r.note, "Resumed")
+        if (r.sessionId.isNotEmpty()) forked(r.sessionId)
     }
 
     /** Directories to offer for a new session on a node: its spawn roots, then where its

@@ -73,13 +73,14 @@ spawns, with the owner's answers of 2026-11-07.
 | [ADR-0056](ADR-0056-the-app-carries-a-web-view-s-event-streams-over-a-bridge.md) | The app carries a web view's event streams over a bridge | accepted, amended by ADR-0058 |
 | [ADR-0057](ADR-0057-the-hub-sends-the-request-s-head-with-open-service.md) | The hub sends the request's head with `OpenService` | accepted |
 | [ADR-0058](ADR-0058-the-web-view-bridge-carries-request-bodies-and-ranges-are-placed.md) | The web view bridge carries request bodies, and range answers are placed at their offset | accepted |
-| [ADR-0059](ADR-0059-a-node-restores-a-transcript-from-the-hub-to-resume.md) | A node restores a transcript from the hub to resume a session | accepted |
+| [ADR-0059](ADR-0059-a-node-restores-a-transcript-from-the-hub-to-resume.md) | A node restores a transcript from the hub to resume a session | accepted, amended by ADR-0066 |
 | [ADR-0060](ADR-0060-a-new-project-is-a-spawned-interview-in-messages.md) | A new project from the app is a spawned interview, asked in messages | accepted, amended by ADR-0061 |
 | [ADR-0061](ADR-0061-spawned-sessions-ask-through-a-question-tool-the-node-serves.md) | Spawned sessions ask through a question tool the node serves | accepted |
 | [ADR-0062](ADR-0062-the-node-holds-prompts-queued-while-a-session-works.md) | The node holds prompts queued while a session works | accepted |
 | [ADR-0063](ADR-0063-search-across-sessions-with-a-contentless-fts5-index-at-the-hub.md) | Search across sessions with a contentless FTS5 index at the hub, and paged sessions | accepted |
 | [ADR-0064](ADR-0064-pairing-through-a-link-the-phone-camera-opens.md) | Pairing through a link the phone's camera opens, and a recorded demo | accepted |
 | [ADR-0065](ADR-0065-deleted-sessions-stay-deleted-and-old-transcripts-can-be-dropped.md) | Deleted sessions stay deleted, and old transcripts can be dropped | accepted |
+| [ADR-0066](ADR-0066-a-resume-catches-up-or-forks-never-merges.md) | A resume catches up or forks, never merges | accepted |
 
 Each record:
 

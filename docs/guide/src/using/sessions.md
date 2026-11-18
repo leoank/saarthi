@@ -203,6 +203,13 @@ with its start time and duration from the latest run.
 
 A session that is still running somewhere cannot be resumed; end it first.
 
+The node resumes the conversation you see in the app, which is the hub's copy. When the
+node's own copy of the transcript is behind it (restored from a backup, say), the node
+first adds the lines it is missing, then resumes in place. When the two went different
+ways (the node's copy has lines the hub never got, and the hub's lines the node lost), the
+hub's copy resumes as a new session, listed under the old one, and the app opens it; the
+node's copy is left as it was, so nothing is merged or lost (ADR-0066).
+
 A session started from the app can be continued at a terminal on its machine too: end it
 here (*Kill session*), take its id with *Copy session id* in the menu, then run
 `claude --resume <id>` in its directory. Killing a session whose process is already gone
