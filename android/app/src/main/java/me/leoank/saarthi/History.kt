@@ -176,24 +176,30 @@ private fun HistoryRow(h: HistoryItem, node: String, onOpen: () -> Unit) {
                     )
                 }
             }
+            // Where it stands at a glance, as atuin lists threads: how long ago, where, how much.
             Text(
-                if (s.title.isBlank()) listOf(s.parentPath(), s.name()).filter { it.isNotEmpty() }.joinToString("/") else s.place(),
-                style = MaterialTheme.typography.bodySmall,
+                listOfNotNull(
+                    ago(s.endedMs ?: s.startedMs),
+                    node,
+                    // A detached checkout's branch reads `HEAD`, which says nothing.
+                    listOf(s.repo(), s.gitBranch.takeIf { it != "HEAD" }.orEmpty()).filter { it.isNotBlank() }.joinToString("/").ifEmpty { null },
+                    if (h.messages > 0uL) "${h.messages} ${if (h.messages == 1uL) "message" else "messages"}" else null,
+                ).joinToString(" · "),
+                style = MaterialTheme.typography.bodyMedium,
                 color = MaterialTheme.colorScheme.onSurfaceVariant,
                 maxLines = 1,
-                overflow = TextOverflow.StartEllipsis,
+                overflow = TextOverflow.Ellipsis,
             )
             Text(
                 listOfNotNull(
-                    node,
                     s.profile.ifEmpty { null },
                     clockTime(s.startedMs),
-                    s.endedMs?.let { e -> span(e - s.startedMs) } ?: "live",
+                    s.endedMs?.let { e -> "ran ${span(e - s.startedMs)}" } ?: "live",
                     if (h.inputTokens + h.outputTokens > 0uL) "${thousands(h.inputTokens)} in · ${thousands(h.outputTokens)} out" else null,
                     if (h.costUsd > 0.0) dollars(h.costUsd) else null,
                 ).joinToString(" · "),
                 style = MaterialTheme.typography.bodySmall,
-                color = MaterialTheme.colorScheme.onSurfaceVariant,
+                color = MaterialTheme.colorScheme.onSurfaceVariant.copy(alpha = 0.8f),
             )
         }
     }
@@ -243,6 +249,18 @@ private fun dayLabel(d: LocalDate): String {
         today -> "Today"
         today.minusDays(1) -> "Yesterday"
         else -> dayFormat.format(d)
+    }
+}
+
+/** How long ago, short: "just now", "12m ago", "2h ago", "3d ago", else the date. */
+private fun ago(ms: Long): String {
+    val m = (System.currentTimeMillis() - ms) / 60_000
+    return when {
+        m < 1 -> "just now"
+        m < 60 -> "${m}m ago"
+        m < 24 * 60 -> "${m / 60}h ago"
+        m < 7 * 24 * 60 -> "${m / (24 * 60)}d ago"
+        else -> DateTimeFormatter.ofPattern("d MMM").format(Instant.ofEpochMilli(ms).atZone(ZoneId.systemDefault()))
     }
 }
 

@@ -163,8 +163,10 @@ can then be resumed, from the hub's copy of its transcript if the machine lost i
 
 The clock icon in the home screen's top bar opens **History**: every session the hub
 knows, live and ended, newest first and grouped by day. A chip per node narrows it to one
-machine. Each row shows the first thing typed in the session, its directory and node,
-when it started, how long it ran, and its tokens and estimated cost; a terminal icon or a
+machine. Each row shows the session's title or the first thing typed in it; under that,
+how long ago it was last active, its node, its repository and branch and how many
+messages Claude wrote; and then when it started, how long it ran, and its tokens and
+estimated cost; a terminal icon or a
 rocket says it ran under `saarthi run` or was started from the app. *Show older* at the
 bottom loads the next 50. Tap a row to read the whole conversation.
 

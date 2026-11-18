@@ -246,6 +246,8 @@ pub struct HistoryItem {
     pub output_tokens: u64,
     /// An estimate from list prices, as the session screen's.
     pub cost_usd: f64,
+    /// Claude's messages in it, subagents' included, as the usage totals count them.
+    pub messages: u64,
 }
 
 #[derive(Debug, Clone, PartialEq, uniffi::Record)]
@@ -1127,6 +1129,7 @@ fn history_item(h: SessionHistory) -> HistoryItem {
         input_tokens: totals.iter().map(|t| t.input_tokens).sum(),
         output_tokens: totals.iter().map(|t| t.output_tokens).sum(),
         cost_usd: totals.iter().map(|t| t.cost_usd).sum(),
+        messages: totals.iter().map(|t| t.messages).sum(),
     }
 }
 
