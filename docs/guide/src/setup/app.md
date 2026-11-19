@@ -107,6 +107,15 @@ forgets the key and the identity; the device stays in the tailnet until you remo
 the admin console. A hub without a key is reached through the phone's own network as
 before.
 
+If joining fails, the boot log says why within a few seconds, or after 45 s at the most:
+the key was not accepted (revoked, expired or used up), the device was removed from the
+tailnet or expired, or the tailnet's admin has to approve it. Once the phone has joined, it
+uses its saved identity and never looks at the key again, so a new key alone would not help:
+saving the hub with a different key gives the phone a new identity, which joins with it;
+*Forget this phone's tailnet identity* in the hub's settings does the same with the key it
+has. The old device stays in the tailnet until you remove it there, and the new one may be
+named with `-1` until then.
+
 ## Notifications
 
 After connecting, the app asks for permission to show notifications and registers for

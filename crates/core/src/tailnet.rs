@@ -33,8 +33,13 @@ impl std::fmt::Debug for TailnetLogin {
     }
 }
 
-/// The running identities, by state directory.
-static RUNNING: LazyLock<Mutex<HashMap<String, Arc<Tailnet>>>> = LazyLock::new(Default::default);
+/// How long the app waits for a join before saying why it failed.
+const JOIN_LIMIT: Duration = Duration::from_secs(45);
+
+/// The identities, by state directory: each started once and kept. Each has its own lock,
+/// so two joins of one identity never overlap and a slow join holds up no other hub's.
+type Slot = Arc<Mutex<Option<Arc<Tailnet>>>>;
+static RUNNING: LazyLock<std::sync::Mutex<HashMap<String, Slot>>> = LazyLock::new(Default::default);
 
 /// Starts the identity for `login` if it is not running yet, and gives its tailnet
 /// addresses: the app shows the join as a step of its start.
@@ -45,8 +50,9 @@ pub async fn join_tailnet(login: TailnetLogin) -> Result<String, CoreError> {
 
 /// The identity for `login`, started if it is not running yet.
 pub(crate) async fn identity(login: TailnetLogin) -> Result<Arc<Tailnet>, CoreError> {
-    let mut running = RUNNING.lock().await;
-    if let Some(t) = running.get(&login.dir) {
+    let slot = RUNNING.lock().expect("the identities' lock").entry(login.dir.clone()).or_default().clone();
+    let mut slot = slot.lock().await;
+    if let Some(t) = slot.as_ref() {
         return Ok(t.clone());
     }
     let t = Tailnet::start(Options {
@@ -55,12 +61,15 @@ pub(crate) async fn identity(login: TailnetLogin) -> Result<Arc<Tailnet>, CoreEr
         hostname: login.hostname,
         authkey: login.authkey.filter(|k| !k.trim().is_empty()).map(AuthKey::Value),
         ephemeral: false,
+        // The app's start shows the join as a step: it must end, with a reason. A retry
+        // after a given-up join needs a new identity (`TailnetLogin::dir`).
+        give_up_after: Some(JOIN_LIMIT),
     })
     .await
     .map_err(|e| CoreError::Connection {
         reason: format!("tailnet: {e:#}"),
     })?;
-    running.insert(login.dir, t.clone());
+    *slot = Some(t.clone());
     Ok(t)
 }
 

@@ -408,6 +408,7 @@ async fn serve(args: Serve) -> Result<()> {
                         .unwrap_or_else(|| format!("saarthi-{name}")),
                     authkey: args.tailnet_authkey_file.map(saarthi_tailnet::AuthKey::File),
                     ephemeral: false,
+                    give_up_after: None,
                 };
                 // Until it has joined the link retries; a tailnet that cannot be joined
                 // costs the link, not the node (ADR-0044). Joining is tried again until it

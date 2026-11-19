@@ -153,7 +153,7 @@ class BootLog {
                 { finish(joining, Kind.Ok, "Joined tailnet as ${hub.tailnetName} ($it, $took ms)") },
                 {
                     finish(joining, Kind.Failed, "Failed to join tailnet as ${hub.tailnetName}: ${it.message ?: it.javaClass.simpleName}")
-                    add(Kind.Info, "Check the hub's tailnet auth key in Settings, or retry")
+                    add(Kind.Info, "Retry, or in Settings › the hub, give a new auth key or forget this phone's tailnet identity")
                     state = State.Failed
                     return
                 },

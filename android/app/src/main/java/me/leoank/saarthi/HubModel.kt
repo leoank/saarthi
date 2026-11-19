@@ -413,14 +413,31 @@ class HubModel(app: Application) : AndroidViewModel(app) {
 
     /** Adds or replaces a hub. The first one becomes active; a change to the active one
      *  reconnects with it. */
-    fun saveHub(h: HubProfile) {
-        val at = hubs.indexOfFirst { it.id == h.id }
+    fun saveHub(saved: HubProfile) {
+        val at = hubs.indexOfFirst { it.id == saved.id }
+        // A new key is for a new login: with its state, the old identity would never use it.
+        val was = hubs.getOrNull(at)
+        val h = if (was != null && was.viaTailnet && saved.viaTailnet && was.tailnetKey != saved.tailnetKey) {
+            was.tailnetDir(getApplication()).deleteRecursively()
+            saved.freshTailnet()
+        } else saved
         if (at >= 0) hubs[at] = h else hubs.add(h)
         if (activeId == null || activeId == h.id) activate(h.id) else store.save(hubs, activeId)
     }
 
+    /** Forgets this phone's tailnet identity for a hub: the next connect joins as a new
+     *  device with the hub's key. The old device stays in the tailnet until removed there. */
+    fun forgetTailnet(id: String) {
+        val h = hubs.firstOrNull { it.id == id } ?: return
+        h.tailnetDir(getApplication()).deleteRecursively()
+        val fresh = h.freshTailnet()
+        hubs[hubs.indexOf(h)] = fresh
+        if (activeId == id) activate(id) else store.save(hubs, activeId)
+        say("A new tailnet identity for ${fresh.title}: it joins with the hub's key on the next connect")
+    }
+
     fun removeHub(id: String) {
-        hubs.firstOrNull { it.id == id }?.tailnetDir(getApplication())?.deleteRecursively()
+        hubs.firstOrNull { it.id == id }?.tailnetDirs(getApplication())?.forEach { it.deleteRecursively() }
         hubs.removeAll { it.id == id }
         if (activeId == id) activate(hubs.firstOrNull()?.id) else store.save(hubs, activeId)
     }

@@ -156,6 +156,7 @@ async fn main() -> Result<()> {
             hostname: cli.tailnet_hostname.clone(),
             authkey: key.map(saarthi_tailnet::AuthKey::File),
             ephemeral: false,
+            give_up_after: None,
         };
         // A tailnet that cannot be joined costs that tailnet, not the hub (ADR-0044).
         tokio::spawn(serve_tailnet(opts, cli.tailnet_port, hub.clone()));

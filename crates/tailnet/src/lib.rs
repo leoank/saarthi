@@ -34,6 +34,12 @@ pub struct Options {
     pub authkey: Option<AuthKey>,
     /// The tailnet removes the machine soon after it goes offline: for tests.
     pub ephemeral: bool,
+    /// How long a join may take before [`Tailnet::start`] gives up, or None to wait as long
+    /// as tsnet does. A join the tailnet will not let through without a person (a login,
+    /// an admin's approval) is given up within seconds either way when this is set. tsnet
+    /// cannot be stopped mid-join, so the given-up join keeps running in the background:
+    /// a caller that sets this tries again with a new state directory, not the same one.
+    pub give_up_after: Option<std::time::Duration>,
 }
 
 /// Where an identity's auth key comes from.
@@ -151,9 +157,37 @@ impl Tailnet {
             .with_context(|| format!("tailnet {}", opts.name))?;
         let tailnet = Arc::new(Tailnet { name: opts.name.clone(), sd });
         let up = tailnet.clone();
-        tokio::task::spawn_blocking(move || up.sd.up())
-            .await?
-            .with_context(|| format!("joining tailnet {}", opts.name))?;
+        let mut joining = tokio::task::spawn_blocking(move || up.sd.up());
+        match opts.give_up_after {
+            None => joining.await?.with_context(|| format!("joining tailnet {}", opts.name))?,
+            Some(limit) => {
+                let deadline = tokio::time::Instant::now() + limit;
+                // When the tailnet first asked for a person, so a login with the key that is
+                // already under way gets a moment to finish.
+                let mut asked: Option<tokio::time::Instant> = None;
+                loop {
+                    tokio::select! {
+                        r = &mut joining => {
+                            r?.with_context(|| format!("joining tailnet {}", opts.name))?;
+                            break;
+                        }
+                        _ = tokio::time::sleep(std::time::Duration::from_millis(500)) => {
+                            if let Some(why) = waits_for_a_person(&tailnet.sd) {
+                                let since = *asked.get_or_insert_with(tokio::time::Instant::now);
+                                if since.elapsed() >= std::time::Duration::from_secs(3) {
+                                    bail!("joining tailnet {}: {why}", opts.name);
+                                }
+                            } else {
+                                asked = None;
+                            }
+                            if tokio::time::Instant::now() >= deadline {
+                                bail!("joining tailnet {}: no answer in {} s; the phone may be offline or the tailnet unreachable", opts.name, limit.as_secs());
+                            }
+                        }
+                    }
+                }
+            }
+        }
         tracing::info!(tailnet = %opts.name, hostname = %opts.hostname, ips = %tailnet.sd.ips().unwrap_or_default(), "on the tailnet");
         Ok(tailnet)
     }
@@ -238,6 +272,20 @@ impl Tailnet {
         let me = self.clone();
         let status = tokio::task::spawn_blocking(move || me.sd.status()).await.ok()?.ok()?;
         peer_in(&status, addr)
+    }
+}
+
+/// Why a join is stuck waiting for a person, from tsnet's status: a login it cannot do with
+/// the key it has, or an admin's approval. None while it is getting on with it.
+fn waits_for_a_person(sd: &ffi::Server) -> Option<&'static str> {
+    let status = sd.status().ok()?;
+    match status["BackendState"].as_str()? {
+        "NeedsLogin" if status["AuthURL"].as_str().is_some_and(|u| !u.is_empty()) => Some(
+            "the tailnet wants this device to log in again: its auth key was not accepted (revoked, expired or used up) \
+             or the device was removed; forget this device's tailnet identity and join with a new key",
+        ),
+        "NeedsMachineAuth" => Some("the tailnet's admin has to approve this device first"),
+        _ => None,
     }
 }
 
@@ -355,9 +403,33 @@ mod tests {
             hostname: "saarthi-test".into(),
             authkey: None,
             ephemeral: true,
+            give_up_after: None,
         })
         .await
         .unwrap_err();
         assert!(format!("{err:#}").contains("no auth key"), "{err:#}");
+    }
+
+    /// Against Tailscale's control plane, so not in the default run: a join whose key the
+    /// tailnet refuses, with a limit set, ends with why instead of waiting for ever.
+    #[tokio::test(flavor = "multi_thread")]
+    #[ignore = "needs the network"]
+    async fn a_refused_join_is_given_up_with_why() {
+        let dir = tempfile::tempdir().unwrap();
+        let started = std::time::Instant::now();
+        let err = Tailnet::start(Options {
+            name: "refused".into(),
+            dir: dir.path().join("id"),
+            hostname: "saarthi-refused-test".into(),
+            authkey: Some(AuthKey::Value("tskey-auth-kNotARealKey-0000000000000000000000000000000000".into())),
+            ephemeral: true,
+            give_up_after: Some(std::time::Duration::from_secs(30)),
+        })
+        .await
+        .err()
+        .expect("a made-up key is refused");
+        let took = started.elapsed();
+        eprintln!("given up after {took:?}: {err:#}");
+        assert!(took < std::time::Duration::from_secs(35), "took {took:?}");
     }
 }

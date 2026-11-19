@@ -225,6 +225,7 @@ fun SettingsScreen(model: HubModel, snackbar: SnackbarHostState, back: (() -> Un
             dismiss = { adding = false; editing = null },
             save = { model.saveHub(it); adding = false; editing = null },
             delete = editing?.let { h -> { model.removeHub(h.id); editing = null } },
+            forgetTailnet = editing?.let { h -> { model.forgetTailnet(h.id); editing = null } },
         )
     }
 }
@@ -296,6 +297,7 @@ private fun HubEditor(
     save: (HubProfile) -> Unit,
     delete: (() -> Unit)?,
     isNew: Boolean = initial == null,
+    forgetTailnet: (() -> Unit)? = null,
 ) {
     var name by remember { mutableStateOf(initial?.name ?: "") }
     var address by remember { mutableStateOf(initial?.address ?: "") }
@@ -308,7 +310,9 @@ private fun HubEditor(
     val draft = HubProfile(
         id = initial?.id ?: java.util.UUID.randomUUID().toString(), name = name.trim(), address = address.trim(), token = token.trim(),
         tailnetKey = tailnetKey.trim(), tailnetHost = tailnetHost.trim(),
+        tailnetEpoch = initial?.tailnetEpoch ?: 0,
     )
+    var confirmForget by remember { mutableStateOf(false) }
 
     Dialog(
         onDismissRequest = dismiss,
@@ -419,6 +423,16 @@ private fun HubEditor(
                         modifier = Modifier.fillMaxWidth(),
                     )
                 }
+                if (forgetTailnet != null && initial?.viaTailnet == true) {
+                    TextButton(onClick = { confirmForget = true }) { Text("Forget this phone's tailnet identity") }
+                    Text(
+                        "When joining fails (the key was revoked, or the device removed or expired), the phone " +
+                            "joins again as a new device with the key above. A changed key does this by itself.",
+                        style = MaterialTheme.typography.bodySmall,
+                        color = MaterialTheme.colorScheme.onSurfaceVariant,
+                        modifier = Modifier.padding(horizontal = 12.dp),
+                    )
+                }
                 if (delete != null) {
                     TextButton(onClick = { confirmDelete = true }) {
                         Text("Remove this hub", color = MaterialTheme.colorScheme.error)
@@ -427,6 +441,21 @@ private fun HubEditor(
                 Spacer(Modifier.height(24.dp))
             }
         }
+    }
+    if (confirmForget && forgetTailnet != null) {
+        AlertDialog(
+            onDismissRequest = { confirmForget = false },
+            title = { Text("Forget the tailnet identity?") },
+            text = {
+                Text(
+                    "This phone joins ${initial?.title}'s tailnet again as a new device, with the auth key saved here. " +
+                        "The old device stays in the tailnet until you remove it in the admin console; until then " +
+                        "the new one may get a name with -1 after it."
+                )
+            },
+            confirmButton = { TextButton(onClick = { confirmForget = false; forgetTailnet() }) { Text("Forget") } },
+            dismissButton = { TextButton(onClick = { confirmForget = false }) { Text("Cancel") } },
+        )
     }
     if (confirmDelete && delete != null) {
         AlertDialog(

@@ -30,6 +30,10 @@ data class HubProfile(
     val tailnetKey: String = "",
     /** This phone's device name on the hub's tailnet. */
     val tailnetHost: String = "",
+    /** When this phone last took a fresh tailnet identity for the hub, or 0 for its first:
+     *  names the identity's state directory. A fresh identity logs in again with the key;
+     *  the old one's directory is left to a join tsnet cannot stop, if one is still running. */
+    val tailnetEpoch: Long = 0,
 ) {
     /** The address's host, for a hub without a name and for resolving. */
     val host: String
@@ -42,7 +46,15 @@ data class HubProfile(
         get() = tailnetKey.isNotBlank()
 
     /** Where this hub's tailnet identity keeps its state. */
-    fun tailnetDir(context: Context): File = File(context.filesDir, "tailnet/$id")
+    fun tailnetDir(context: Context): File =
+        File(context.filesDir, if (tailnetEpoch == 0L) "tailnet/$id" else "tailnet/$id-$tailnetEpoch")
+
+    /** Every state directory this hub's identities have had. */
+    fun tailnetDirs(context: Context): List<File> =
+        File(context.filesDir, "tailnet").listFiles { f -> f.name == id || f.name.startsWith("$id-") }?.toList().orEmpty()
+
+    /** The same hub with a new tailnet identity, which logs in again with the key. */
+    fun freshTailnet(): HubProfile = copy(tailnetEpoch = System.currentTimeMillis())
 
     /** This phone's device name on the hub's tailnet. */
     val tailnetName: String
@@ -85,6 +97,7 @@ class HubStore(private val prefs: SharedPreferences) {
                     o.getString("id"), o.optString("name"), o.getString("address"), o.getString("token"),
                     tailnetKey = o.optString("tailnet_key").takeIf { it.isNotEmpty() }?.let { Sealed.open(it) }.orEmpty(),
                     tailnetHost = o.optString("tailnet_host"),
+                    tailnetEpoch = o.optLong("tailnet_epoch"),
                 )
             }
         }.getOrDefault(emptyList())
@@ -100,7 +113,9 @@ class HubStore(private val prefs: SharedPreferences) {
         val arr = JSONArray()
         for (h in hubs) {
             val o = JSONObject().put("id", h.id).put("name", h.name).put("address", h.address).put("token", h.token)
-            if (h.viaTailnet) o.put("tailnet_key", Sealed.seal(h.tailnetKey)).put("tailnet_host", h.tailnetHost)
+            if (h.viaTailnet) {
+                o.put("tailnet_key", Sealed.seal(h.tailnetKey)).put("tailnet_host", h.tailnetHost).put("tailnet_epoch", h.tailnetEpoch)
+            }
             arr.put(o)
         }
         val current = hubs.firstOrNull { it.id == active }

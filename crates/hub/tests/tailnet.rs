@@ -32,6 +32,7 @@ async fn a_node_links_over_the_tailnet_and_the_hub_records_who_it_is() {
             hostname: host.to_string(),
             authkey: Some(saarthi_tailnet::AuthKey::File(key.clone().into())),
             ephemeral: true,
+            give_up_after: None,
         })
     };
     let (hub_tailnet, node_tailnet) = tokio::join!(start("home", &hub_host), start("hub", &node_host));
