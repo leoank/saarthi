@@ -380,10 +380,11 @@ impl TerminalHandle {
         self.send(saarthi_proto::node::v1::TerminalIn { input: bytes, ..Default::default() });
     }
 
-    /// The window's new size in cells.
-    pub fn resize(&self, cols: u32, rows: u32) {
+    /// The window's new size in cells, and in pixels for programs that draw images (0 if
+    /// unknown).
+    pub fn resize(&self, cols: u32, rows: u32, width_px: u32, height_px: u32) {
         if cols > 0 && rows > 0 {
-            self.send(saarthi_proto::node::v1::TerminalIn { cols, rows, ..Default::default() });
+            self.send(saarthi_proto::node::v1::TerminalIn { cols, rows, width_px, height_px, ..Default::default() });
         }
     }
 
@@ -919,11 +920,19 @@ impl Hub {
         node_id: String,
         cols: u32,
         rows: u32,
+        width_px: u32,
+        height_px: u32,
         listener: Arc<dyn TerminalListener>,
     ) -> Result<Arc<TerminalHandle>, CoreError> {
         let (up, up_rx) = tokio::sync::mpsc::unbounded_channel();
         let size = saarthi_proto::node::v1::TerminalIn { cols, rows, ..Default::default() };
         let _ = up.send(TerminalUp { node_id, r#in: Some(size) });
+        // The hub opens the shell at the first message's cells; the pixels follow as a
+        // resize, which the hub passes on as it is.
+        if width_px > 0 && height_px > 0 {
+            let px = saarthi_proto::node::v1::TerminalIn { cols, rows, width_px, height_px, ..Default::default() };
+            let _ = up.send(TerminalUp { node_id: String::new(), r#in: Some(px) });
+        }
         let mut stream = self
             .client
             .clone()

@@ -10,6 +10,10 @@ import android.view.inputmethod.BaseInputConnection
 import android.view.inputmethod.EditorInfo
 import android.view.inputmethod.InputConnection
 import android.view.inputmethod.InputMethodManager
+import androidx.compose.foundation.gestures.awaitFirstDown
+import androidx.compose.foundation.gestures.awaitEachGesture
+import androidx.compose.ui.input.pointer.pointerInput
+import androidx.compose.ui.geometry.Offset
 import androidx.activity.findViewTreeOnBackPressedDispatcherOwner
 import androidx.compose.foundation.Canvas
 import androidx.compose.foundation.background
@@ -86,7 +90,8 @@ class Shell(val id: Int, val nodeId: String, val nodeName: String) {
         synchronized(this) { vt = v }
         this.cols = cols
         this.rows = rows
-        val h = model.openTerminal(nodeId, cols, rows, object : TerminalListener {
+        // The pixels are the terminal's: a cell's whole pixels times the cells.
+        val h = model.openTerminal(nodeId, cols, rows, cols * cellW, rows * cellH, object : TerminalListener {
             override fun onOutput(bytes: ByteArray) {
                 synchronized(this@Shell) {
                     if (vt != v) return
@@ -121,14 +126,42 @@ class Shell(val id: Int, val nodeId: String, val nodeName: String) {
         }
         this.cols = cols
         this.rows = rows
-        handle?.resize(cols.toUInt(), rows.toUInt())
+        handle?.resize(cols.toUInt(), rows.toUInt(), (cols * cellW).toUInt(), (rows * cellH).toUInt())
     }
 
-    fun input(bytes: ByteArray) = handle?.input(bytes)
+    /** Typing returns the view to the bottom, as a terminal does. */
+    fun input(bytes: ByteArray) {
+        if (scrolled) scroll(0)
+        handle?.input(bytes)
+    }
+
+    /** Whether the view is up in the scrollback. */
+    @Volatile private var scrolled = false
+
+    /** Moves through the scrollback, up negative; 0 back to the bottom. */
+    fun scroll(rows: Int) = synchronized(this) {
+        if (vt == 0L) return
+        Vt.scroll(vt, rows)
+        scrolled = rows < 0 || rows > 0 && scrolled
+        if (rows == 0) scrolled = false
+    }
+
+    /** What the program asked of the screen ([Vt.MOUSE], [Vt.ALTERNATE]). */
+    fun state(): Int = synchronized(this) { if (vt == 0L) 0 else Vt.state(vt) }
+
+    /** A mouse event the program asked for, sent to it; false when it asked for none. */
+    fun mouse(action: Int, button: Int, x: Float, y: Float, width: Int, height: Int): Boolean {
+        val bytes = synchronized(this) { if (vt == 0L) null else Vt.mouse(vt, action, button, x, y, width, height) } ?: return false
+        handle?.input(bytes)
+        return true
+    }
+
+    /** A Kitty image's pixels, `{width, height, ARGB...}`. */
+    fun imagePixels(id: Int): IntArray? = synchronized(this) { if (vt == 0L) null else Vt.imagePixels(vt, id) }
 
     /** Copies the screen out for drawing; false when nothing changed. */
-    fun snapshot(cells: IntArray, meta: IntArray, force: Boolean): Boolean = synchronized(this) {
-        vt != 0L && Vt.snapshot(vt, cells, meta, force)
+    fun snapshot(cells: IntArray, meta: IntArray, images: IntArray, force: Boolean): Boolean = synchronized(this) {
+        vt != 0L && Vt.snapshot(vt, cells, meta, images, force)
     }
 
     /** A new shell in place of an ended one. */
@@ -188,13 +221,9 @@ fun TerminalScreen(model: HubModel, shell: Shell, back: () -> Unit, close: () ->
                     }
                 }
             }
-            Box(
-                Modifier.weight(1f).fillMaxWidth().clickable(
-                    interactionSource = remember { MutableInteractionSource() },
-                    indication = null,
-                ) { keys?.show() },
-            ) {
-                TerminalCanvas(model, shell)
+            Box(Modifier.weight(1f).fillMaxWidth()) {
+                // A tap the program does not take brings the keyboard back.
+                TerminalCanvas(model, shell, tapped = { keys?.show() })
                 KeyInput({ keys = it }) { key(it) }
             }
             // The keys a phone keyboard lacks, as the owner arranged them.
@@ -306,11 +335,19 @@ private fun KeyInput(made: (KeyView) -> Unit, typed: (String) -> Unit) {
     )
 }
 
+/** The character a program prints where a piece of a Kitty image goes (Unicode placeholders). */
+private const val KITTY_PLACEHOLDER = 0x10EEEE
+
 /** The terminal itself: sized to the space it has, the shell opened at that size the first
- *  time, resized after, and drawn each frame its screen changed. Leaving it leaves the
- *  shell running. */
+ *  time, resized after, and drawn each frame its screen changed, with the images programs
+ *  put on it (Kitty graphics). Leaving it leaves the shell running.
+ *
+ *  Touch, as Termux has it: when the program asked for mouse reports, a tap is a click
+ *  where it landed and a vertical swipe turns the wheel; otherwise a tap is [tapped], and a
+ *  swipe moves through the scrollback, or sends the arrow keys on the alternate screen
+ *  (`less`, `man`), a cell's height at a time. */
 @Composable
-private fun TerminalCanvas(model: HubModel, shell: Shell) {
+private fun TerminalCanvas(model: HubModel, shell: Shell, tapped: () -> Unit) {
     val density = LocalDensity.current
     val paint = remember {
         Paint(Paint.ANTI_ALIAS_FLAG).apply {
@@ -328,7 +365,15 @@ private fun TerminalCanvas(model: HubModel, shell: Shell) {
     val rows = (size and 0xffffffffL).toInt().let { if (it == 0) 0 else (it / cellH).toInt().coerceAtLeast(1) }
     var frame by remember { mutableIntStateOf(0) }
     val cells = remember(cols, rows) { IntArray(cols * rows * 4) }
-    val meta = remember { IntArray(7) }
+    val meta = remember { IntArray(8) }
+    val images = remember { IntArray(Vt.IMAGE_INTS * 32) }
+    // Each image's bitmap, by id, with the generation it was made from.
+    val bitmaps = remember { HashMap<Int, Pair<Int, android.graphics.Bitmap>>() }
+    val src = remember { android.graphics.Rect() }
+    val dst = remember { android.graphics.RectF() }
+    // The terminal counts whole pixels a cell; the canvas draws cells at their exact width.
+    val sx = cellW / cellW.toInt()
+    val sy = cellH / cellH.toInt()
 
     // Opened the first time the canvas has its size (and again after Open again); resized
     // whenever the size changes.
@@ -344,15 +389,74 @@ private fun TerminalCanvas(model: HubModel, shell: Shell) {
         var first = true
         while (true) {
             withFrameNanos { }
-            if (shell.cols == cols && shell.rows == rows && shell.snapshot(cells, meta, first)) {
+            if (shell.cols == cols && shell.rows == rows && shell.snapshot(cells, meta, images, first)) {
                 first = false
                 frame++
             }
         }
     }
 
+    val now by rememberUpdatedState(tapped)
+    // One vertical step of a swipe: finger down shows what is above.
+    fun step(up: Boolean, at: Offset) {
+        val state = shell.state()
+        val w = cols * cellW.toInt()
+        val h = rows * cellH.toInt()
+        when {
+            state and Vt.MOUSE != 0 -> shell.mouse(0, if (up) 4 else 5, at.x / sx, at.y / sy, w, h)
+            state and Vt.ALTERNATE != 0 -> shell.input((if (up) "\u001b[A" else "\u001b[B").toByteArray())
+            else -> shell.scroll(if (up) -1 else 1)
+        }
+    }
+    fun tap(at: Offset) {
+        val w = cols * cellW.toInt()
+        val h = rows * cellH.toInt()
+        val clicked = shell.state() and Vt.MOUSE != 0 &&
+            shell.mouse(0, 1, at.x / sx, at.y / sy, w, h) &&
+            shell.mouse(1, 1, at.x / sx, at.y / sy, w, h)
+        if (!clicked) now()
+    }
+    // Drawn from the last snapshot: images below the text first, those above it last.
+    fun drawImages(c: android.graphics.Canvas, above: Boolean) {
+        for (i in 0 until meta[7]) {
+            val e = i * Vt.IMAGE_INTS
+            if ((images[e + 1] == Vt.ABOVE_TEXT) != above) continue
+            val id = images[e]
+            val gen = images[e + 11]
+            val bmp = bitmaps[id]?.takeIf { it.first == gen }?.second ?: run {
+                val px = shell.imagePixels(id) ?: return@run null
+                android.graphics.Bitmap.createBitmap(px, 2, px[0], px[0], px[1], android.graphics.Bitmap.Config.ARGB_8888)
+                    .also { b -> bitmaps.put(id, gen to b)?.second?.recycle() }
+            } ?: continue
+            src.set(images[e + 7], images[e + 8], images[e + 7] + images[e + 9], images[e + 8] + images[e + 10])
+            dst.set(images[e + 3] * sx, images[e + 4] * sy, (images[e + 3] + images[e + 5]) * sx, (images[e + 4] + images[e + 6]) * sy)
+            c.drawBitmap(bmp, src, dst, null)
+        }
+    }
+
     Canvas(Modifier.fillMaxSize().clipToBounds().background(Color(0xff1e1e1e)).onSizeChanged {
         size = (it.width.toLong() shl 32) or it.height.toLong()
+    }.pointerInput(shell, cols, rows) {
+        awaitEachGesture {
+            val down = awaitFirstDown()
+            var moved = false
+            var pending = 0f
+            while (true) {
+                val e = awaitPointerEvent()
+                val ch = e.changes.firstOrNull { it.id == down.id } ?: break
+                if (!ch.pressed) break
+                if (!moved && (ch.position - down.position).getDistance() > viewConfiguration.touchSlop) moved = true
+                if (moved) {
+                    pending += ch.position.y - ch.previousPosition.y
+                    ch.consume()
+                    while (kotlin.math.abs(pending) >= cellH) {
+                        step(pending > 0, ch.position)
+                        pending -= if (pending > 0) cellH else -cellH
+                    }
+                }
+            }
+            if (!moved) tap(down.position)
+        }
     }) {
         frame // read, so a new frame redraws
         val c = drawContext.canvas.nativeCanvas
@@ -360,6 +464,7 @@ private fun TerminalCanvas(model: HubModel, shell: Shell) {
         val dfg = 0xff000000.toInt() or meta[5]
         val dbg = 0xff000000.toInt() or meta[6]
         c.drawColor(dbg)
+        drawImages(c, above = false)
         val sb = StringBuilder(cols)
         for (y in 0 until minOf(rows, meta[1])) {
             val top = y * cellH
@@ -376,7 +481,8 @@ private fun TerminalCanvas(model: HubModel, shell: Shell) {
                     val a = (y * cols + end) * 4
                     if (cells[a + 1] != fg0 || cells[a + 2] != bg0 || cells[a + 3] != bits0) break
                     val cp = cells[a]
-                    if (cp == 0) sb.append(' ') else sb.appendCodePoint(cp)
+                    // A Kitty image placeholder cell shows its piece of an image, drawn above.
+                    if (cp == 0 || cp == KITTY_PLACEHOLDER) sb.append(' ') else sb.appendCodePoint(cp)
                     end++
                 }
                 var fg = if (fg0 == -1) dfg else 0xff000000.toInt() or fg0
@@ -397,6 +503,7 @@ private fun TerminalCanvas(model: HubModel, shell: Shell) {
                 x = end
             }
         }
+        drawImages(c, above = true)
         if (meta[4] == 1) {
             fill.color = 0x99ffffff.toInt()
             c.drawRect(meta[2] * cellW, meta[3] * cellH, (meta[2] + 1) * cellW, (meta[3] + 1) * cellH, fill)

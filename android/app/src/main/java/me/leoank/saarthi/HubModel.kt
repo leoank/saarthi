@@ -634,13 +634,13 @@ class HubModel(app: Application) : AndroidViewModel(app) {
     }
 
     /** Opens a shell on a node (ADR-0054); null, with the listener told why, when it cannot. */
-    suspend fun openTerminal(nodeId: String, cols: Int, rows: Int, listener: TerminalListener): TerminalHandle? {
+    suspend fun openTerminal(nodeId: String, cols: Int, rows: Int, widthPx: Int, heightPx: Int, listener: TerminalListener): TerminalHandle? {
         val h = hub ?: run {
             listener.onEnded("Not connected to the hub")
             return null
         }
         return try {
-            h.terminal(nodeId, cols.toUInt(), rows.toUInt(), listener)
+            h.terminal(nodeId, cols.toUInt(), rows.toUInt(), widthPx.toUInt(), heightPx.toUInt(), listener)
         } catch (e: kotlinx.coroutines.CancellationException) {
             throw e
         } catch (e: Exception) {

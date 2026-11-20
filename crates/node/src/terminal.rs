@@ -92,7 +92,14 @@ pub async fn open(api: Arc<HubApi>, open: OpenTerminal, shell: Option<String>) {
             m = down.message() => match m {
                 Ok(Some(m)) => {
                     if m.cols > 0 && m.rows > 0 {
-                        let _ = master.resize(PtySize { rows: m.rows as u16, cols: m.cols as u16, pixel_width: 0, pixel_height: 0 });
+                        // With the pixels, which programs that draw images read (yazi).
+                        let px = |v: u32| u16::try_from(v).unwrap_or(0);
+                        let _ = master.resize(PtySize {
+                            rows: m.rows as u16,
+                            cols: m.cols as u16,
+                            pixel_width: px(m.width_px),
+                            pixel_height: px(m.height_px),
+                        });
                     }
                     if !m.input.is_empty() && writer.write_all(&m.input).and_then(|()| writer.flush()).is_err() {
                         break None;

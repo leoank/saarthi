@@ -122,6 +122,8 @@ message TerminalIn {
   bytes input = 1;
   uint32 cols = 2;              // with rows, a resize; 0 when the size is unchanged
   uint32 rows = 3;
+  uint32 width_px = 4;          // with a resize, the window's size in pixels, which
+  uint32 height_px = 5;         // programs drawing images read from the PTY; 0 if unknown
 }
 
 // Up a terminal: the shell's output, and once, why it ended.
