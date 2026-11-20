@@ -1,5 +1,13 @@
 package me.leoank.saarthi
 
+import androidx.compose.ui.platform.LocalContext
+import android.Manifest
+import android.content.pm.PackageManager
+import androidx.activity.compose.rememberLauncherForActivityResult
+import androidx.activity.result.contract.ActivityResultContracts
+import androidx.core.content.ContextCompat
+import androidx.compose.material.icons.filled.Mic
+import androidx.compose.material.icons.filled.MicNone
 import kotlin.math.roundToInt
 import uniffi.saarthi_core.ModelInUse
 import uniffi.saarthi_core.modelName
@@ -1322,6 +1330,27 @@ private fun PromptBar(
     // outside (a draft restored, the bar cleared once sent) puts the cursor at the end.
     var field by remember { mutableStateOf(TextFieldValue(text, TextRange(text.length))) }
     if (field.text != text) field = TextFieldValue(text, TextRange(text.length))
+    // Dictation (ADR-0070): the words land at the cursor, never sent by themselves.
+    val dictation = rememberDictation { words ->
+        val (t, cursor) = insertWords(field.text, field.selection.start, words)
+        field = TextFieldValue(t, TextRange(cursor))
+        onText(t)
+    }
+    val context = LocalContext.current
+    val askMic = rememberLauncherForActivityResult(ActivityResultContracts.RequestPermission()) { granted ->
+        if (granted) dictation.start()
+    }
+    fun mic() = when {
+        dictation.listening -> dictation.stop()
+        ContextCompat.checkSelfPermission(context, Manifest.permission.RECORD_AUDIO) == PackageManager.PERMISSION_GRANTED -> dictation.start()
+        else -> askMic.launch(Manifest.permission.RECORD_AUDIO)
+    }
+    LaunchedEffect(dictation.problem) {
+        if (dictation.problem != null) {
+            delay(4000)
+            dictation.clearProblem()
+        }
+    }
     Column(Modifier.navigationBarsPadding().imePadding().padding(horizontal = 12.dp, vertical = 8.dp)) {
         // One line on the session's state, where it changes what Send does.
         val (state, tint) = when {
@@ -1393,7 +1422,28 @@ private fun PromptBar(
                 verticalAlignment = Alignment.CenterVertically,
                 modifier = Modifier.fillMaxWidth().dashedTop().padding(start = 6.dp, end = 6.dp, top = 5.dp, bottom = 5.dp),
             ) {
-                Spacer(Modifier.weight(1f))
+                if (dictation.available && !outgoing) {
+                    MicButton(dictation.listening, dictation.level, ::mic)
+                    Spacer(Modifier.width(6.dp))
+                }
+                // While listening, the words so far; after a try that gave nothing, why.
+                val heard = when {
+                    dictation.listening -> dictation.partial.ifEmpty { "listening…" }
+                    else -> dictation.problem
+                }
+                Box(Modifier.weight(1f)) {
+                    heard?.let {
+                        Text(
+                            it,
+                            style = MaterialTheme.typography.bodySmall,
+                            fontStyle = FontStyle.Italic,
+                            color = if (dictation.listening) Flame.Soft else Flame.Dim,
+                            maxLines = 1,
+                            overflow = TextOverflow.Ellipsis,
+                            modifier = Modifier.padding(end = 8.dp),
+                        )
+                    }
+                }
                 modelInUse?.takeIf { it.label.isNotEmpty() }?.let {
                     ModelChip(it, pickModel)
                     Spacer(Modifier.width(8.dp))
@@ -1424,6 +1474,33 @@ private fun PromptBar(
 }
 
 private val ROUND_BUTTON = 36.dp
+
+/** The mic: dim at rest; listening, amber, with a ring that swells with the voice. */
+@Composable
+private fun MicButton(listening: Boolean, level: Float, onClick: () -> Unit) {
+    Box(
+        contentAlignment = Alignment.Center,
+        modifier = Modifier
+            .size(ROUND_BUTTON)
+            .clip(RoundedCornerShape(4.dp))
+            .then(if (listening) Modifier.background(Flame.soft(Flame.Hot, 0.12f)) else Modifier)
+            .clickable(role = androidx.compose.ui.semantics.Role.Button, onClick = onClick),
+    ) {
+        if (listening) {
+            Box(
+                Modifier
+                    .size(18.dp + 14.dp * level)
+                    .border(1.5.dp, Flame.soft(Flame.Hot, 0.35f + 0.5f * level), RoundedCornerShape(50)),
+            )
+        }
+        Icon(
+            if (listening) Icons.Filled.Mic else Icons.Filled.MicNone,
+            if (listening) "Stop dictating" else "Dictate",
+            tint = if (listening) Flame.Hot else Flame.Soft,
+            modifier = Modifier.size(20.dp),
+        )
+    }
+}
 
 /** A prompt the node holds until the turn ends: *Send now* hands it to Claude, which takes it
  *  at its next step; the cross drops it. */

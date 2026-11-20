@@ -84,6 +84,7 @@ spawns, with the owner's answers of 2026-11-07.
 | [ADR-0067](ADR-0067-a-node-serves-a-session-s-changes-through-yajna-serve.md) | A node serves a session's changes through yajna-serve | accepted |
 | [ADR-0068](ADR-0068-workspaces-in-a-dark-blue-flame-app.md) | Workspaces in a dark, blue-flame app | accepted |
 | [ADR-0069](ADR-0069-a-terminal-look.md) | A terminal look | accepted |
+| [ADR-0070](ADR-0070-dictation-with-android-s-recognizer.md) | Dictation with Android's recognizer | accepted |
 | [ADR-0072](ADR-0072-the-prompt-box-holds-its-tools.md) | The prompt box holds its tools | accepted |
 
 Each record:
