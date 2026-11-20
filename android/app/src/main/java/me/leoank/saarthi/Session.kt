@@ -1520,7 +1520,8 @@ private fun effortLabel(e: String): String = if (e == "xhigh") "Extra high" else
 
 /** The models a session can switch to, and what each is for. */
 private val MODELS = listOf(
-    Triple("opus", "opus", "Deepest reasoning, the slowest"),
+    Triple("fable", "fable", "The most capable, for the hardest work"),
+    Triple("opus", "opus", "Deep reasoning, for long careful work"),
     Triple("sonnet", "sonnet", "Fast and capable, for most work"),
     Triple("haiku", "haiku", "Quickest, for small edits"),
     Triple("default", "default", "What the account picks"),
