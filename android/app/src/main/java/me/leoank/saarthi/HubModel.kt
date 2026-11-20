@@ -660,9 +660,15 @@ class HubModel(app: Application) : AndroidViewModel(app) {
         done()
     }
 
-    /** A queued prompt handed to Claude now, which takes it at its next step, or dropped. */
-    fun unqueue(s: SessionInfo, q: QueuedPrompt, send: Boolean) =
-        withHub { noted(it.unqueue(s.nodeId, s.id, q.id, send)) }
+    /** A queued prompt handed to Claude now, which takes it at its next step, or dropped.
+     *  Sent, it shows with one tick until the transcript has it: the step Claude is in can
+     *  run for minutes (a long build), and without it nothing would show it went. */
+    fun unqueue(s: SessionInfo, q: QueuedPrompt, send: Boolean) = withHub {
+        val note = it.unqueue(s.nodeId, s.id, q.id, send)
+        val gone = note == "it was no longer queued"
+        if (send && !gone) sending.add(Sent(q.text, System.currentTimeMillis(), note.ifEmpty { "Sent · Claude takes it after the step it is in" }))
+        else noted(note)
+    }
 
     /** A prompt stays in the bar until the hub takes it, waiting out a reconnect for up to
      *  [SEND_WAIT_MS]; then it shows with one tick, and the transcript's echo turns it into
