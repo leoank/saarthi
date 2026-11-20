@@ -43,6 +43,8 @@ import androidx.compose.foundation.text.selection.SelectionContainer
 import androidx.compose.foundation.background
 import androidx.compose.foundation.clickable
 import androidx.compose.foundation.text.BasicTextField
+import androidx.compose.ui.text.TextRange
+import androidx.compose.ui.text.input.TextFieldValue
 import androidx.compose.foundation.interaction.DragInteraction
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Box
@@ -1296,6 +1298,9 @@ private fun Folded(label: String, summary: String?, tint: androidx.compose.ui.gr
     }
 }
 
+/** The prompt box (ADR-0072): the session's state on a line of its own above it, then a
+ *  box with `❯` and the text, and under a dashed rule its tools: the model chip, stop and
+ *  send on the right. Nothing sits over the state line, so it reads in full. */
 @Composable
 private fun PromptBar(
     text: String,
@@ -1313,66 +1318,60 @@ private fun PromptBar(
     send: () -> Unit,
     stop: () -> Unit,
 ) {
-    // Only the rounded input floats over the screen; no bar behind it.
-    Box {
-        Column(Modifier.navigationBarsPadding().imePadding().padding(horizontal = 12.dp, vertical = 8.dp)) {
-            // One line on the session's state, where it changes what Send does.
-            val (state, tint) = when {
-                outgoing && reconnecting -> "Waiting for the hub · sent once it is back, or left here after 45 s" to MaterialTheme.colorScheme.onSurfaceVariant
-                outgoing -> "Sending…" to MaterialTheme.colorScheme.onSurfaceVariant
-                notSent != null -> notSent to MaterialTheme.colorScheme.error
-                resuming -> "Ended · Send resumes it headless on its node, in place" to MaterialTheme.colorScheme.onSurfaceVariant
-                answering -> "Claude asks · tap an option, or type its number or your own answer" to MaterialTheme.colorScheme.tertiary
-                waiting -> "Waiting for you · answer the card above" to MaterialTheme.colorScheme.tertiary
-                !stoppable -> "Started outside saarthi run · Claude sees this as a message from another session · no stop from here" to MaterialTheme.colorScheme.onSurfaceVariant
-                busy -> "Claude is working · Queue holds a prompt for when this turn ends · the stop button interrupts" to MaterialTheme.colorScheme.onSurfaceVariant
-                else -> null to MaterialTheme.colorScheme.onSurfaceVariant
-            }
-            // The state line, with the model and effort on the right (phase item 18).
-            val chip = modelInUse?.takeIf { it.label.isNotEmpty() }
-            if (state != null || chip != null) {
-                Row(verticalAlignment = Alignment.CenterVertically, modifier = Modifier.fillMaxWidth().padding(bottom = 6.dp)) {
-                    Text(
-                        state.orEmpty(),
-                        style = MaterialTheme.typography.labelSmall,
-                        color = tint,
-                        maxLines = 2,
-                        overflow = TextOverflow.Ellipsis,
-                        modifier = Modifier.weight(1f).padding(start = 16.dp),
-                    )
-                    chip?.let { ModelChip(it, pickModel) }
-                }
-            }
-            // The composer: a rounded card with the text and the round buttons on one centre
-            // line while it is one line; as it grows, the buttons stay at the bottom.
-            Row(
-                verticalAlignment = Alignment.Bottom,
-                modifier = Modifier
-                    .fillMaxWidth()
-                    .background(Flame.S0, RoundedCornerShape(6.dp))
-                    .border(1.dp, Flame.LineStrong, RoundedCornerShape(6.dp))
-                    .padding(start = 12.dp, end = 6.dp, top = 6.dp, bottom = 6.dp),
-            ) {
-                // A shell's prompt (ADR-0069).
+    // The text with its cursor, so what is put in lands where the cursor is; a change from
+    // outside (a draft restored, the bar cleared once sent) puts the cursor at the end.
+    var field by remember { mutableStateOf(TextFieldValue(text, TextRange(text.length))) }
+    if (field.text != text) field = TextFieldValue(text, TextRange(text.length))
+    Column(Modifier.navigationBarsPadding().imePadding().padding(horizontal = 12.dp, vertical = 8.dp)) {
+        // One line on the session's state, where it changes what Send does.
+        val (state, tint) = when {
+            outgoing && reconnecting -> "Waiting for the hub · sent once it is back, or left here after 45 s" to MaterialTheme.colorScheme.onSurfaceVariant
+            outgoing -> "Sending…" to MaterialTheme.colorScheme.onSurfaceVariant
+            notSent != null -> notSent to MaterialTheme.colorScheme.error
+            resuming -> "Ended · Send resumes it headless on its node, in place" to MaterialTheme.colorScheme.onSurfaceVariant
+            answering -> "Claude asks · tap an option, or type its number or your own answer" to MaterialTheme.colorScheme.tertiary
+            waiting -> "Waiting for you · answer the card above" to MaterialTheme.colorScheme.tertiary
+            !stoppable -> "Started outside saarthi run · Claude sees this as a message from another session · no stop from here" to MaterialTheme.colorScheme.onSurfaceVariant
+            busy -> "Claude is working · Send queues it for when this turn ends · ■ interrupts" to MaterialTheme.colorScheme.onSurfaceVariant
+            else -> null to MaterialTheme.colorScheme.onSurfaceVariant
+        }
+        state?.let {
+            Text(
+                it,
+                style = MaterialTheme.typography.labelSmall,
+                color = tint,
+                maxLines = 2,
+                overflow = TextOverflow.Ellipsis,
+                modifier = Modifier.fillMaxWidth().padding(start = 4.dp, end = 4.dp, bottom = 6.dp),
+            )
+        }
+        Column(
+            Modifier
+                .fillMaxWidth()
+                .background(Flame.S0, RoundedCornerShape(6.dp))
+                .border(1.dp, Flame.LineStrong, RoundedCornerShape(6.dp)),
+        ) {
+            // A shell's prompt (ADR-0069), and the text after it.
+            Row(Modifier.padding(start = 12.dp, end = 12.dp, top = 4.dp)) {
                 Text(
                     "❯",
                     fontFamily = Mono,
                     fontWeight = FontWeight.Bold,
                     color = Flame.Blue,
                     style = MaterialTheme.typography.bodyLarge,
-                    modifier = Modifier.heightIn(min = ROUND_BUTTON).wrapContentHeight().padding(end = 10.dp),
+                    modifier = Modifier.padding(top = 8.dp, end = 10.dp),
                 )
                 BasicTextField(
-                    value = text,
-                    onValueChange = onText,
+                    value = field,
+                    onValueChange = { field = it; if (it.text != text) onText(it.text) },
                     readOnly = outgoing,
                     textStyle = MaterialTheme.typography.bodyLarge.copy(color = MaterialTheme.colorScheme.onSurface),
                     cursorBrush = SolidColor(MaterialTheme.colorScheme.primary),
                     maxLines = 6,
-                    modifier = Modifier.weight(1f).heightIn(min = ROUND_BUTTON),
-                    decorationBox = { field ->
-                        Box(Modifier.heightIn(min = ROUND_BUTTON).padding(vertical = 6.dp), contentAlignment = Alignment.CenterStart) {
-                            if (text.isEmpty()) {
+                    modifier = Modifier.weight(1f),
+                    decorationBox = { inner ->
+                        Box(Modifier.heightIn(min = 40.dp).padding(vertical = 8.dp)) {
+                            if (field.text.isEmpty()) {
                                 Text(
                                     when {
                                         resuming -> "Resume with a prompt"
@@ -1384,10 +1383,21 @@ private fun PromptBar(
                                     color = MaterialTheme.colorScheme.onSurfaceVariant,
                                 )
                             }
-                            field()
+                            inner()
                         }
                     },
                 )
+            }
+            // The tools, under a dashed rule.
+            Row(
+                verticalAlignment = Alignment.CenterVertically,
+                modifier = Modifier.fillMaxWidth().dashedTop().padding(start = 6.dp, end = 6.dp, top = 5.dp, bottom = 5.dp),
+            ) {
+                Spacer(Modifier.weight(1f))
+                modelInUse?.takeIf { it.label.isNotEmpty() }?.let {
+                    ModelChip(it, pickModel)
+                    Spacer(Modifier.width(8.dp))
+                }
                 if (stoppable) {
                     RoundButton(
                         onClick = stop,
@@ -1489,13 +1499,13 @@ private fun ModelChip(m: ModelInUse, pick: (() -> Unit)?) {
     Row(
         verticalAlignment = Alignment.CenterVertically,
         modifier = Modifier
-            .padding(end = 4.dp)
             .clip(RoundedCornerShape(4.dp))
             .background(Flame.S1)
             .border(1.dp, Flame.LineStrong, RoundedCornerShape(4.dp))
             .clickable(enabled = pick != null) { pick?.invoke() }
             .semantics { contentDescription = listOf(m.label, effortLabel(m.effort)).filter { it.isNotEmpty() }.joinToString(", ") }
-            .padding(horizontal = 7.dp, vertical = 3.dp),
+            .heightIn(min = ROUND_BUTTON)
+            .padding(horizontal = 9.dp),
     ) {
         Text("◢", fontFamily = Mono, fontSize = 10.sp, color = Flame.Core)
         Spacer(Modifier.width(5.dp))
