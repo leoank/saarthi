@@ -43,6 +43,9 @@ pub struct Hold {
     /// the hold at once, and for a spawned one, which has no terminal; bounded only so it
     /// ends before Claude Code's hook timeout.
     pub wrapped_duration: Duration,
+    /// Where the node saves photos sent with prompts (ADR-0071): a session's `Read` of one
+    /// saved for it is allowed without asking anyone.
+    pub upload_roots: Vec<std::path::PathBuf>,
 }
 
 #[derive(Clone)]
@@ -80,6 +83,14 @@ async fn hook(State(h): State<Hooks>, body: String) -> impl IntoResponse {
         .event(session_id, EventSource::Hook, name, body.clone())
         .await;
     let response = match (name, &h.hold) {
+        ("PermissionRequest", Some(hold))
+            if input["tool_name"] == "Read"
+                && input["tool_input"]["file_path"].as_str().is_some_and(|p| {
+                    crate::uploads::saved_for(std::path::Path::new(p), session_id, &hold.upload_roots)
+                }) =>
+        {
+            json!({"hookSpecificOutput": {"hookEventName": "PermissionRequest", "decision": {"behavior": "allow"}}}).to_string()
+        }
         ("PermissionRequest", Some(hold)) => {
             // A spawned session has no terminal to fall through to either (ADR-0034).
             let duration = if h.sessions.is_wrapped(session_id).await

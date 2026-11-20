@@ -471,6 +471,7 @@ pub async fn run(hub: &str, token: &str, cmd: Ctl) -> Result<()> {
                 node_id,
                 session_id,
                 text,
+                attachments: Vec::new(),
                 queue: false,
             };
             let r = c.inner.prompt(c.request(req)).await?.into_inner();

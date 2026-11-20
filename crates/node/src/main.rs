@@ -445,6 +445,9 @@ async fn serve(args: Serve) -> Result<()> {
                 pending: pending.clone(),
                 duration: Duration::from_secs(args.hold_secs),
                 wrapped_duration: Duration::from_secs(args.wrapped_hold_secs),
+                upload_roots: std::iter::once(saarthi_node::uploads::host_root(&home))
+                    .chain(spawner.profiles().all().filter_map(|p| p.state_dir.as_deref().map(saarthi_node::uploads::profile_root)))
+                    .collect(),
             });
             // Spawned sessions ask their questions through the hook port (ADR-0061).
             let questions = spawner.questions();

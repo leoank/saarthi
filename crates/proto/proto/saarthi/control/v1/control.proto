@@ -161,6 +161,7 @@ message PromptRequest {
   string session_id = 2;
   string text = 3;
   bool queue = 4;               // hold it while the session works (node Prompt.queue)
+  repeated saarthi.node.v1.Attachment attachments = 5;  // photos, saved on the node (ADR-0071)
 }
 
 message DeleteSessionRequest {

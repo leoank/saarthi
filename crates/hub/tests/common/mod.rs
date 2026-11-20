@@ -240,6 +240,7 @@ async fn start_node_full(
         pending: pending.clone(),
         duration: hold,
         wrapped_duration: hold,
+        upload_roots: Vec::new(),
     };
     let app = saarthi_node::hooks::router(outbox.clone(), sessions.clone(), Some(hold));
     tokio::spawn(async move { axum_serve(listener, app).await });

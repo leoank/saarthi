@@ -38,6 +38,17 @@
             </intent-filter>
         </activity>
 
+        <!-- Where the camera writes a photo for a prompt (ADR-0071). -->
+        <provider
+            android:name="androidx.core.content.FileProvider"
+            android:authorities="${applicationId}.files"
+            android:exported="false"
+            android:grantUriPermissions="true">
+            <meta-data
+                android:name="android.support.FILE_PROVIDER_PATHS"
+                android:resource="@xml/file_paths" />
+        </provider>
+
         <!-- UnifiedPush messages from the distributor (ADR-0026). -->
         <service
             android:name=".Push$Receiver"

@@ -166,6 +166,7 @@ async fn a_client_allows_and_answers_what_the_node_holds() {
         session_id: "s1".into(),
         text: "hi".into(),
         queue: false,
+        attachments: Vec::new(),
     };
     let r = c.prompt(req(prompt)).await.unwrap().into_inner();
     assert!(!r.ok && !r.error.is_empty());
@@ -276,6 +277,7 @@ async fn a_prompt_reaches_the_sessions_messaging_socket() {
         session_id: "s1".into(),
         text: "now run the linter".into(),
         queue: false,
+        attachments: Vec::new(),
     };
     let r = c.prompt(req(prompt)).await.unwrap().into_inner();
     assert!(r.ok, "{}", r.error);

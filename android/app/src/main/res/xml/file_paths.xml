@@ -1,0 +1,5 @@
+<?xml version="1.0" encoding="utf-8"?>
+<!-- Where the camera writes a photo for a prompt (ADR-0071). -->
+<paths>
+    <cache-path name="camera" path="camera/" />
+</paths>

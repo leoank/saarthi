@@ -208,6 +208,15 @@ message Prompt {
   // Held by the node while the session works, and delivered when it is next idle; the
   // queue goes out as the session's daemon `queue` event (phase PHS-20261117-f22kxe item 7).
   bool queue = 2;
+  // Photos from the app (ADR-0071): the node saves each where the session can read it and
+  // adds its path to the text, before the text is delivered or queued.
+  repeated Attachment attachments = 3;
+}
+
+// A file sent with a prompt, at most a few MB: its name as the phone had it, and its bytes.
+message Attachment {
+  string name = 1;
+  bytes data = 2;
 }
 
 // A queued prompt taken off the queue: delivered at once (Claude Code takes it at its next

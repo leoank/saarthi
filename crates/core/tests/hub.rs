@@ -126,6 +126,7 @@ async fn the_core_lists_watches_answers_and_streams() {
         pending: pending.clone(),
         duration: Duration::from_secs(30),
         wrapped_duration: Duration::from_secs(30),
+        upload_roots: Vec::new(),
     };
     let app = saarthi_node::hooks::router(outbox.clone(), sessions.clone(), Some(hold));
     tokio::spawn(async move { axum::serve(hooks_listener, app).await });

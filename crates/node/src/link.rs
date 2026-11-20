@@ -322,12 +322,15 @@ async fn act(cmd: &Command, parts: &Parts) -> CommandResult {
     let id = &cmd.session_id;
     let outcome = match &cmd.action {
         Some(command::Action::Resolve(r)) => pending.resolve(r).await.map(|()| String::new()),
-        Some(command::Action::Prompt(p)) if p.queue && sessions.busy(id).await => {
-            queue.push(id, &p.text).await;
-            queued = true;
-            Ok(String::new())
-        }
-        Some(command::Action::Prompt(p)) => deliver(sessions, spawner, wrappers, id, &p.text).await,
+        Some(command::Action::Prompt(p)) => match with_photos(sessions, spawner, id, p).await {
+            Err(e) => Err(e),
+            Ok(text) if p.queue && sessions.busy(id).await => {
+                queue.push(id, &text).await;
+                queued = true;
+                Ok(String::new())
+            }
+            Ok(text) => deliver(sessions, spawner, wrappers, id, &text).await,
+        },
         Some(command::Action::SetModel(m)) if !valid_model(&m.model) || !valid_effort(&m.effort) => {
             Err(format!("not a model or effort Claude Code takes: {:?} {:?}", m.model, m.effort))
         }
@@ -449,6 +452,26 @@ async fn terminate(sessions: &Sessions, id: &str) -> Result<String, String> {
 
 /// A model as `/model` and `set_model` take it: an alias or an id; nothing to type into a
 /// terminal beyond that.
+/// The prompt's text, with its photos saved where the session can read them and their paths
+/// added (ADR-0071).
+async fn with_photos(sessions: &Sessions, spawner: &Spawner, id: &str, p: &saarthi_proto::node::v1::Prompt) -> Result<String, String> {
+    if p.attachments.is_empty() {
+        return Ok(p.text.clone());
+    }
+    if id.is_empty() || !id.chars().all(|c| c.is_ascii_alphanumeric() || c == '-') {
+        return Err("not a session id".into());
+    }
+    let home = std::env::var_os("HOME").map(std::path::PathBuf::from).ok_or("the node has no HOME to save photos under")?;
+    let profile = sessions.profile(id).await;
+    let state = spawner.profiles().get(&profile).ok().flatten().and_then(|p| p.state_dir.clone());
+    let dir = crate::uploads::dir(&home, state.as_deref(), id);
+    let now = std::time::SystemTime::now().duration_since(std::time::UNIX_EPOCH).map(|d| d.as_millis() as u64).unwrap_or(0);
+    let (text, photos) = (p.text.clone(), p.attachments.clone());
+    tokio::task::spawn_blocking(move || crate::uploads::save(&dir, &text, &photos, now))
+        .await
+        .map_err(|e| e.to_string())?
+}
+
 fn valid_model(m: &str) -> bool {
     m.len() <= 64 && m.chars().all(|c| c.is_ascii_alphanumeric() || "-_.[]".contains(c))
 }

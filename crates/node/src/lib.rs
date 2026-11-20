@@ -20,4 +20,5 @@ pub mod sink;
 pub mod spawner;
 pub mod terminal;
 pub mod transcript;
+pub mod uploads;
 pub mod wrapper;

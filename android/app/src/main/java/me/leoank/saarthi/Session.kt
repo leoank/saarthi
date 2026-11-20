@@ -1,5 +1,13 @@
 package me.leoank.saarthi
 
+import android.net.Uri
+import androidx.activity.result.PickVisualMediaRequest
+import androidx.compose.foundation.Image
+import androidx.compose.foundation.horizontalScroll
+import androidx.compose.material.icons.filled.AddPhotoAlternate
+import androidx.compose.material.icons.filled.PhotoCamera
+import androidx.compose.material.icons.filled.PhotoLibrary
+import androidx.compose.ui.layout.ContentScale
 import androidx.compose.ui.platform.LocalContext
 import android.Manifest
 import android.content.pm.PackageManager
@@ -340,6 +348,9 @@ fun SessionScreen(
                             pickModel = if (s.wrapped || s.spawned) ({ pickModel = true }) else null,
                             reconnecting = model.reconnecting,
                             notSent = model.notSent["${s.nodeId}/${s.id}"],
+                            photos = model.photosOf(s),
+                            attachPhotos = { model.attach(s, it) },
+                            detachPhoto = { model.detach(s, it) },
                             send = {
                                 val answer = asked?.let { typedAnswer(it, text) }
                                 if (asked != null && answer != null) {
@@ -348,8 +359,15 @@ fun SessionScreen(
                                 } else model.prompt(s, text.trim()) { text = "" }
                             },
                             stop = {
-                                if (text.isBlank()) model.interrupt(s, null)
-                                else model.interrupt(s, text.trim()) { text = "" }
+                                when {
+                                    // Photos ride on a prompt only: interrupt, then send it.
+                                    model.photosOf(s).isNotEmpty() -> {
+                                        model.interrupt(s, null)
+                                        model.prompt(s, text.trim()) { text = "" }
+                                    }
+                                    text.isBlank() -> model.interrupt(s, null)
+                                    else -> model.interrupt(s, text.trim()) { text = "" }
+                                }
                             },
                         )
                     }
@@ -991,13 +1009,28 @@ private fun UserTurn(text: String, ticks: Int = 0, timeMs: Long? = null) {
                 .padding(start = 8.dp, end = 4.dp, top = 7.dp, bottom = 7.dp),
         ) {
             Text("❯ ", fontFamily = Mono, fontWeight = FontWeight.Bold, color = Flame.Agents, style = MaterialTheme.typography.bodyLarge)
-            Text(
-                found(text),
-                style = MaterialTheme.typography.bodyLarge,
-                fontFamily = if (text.startsWith("! ")) Mono else FontFamily.Default,
-                color = MaterialTheme.colorScheme.onSurface,
-                modifier = Modifier.weight(1f, fill = false),
-            )
+            // Photos the node saved and named in the text (ADR-0071) show as tags under it.
+            val (words, images) = remember(text) { splitImages(text) }
+            Column(Modifier.weight(1f, fill = false)) {
+                if (words.isNotEmpty()) {
+                    Text(
+                        found(words),
+                        style = MaterialTheme.typography.bodyLarge,
+                        fontFamily = if (words.startsWith("! ")) Mono else FontFamily.Default,
+                        color = MaterialTheme.colorScheme.onSurface,
+                    )
+                }
+                for (path in images) {
+                    Text(
+                        "▣ " + path.substringAfterLast('/').replace(Regex("^\\d+-\\d+-"), ""),
+                        style = MonoMeta,
+                        color = Flame.Soft,
+                        maxLines = 1,
+                        overflow = TextOverflow.Ellipsis,
+                        modifier = Modifier.padding(top = 4.dp).background(Flame.S2, RoundedCornerShape(3.dp)).padding(horizontal = 6.dp, vertical = 2.dp),
+                    )
+                }
+            }
             if (timeMs != null) {
                 Text(
                     clockTime(timeMs),
@@ -1016,6 +1049,16 @@ private fun UserTurn(text: String, ticks: Int = 0, timeMs: Long? = null) {
             }
         }
     }
+}
+
+/** A prompt's words, and the paths of the photos the node added after them as
+ *  `[Image: <path>]` lines (ADR-0071). */
+private fun splitImages(text: String): Pair<String, List<String>> {
+    val image = Regex("""^\[Image: (.+)]$""")
+    val lines = text.trimEnd().lines()
+    val tail = lines.takeLastWhile { image.matches(it.trim()) }
+    if (tail.isEmpty()) return text to emptyList()
+    return lines.dropLast(tail.size).joinToString("\n").trimEnd() to tail.map { image.find(it.trim())!!.groupValues[1] }
 }
 
 /** A small action under a turn: an icon and a word, quiet until tapped. */
@@ -1323,6 +1366,11 @@ private fun PromptBar(
     notSent: String? = null,
     modelInUse: ModelInUse? = null,
     pickModel: (() -> Unit)? = null,
+    /** Photos in the prompt (ADR-0071), and how more are added and one taken out; null
+     *  where a prompt takes none. */
+    photos: List<Attached> = emptyList(),
+    attachPhotos: ((List<Attached>) -> Unit)? = null,
+    detachPhoto: (Attached) -> Unit = {},
     send: () -> Unit,
     stop: () -> Unit,
 ) {
@@ -1344,6 +1392,18 @@ private fun PromptBar(
         dictation.listening -> dictation.stop()
         ContextCompat.checkSelfPermission(context, Manifest.permission.RECORD_AUDIO) == PackageManager.PERMISSION_GRANTED -> dictation.start()
         else -> askMic.launch(Manifest.permission.RECORD_AUDIO)
+    }
+    // Photos from the phone's picker or its camera, shrunk before they are shown.
+    val scope = rememberCoroutineScope()
+    var attachMenu by remember { mutableStateOf(false) }
+    fun took(uris: List<Uri>) {
+        val add = attachPhotos ?: return
+        scope.launch { add(uris.mapNotNull { attach(context, it) }) }
+    }
+    val pickPhotos = rememberLauncherForActivityResult(ActivityResultContracts.PickMultipleVisualMedia(4)) { took(it) }
+    var shot by remember { mutableStateOf<Uri?>(null) }
+    val takePhoto = rememberLauncherForActivityResult(ActivityResultContracts.TakePicture()) { ok ->
+        shot?.takeIf { ok }?.let { took(listOf(it)) }
     }
     LaunchedEffect(dictation.problem) {
         if (dictation.problem != null) {
@@ -1417,11 +1477,75 @@ private fun PromptBar(
                     },
                 )
             }
+            // The photos going with it, each with a cross to take it out.
+            if (photos.isNotEmpty()) {
+                Row(
+                    horizontalArrangement = Arrangement.spacedBy(8.dp),
+                    modifier = Modifier.fillMaxWidth().horizontalScroll(rememberScrollState()).padding(start = 12.dp, end = 12.dp, bottom = 8.dp),
+                ) {
+                    for (p in photos) {
+                        Box {
+                            Image(
+                                p.thumb,
+                                p.name,
+                                contentScale = ContentScale.Crop,
+                                modifier = Modifier.size(56.dp).clip(RoundedCornerShape(4.dp)).border(1.dp, Flame.LineStrong, RoundedCornerShape(4.dp)),
+                            )
+                            Box(
+                                contentAlignment = Alignment.Center,
+                                modifier = Modifier
+                                    .align(Alignment.TopEnd)
+                                    .padding(2.dp)
+                                    .size(20.dp)
+                                    .clip(RoundedCornerShape(50))
+                                    .background(Flame.Bg.copy(alpha = 0.8f))
+                                    .clickable(enabled = !outgoing) { detachPhoto(p) },
+                            ) {
+                                Icon(Icons.Filled.Close, "Take ${p.name} out", tint = Flame.Text, modifier = Modifier.size(13.dp))
+                            }
+                        }
+                    }
+                }
+            }
             // The tools, under a dashed rule.
             Row(
                 verticalAlignment = Alignment.CenterVertically,
                 modifier = Modifier.fillMaxWidth().dashedTop().padding(start = 6.dp, end = 6.dp, top = 5.dp, bottom = 5.dp),
             ) {
+                if (attachPhotos != null && !outgoing) {
+                    Box {
+                        Box(
+                            contentAlignment = Alignment.Center,
+                            modifier = Modifier
+                                .size(ROUND_BUTTON)
+                                .clip(RoundedCornerShape(4.dp))
+                                .clickable(role = androidx.compose.ui.semantics.Role.Button) { attachMenu = true },
+                        ) {
+                            Icon(Icons.Filled.AddPhotoAlternate, "Add a photo", tint = Flame.Soft, modifier = Modifier.size(20.dp))
+                        }
+                        DropdownMenu(attachMenu, onDismissRequest = { attachMenu = false }, containerColor = Flame.S1) {
+                            DropdownMenuItem(
+                                text = { Text("Photos", fontFamily = Mono) },
+                                leadingIcon = { Icon(Icons.Filled.PhotoLibrary, null) },
+                                onClick = {
+                                    attachMenu = false
+                                    pickPhotos.launch(PickVisualMediaRequest(ActivityResultContracts.PickVisualMedia.ImageOnly))
+                                },
+                            )
+                            DropdownMenuItem(
+                                text = { Text("Camera", fontFamily = Mono) },
+                                leadingIcon = { Icon(Icons.Filled.PhotoCamera, null) },
+                                onClick = {
+                                    attachMenu = false
+                                    val uri = cameraFile(context)
+                                    shot = uri
+                                    takePhoto.launch(uri)
+                                },
+                            )
+                        }
+                    }
+                    Spacer(Modifier.width(2.dp))
+                }
                 if (dictation.available && !outgoing) {
                     MicButton(dictation.listening, dictation.level, ::mic)
                     Spacer(Modifier.width(6.dp))
@@ -1461,7 +1585,7 @@ private fun PromptBar(
                 }
                 RoundButton(
                     onClick = send,
-                    enabled = text.isNotBlank() && !outgoing,
+                    enabled = (text.isNotBlank() || photos.isNotEmpty()) && !outgoing,
                     container = MaterialTheme.colorScheme.primary,
                     content = MaterialTheme.colorScheme.onPrimary,
                 ) {

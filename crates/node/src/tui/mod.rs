@@ -237,6 +237,7 @@ async fn call(c: &mut Client, action: Action) -> Result<String, String> {
                 node_id: node,
                 session_id: session,
                 text,
+                attachments: Vec::new(),
                 queue: false,
             };
             report(c.inner.prompt(c.request(req)).await, "sent")

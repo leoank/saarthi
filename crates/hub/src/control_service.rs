@@ -339,7 +339,11 @@ impl ControlService for Hub {
     ) -> Result<Response<CommandResponse>, Status> {
         self.client(&request)?;
         let r = request.into_inner();
-        let action = command::Action::Prompt(Prompt { text: r.text, queue: r.queue });
+        let action = command::Action::Prompt(Prompt {
+            text: r.text,
+            queue: r.queue,
+            attachments: r.attachments,
+        });
         Ok(response(
             self.live.command(&r.node_id, &r.session_id, action).await?,
         ))

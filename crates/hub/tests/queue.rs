@@ -102,6 +102,7 @@ async fn prompts_queued_while_a_session_works_go_when_it_is_idle() {
         node_id: node_id.clone(),
         session_id: id.clone(),
         text: text.into(),
+        attachments: Vec::new(),
         queue: true,
     };
     for text in ["then the docs", "and a changelog"] {

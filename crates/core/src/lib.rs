@@ -590,19 +590,25 @@ impl Hub {
     }
 
     /// Sends a prompt; with `queue`, the node holds it while the session works and it shows
-    /// in the session's queue instead (`on_queue`).
+    /// in the session's queue instead (`on_queue`). `photos` are saved on the node and their
+    /// paths added to the text (ADR-0071).
     pub async fn prompt(
         &self,
         node_id: String,
         session_id: String,
         text: String,
         queue: bool,
+        photos: Vec<Photo>,
     ) -> Result<PromptSent, CoreError> {
         let req = PromptRequest {
             node_id,
             session_id,
             text,
             queue,
+            attachments: photos
+                .into_iter()
+                .map(|p| saarthi_proto::node::v1::Attachment { name: p.name, data: p.data })
+                .collect(),
         };
         let r = self.client.clone().prompt(self.req(req)).await?.into_inner();
         let queued = r.queued;
@@ -1137,6 +1143,13 @@ fn notebooks(node_id: &str, body: &[u8]) -> Result<Vec<NotebookInfo>, CoreError>
         })
         .filter(|n| !n.namespace.is_empty() && n.url.starts_with('/'))
         .collect())
+}
+
+/// A photo sent with a prompt: its file name and its bytes, already shrunk by the app.
+#[derive(Debug, Clone, PartialEq, uniffi::Record)]
+pub struct Photo {
+    pub name: String,
+    pub data: Vec<u8>,
 }
 
 /// What became of a prompt: the node's note, and whether it was queued rather than sent.

@@ -228,6 +228,12 @@ impl Sessions {
         }
     }
 
+    /// The launch profile the session runs under; empty for the host or an unknown session.
+    pub async fn profile(&self, id: &str) -> String {
+        let entries = self.entries.lock().await;
+        entries.get(id).map(|e| e.session.profile.clone()).unwrap_or_default()
+    }
+
     /// The session's pid, once the registry has given it.
     pub async fn pid(&self, id: &str) -> Option<u32> {
         let entries = self.entries.lock().await;

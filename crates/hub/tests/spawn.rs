@@ -148,6 +148,7 @@ async fn a_client_spawns_prompts_and_kills_a_headless_session() {
         node_id: node.id.clone(),
         session_id: id.clone(),
         text: "and run them".into(),
+        attachments: Vec::new(),
         queue: false,
     };
     let r = c.prompt(req(prompt)).await.unwrap().into_inner();
