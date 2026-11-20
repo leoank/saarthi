@@ -17,6 +17,10 @@ mkdir -p android/app/src/main/res/font
 for w in Regular Medium SemiBold Bold; do
   install -m 644 "$JETBRAINS_MONO/JetBrainsMono-$w.ttf" "android/app/src/main/res/font/jetbrains_mono_$(echo $w | tr A-Z a-z).ttf"
 done
+# The terminal's face: its Nerd Font build, for the icons programs draw.
+for w in Regular Bold; do
+  install -m 644 "$JETBRAINS_MONO_NERD/JetBrainsMonoNerdFontMono-$w.ttf" "android/app/src/main/res/font/jetbrains_mono_nerd_$(echo $w | tr A-Z a-z).ttf"
+done
 cargo run --quiet -p uniffi-bindgen -- generate \
   --library target/aarch64-linux-android/release/libsaarthi_core.so \
   --language kotlin --no-format --out-dir android/app/build/generated/uniffi

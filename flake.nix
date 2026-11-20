@@ -249,6 +249,9 @@
             LIBGHOSTTY_VT_ANDROID = "${libghostty-vt-android}";
             # The app's monospace face (ADR-0069), copied into its resources by build-core.sh.
             JETBRAINS_MONO = "${pkgs.jetbrains-mono}/share/fonts/truetype";
+            # The terminal's face: the same, with the Nerd Font icons that yazi, starship
+            # and the like draw, each within a cell.
+            JETBRAINS_MONO_NERD = "${pkgs.nerd-fonts.jetbrains-mono}/share/fonts/truetype/NerdFonts/JetBrainsMono";
             ANDROID_HOME = sdk;
             ANDROID_SDK_ROOT = sdk;
             ANDROID_NDK_HOME = "${sdk}/ndk/${android.ndk-bundle.version}";

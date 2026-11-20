@@ -2,7 +2,6 @@ package me.leoank.saarthi
 
 import android.content.Context
 import android.graphics.Paint
-import android.graphics.Typeface
 import android.text.InputType
 import android.view.KeyEvent
 import android.view.View
@@ -56,6 +55,7 @@ import androidx.compose.ui.draw.clipToBounds
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.graphics.nativeCanvas
 import androidx.compose.ui.layout.onSizeChanged
+import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.platform.LocalDensity
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.viewinterop.AndroidView
@@ -349,13 +349,16 @@ private const val KITTY_PLACEHOLDER = 0x10EEEE
 @Composable
 private fun TerminalCanvas(model: HubModel, shell: Shell, tapped: () -> Unit) {
     val density = LocalDensity.current
+    val context = LocalContext.current
+    // JetBrains Mono's Nerd Font build, so the icons yazi and prompts draw are glyphs and
+    // not boxes; anything it lacks falls back to the phone's fonts.
     val paint = remember {
         Paint(Paint.ANTI_ALIAS_FLAG).apply {
-            typeface = Typeface.MONOSPACE
+            typeface = context.resources.getFont(R.font.jetbrains_mono_nerd_regular)
             textSize = with(density) { 12f * fontScale * this.density }
         }
     }
-    val bold = remember { Paint(paint).apply { typeface = Typeface.create(Typeface.MONOSPACE, Typeface.BOLD) } }
+    val bold = remember { Paint(paint).apply { typeface = context.resources.getFont(R.font.jetbrains_mono_nerd_bold) } }
     val fill = remember { Paint() }
     val cellW = remember { paint.measureText("M") }
     val metrics = remember { paint.fontMetrics }
