@@ -598,6 +598,7 @@ private fun Conversation(
             Empty("Nothing here yet", "The conversation appears as the session's transcript is written.")
         }
         // A long press selects text to copy, as in any other app.
+        CompositionLocalProvider(LocalFind provides if (searching) query else "") {
         SelectionContainer {
         LazyColumn(
             state = list,
@@ -618,9 +619,14 @@ private fun Conversation(
                         if (before != null && e.item.timeMs - before.timeMs > 10 * 60_000 || i == 0) {
                             Caption(whenLabel(e.item.timeMs), Modifier.padding(top = if (i == 0) 0.dp else 8.dp))
                         }
+                        // The match shown, framed in amber; its words, and every other match's,
+                        // are marked in the text.
                         val marked = current != null && e.item.seq == current
                         Box(
-                            if (marked) Modifier.background(MaterialTheme.colorScheme.tertiaryContainer.copy(alpha = 0.45f), RoundedCornerShape(10.dp))
+                            if (marked) Modifier
+                                .background(Flame.soft(Flame.Hot, 0.08f), RoundedCornerShape(4.dp))
+                                .border(1.dp, Flame.soft(Flame.Hot, 0.55f), RoundedCornerShape(4.dp))
+                                .padding(horizontal = 6.dp, vertical = 2.dp)
                             else Modifier,
                         ) {
                             ConversationRow(e, s.cwd, delivered = e.item.role == Role.USER && e.item.text in model.delivered, edit = edit)
@@ -632,6 +638,7 @@ private fun Conversation(
                 SentTurn(x)
             }
             if (working) item(key = "working") { Working() }
+        }
         }
         }
         // An older page coming in: over the list, so its rows keep their places.
@@ -975,7 +982,7 @@ private fun UserTurn(text: String, ticks: Int = 0, timeMs: Long? = null) {
         ) {
             Text("❯ ", fontFamily = Mono, fontWeight = FontWeight.Bold, color = Flame.Agents, style = MaterialTheme.typography.bodyLarge)
             Text(
-                text,
+                found(text),
                 style = MaterialTheme.typography.bodyLarge,
                 fontFamily = if (text.startsWith("! ")) Mono else FontFamily.Default,
                 color = MaterialTheme.colorScheme.onSurface,
@@ -1253,7 +1260,7 @@ private fun Output(result: Item, open: Boolean) {
             }
         } else if (text.isNotEmpty()) {
             Text(
-                text,
+                found(text),
                 fontFamily = Mono,
                 style = MaterialTheme.typography.bodySmall,
                 color = color,

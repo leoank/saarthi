@@ -11,6 +11,7 @@ import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.Text
 import androidx.compose.runtime.Composable
+import androidx.compose.runtime.compositionLocalOf
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.text.AnnotatedString
 import androidx.compose.ui.text.SpanStyle
@@ -20,6 +21,31 @@ import androidx.compose.ui.text.font.FontStyle
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.text.withStyle
 import androidx.compose.ui.unit.dp
+
+/** The words a search in the session looks for, marked wherever text shows them; empty
+ *  when nothing is searched. */
+val LocalFind = compositionLocalOf { "" }
+
+/** [text] with each place it has one of the searched words marked in the flame's amber. */
+@Composable
+fun found(text: AnnotatedString): AnnotatedString {
+    // Each word on its own, as the hub's search matches them.
+    val words = LocalFind.current.split(' ').filter { it.length >= 2 }
+    if (words.isEmpty()) return text
+    val mark = SpanStyle(background = Flame.Hot.copy(alpha = 0.38f), color = Flame.Text)
+    var b: AnnotatedString.Builder? = null
+    for (w in words) {
+        var i = text.text.indexOf(w, ignoreCase = true)
+        while (i >= 0) {
+            (b ?: AnnotatedString.Builder(text).also { b = it }).addStyle(mark, i, i + w.length)
+            i = text.text.indexOf(w, i + w.length, ignoreCase = true)
+        }
+    }
+    return b?.toAnnotatedString() ?: text
+}
+
+@Composable
+fun found(text: String): AnnotatedString = found(AnnotatedString(text))
 
 /** Enough markdown for what Claude writes: headings, bullet and numbered lists, fenced
  *  code, tables and quotes as blocks; code, bold, italic and links inline. Anything else is
@@ -58,7 +84,7 @@ fun Markdown(text: String, modifier: Modifier = Modifier, style: TextStyle = Mat
 fun CodeBlock(text: String, modifier: Modifier = Modifier) {
     val wrap = LocalWrap.current.on
     Text(
-        text,
+        found(text),
         fontFamily = Mono,
         style = MaterialTheme.typography.bodySmall,
         softWrap = wrap,
@@ -178,5 +204,5 @@ private fun inline(text: String): AnnotatedString {
         }
         append(text.substring(last))
     }
-    return buildAnnotatedString { spans(text) }
+    return found(buildAnnotatedString { spans(text) })
 }

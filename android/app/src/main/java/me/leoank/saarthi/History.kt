@@ -125,7 +125,7 @@ fun HistoryScreen(model: HubModel, snackbar: SnackbarHostState, back: () -> Unit
                         item { Empty("Nothing matches", "Search looks at what you typed and what Claude replied, and at session titles and folders.") }
                     }
                     items(model.searchHits, key = { "s" + it.session.nodeId + it.session.id }) { hit ->
-                        SearchRow(hit, model.node(hit.session.nodeId)?.name ?: "node") { openSession(hit.session, query.trim()) }
+                        androidx.compose.runtime.CompositionLocalProvider(LocalFind provides query.trim()) { SearchRow(hit, model.node(hit.session.nodeId)?.name ?: "node") { openSession(hit.session, query.trim()) } }
                     }
                 }
                 return@Column
@@ -297,7 +297,7 @@ private fun SearchRow(hit: SearchHit, node: String, onOpen: () -> Unit) {
             )
             if (hit.snippet.isNotEmpty()) {
                 Text(
-                    hit.snippet,
+                    found(hit.snippet),
                     style = MaterialTheme.typography.bodyMedium,
                     maxLines = 3,
                     overflow = TextOverflow.Ellipsis,
