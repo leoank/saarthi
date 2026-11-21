@@ -644,8 +644,9 @@ client's terminal stream (ADR-0054); the hub joins the client's `Terminal` strea
 JNI shim, statically linked, and draws its cells on a canvas each frame it changed
 ([[EXP-20261114-raqjf0]]); the soft keyboard types into a view whose input connection
 keeps no text, so each key and commit goes to the shell as it comes. Push to talk and spoken replies work in every
-session (ADR-0055); dictation uses Android's recognizer while the mic is held, listening on
-through pauses, and lands at the prompt's cursor (ADR-0070, ADR-0073). Photos from the phone go with a prompt: the node saves them where the session
+session (ADR-0055); dictation uses Android's recognizer, in one continuous session where it has
+one, from a tap to the next or while the mic is held, and lands at the prompt's cursor
+(ADR-0070, ADR-0073, ADR-0074). Photos from the phone go with a prompt: the node saves them where the session
 can read them and names their paths in the text, and its hooks let that session read them
 without asking (ADR-0071).
 

@@ -1,5 +1,8 @@
 package me.leoank.saarthi
 
+import androidx.compose.ui.text.input.VisualTransformation
+import androidx.compose.ui.text.input.TransformedText
+import androidx.compose.ui.text.input.OffsetMapping
 import androidx.compose.ui.platform.LocalHapticFeedback
 import androidx.compose.ui.hapticfeedback.HapticFeedbackType
 import android.net.Uri
@@ -1387,12 +1390,12 @@ private fun PromptBar(
         onText(t)
     }
     val context = LocalContext.current
-    // Push to talk (ADR-0073): held, it listens; let go, it stops. The first press asks
-    // for the microphone instead.
+    // A tap listens until the next tap; a hold until it is let go (ADR-0074). The first
+    // press asks for the microphone instead.
     val askMic = rememberLauncherForActivityResult(ActivityResultContracts.RequestPermission()) { }
     fun micDown(): Boolean {
         val granted = ContextCompat.checkSelfPermission(context, Manifest.permission.RECORD_AUDIO) == PackageManager.PERMISSION_GRANTED
-        if (granted) dictation.hold() else askMic.launch(Manifest.permission.RECORD_AUDIO)
+        if (granted) dictation.press() else askMic.launch(Manifest.permission.RECORD_AUDIO)
         return granted
     }
     // Photos from the phone's picker or its camera, shrunk before they are shown.
@@ -1452,17 +1455,21 @@ private fun PromptBar(
                     style = MaterialTheme.typography.bodyLarge,
                     modifier = Modifier.padding(top = 8.dp, end = 10.dp),
                 )
+                // The words being heard, faint at the cursor until they are put in.
+                val ghost = dictation.partial.takeIf { dictation.listening && it.isNotBlank() }
+                val ghostColor = Flame.Dim
                 BasicTextField(
                     value = field,
                     onValueChange = { field = it; if (it.text != text) onText(it.text) },
                     readOnly = outgoing,
+                    visualTransformation = ghost?.let { Ghost(field.selection.start, it, ghostColor) } ?: VisualTransformation.None,
                     textStyle = MaterialTheme.typography.bodyLarge.copy(color = MaterialTheme.colorScheme.onSurface),
                     cursorBrush = SolidColor(MaterialTheme.colorScheme.primary),
                     maxLines = 6,
                     modifier = Modifier.weight(1f),
                     decorationBox = { inner ->
                         Box(Modifier.heightIn(min = 40.dp).padding(vertical = 8.dp)) {
-                            if (field.text.isEmpty()) {
+                            if (field.text.isEmpty() && ghost == null) {
                                 Text(
                                     when {
                                         resuming -> "Resume with a prompt"
@@ -1549,12 +1556,14 @@ private fun PromptBar(
                     Spacer(Modifier.width(2.dp))
                 }
                 if (dictation.available && !outgoing) {
-                    MicButton(dictation.listening, dictation.level, ::micDown, dictation::letGo)
-                    Spacer(Modifier.width(6.dp))
+                    MicButton(dictation.listening, dictation.level, ::micDown, dictation::lift)
+                    Spacer(Modifier.width(8.dp))
                 }
-                // While listening, the words so far; after a try that gave nothing, why.
+                // While listening, how it ends; after a try that gave nothing, why. The words
+                // themselves show in the prompt.
                 val heard = when {
-                    dictation.listening -> dictation.partial.ifEmpty { "listening…" }
+                    dictation.listening && dictation.latched -> "tap to stop"
+                    dictation.listening -> "let go to stop"
                     else -> dictation.problem
                 }
                 Box(Modifier.weight(1f)) {
@@ -1601,45 +1610,73 @@ private fun PromptBar(
 
 private val ROUND_BUTTON = 36.dp
 
-/** The mic, held to talk: dim at rest; held, amber, with a ring that swells with the voice.
- *  [down] says whether listening started; [up] is the finger lifted, or the press taken by
- *  a scroll. */
+/** The mic, a wide key: tapped, it listens until the next tap; held, until let go (ADR-0074).
+ *  Dim at rest; listening, amber, with a ring that swells with the voice. [down] says whether
+ *  listening started; [up] gets how long it was held, the press taken by a scroll counting
+ *  as let go. */
 @Composable
-private fun MicButton(listening: Boolean, level: Float, down: () -> Boolean, up: () -> Unit) {
+private fun MicButton(listening: Boolean, level: Float, down: () -> Boolean, up: (Long) -> Unit) {
     val haptics = LocalHapticFeedback.current
+    val shape = RoundedCornerShape(6.dp)
     Box(
         contentAlignment = Alignment.Center,
         modifier = Modifier
-            .size(ROUND_BUTTON)
-            .clip(RoundedCornerShape(4.dp))
-            .then(if (listening) Modifier.background(Flame.soft(Flame.Hot, 0.12f)) else Modifier)
-            .semantics { contentDescription = "Hold to dictate" }
+            .width(64.dp)
+            .height(40.dp)
+            .clip(shape)
+            .background(if (listening) Flame.soft(Flame.Hot, 0.14f) else Flame.S2)
+            .border(1.dp, if (listening) Flame.soft(Flame.Hot, 0.6f) else Flame.LineStrong, shape)
+            .semantics { contentDescription = if (listening) "Stop dictating" else "Dictate: tap, or hold" }
             .pointerInput(Unit) {
                 awaitEachGesture {
-                    awaitFirstDown().consume()
+                    val start = awaitFirstDown().also { it.consume() }.uptimeMillis
                     if (down()) haptics.performHapticFeedback(HapticFeedbackType.LongPress)
-                    // Up, or cancelled: either ends it.
+                    // Up, or cancelled: either ends the press.
+                    var last = start
                     do {
                         val event = awaitPointerEvent()
-                        event.changes.forEach { it.consume() }
+                        event.changes.forEach { it.consume(); last = it.uptimeMillis }
                     } while (event.changes.any { it.pressed })
-                    up()
+                    up(last - start)
                 }
             },
     ) {
         if (listening) {
             Box(
                 Modifier
-                    .size(18.dp + 14.dp * level)
+                    .size(20.dp + 14.dp * level)
                     .border(1.5.dp, Flame.soft(Flame.Hot, 0.35f + 0.5f * level), RoundedCornerShape(50)),
             )
         }
         Icon(
             if (listening) Icons.Filled.Mic else Icons.Filled.MicNone,
             null,
-            tint = if (listening) Flame.Hot else Flame.Soft,
-            modifier = Modifier.size(20.dp),
+            tint = if (listening) Flame.Hot else Flame.Text,
+            modifier = Modifier.size(22.dp),
         )
+    }
+}
+
+/** The words being dictated, shown faint at the cursor (`at`) inside the prompt's text and
+ *  not part of it; the cursor stands after them. */
+private class Ghost(private val at: Int, private val words: String, private val color: Color) : VisualTransformation {
+    override fun filter(text: AnnotatedString): TransformedText {
+        val i = at.coerceIn(0, text.length)
+        val ghost = (if (i > 0 && !text[i - 1].isWhitespace()) " " else "") + words
+        val n = ghost.length
+        val shown = buildAnnotatedString {
+            append(text.subSequence(0, i))
+            withStyle(SpanStyle(color = color, fontStyle = FontStyle.Italic)) { append(ghost) }
+            append(text.subSequence(i, text.length))
+        }
+        return TransformedText(shown, object : OffsetMapping {
+            override fun originalToTransformed(offset: Int) = if (offset < i) offset else offset + n
+            override fun transformedToOriginal(offset: Int) = when {
+                offset <= i -> offset
+                offset <= i + n -> i
+                else -> offset - n
+            }
+        })
     }
 }
 
