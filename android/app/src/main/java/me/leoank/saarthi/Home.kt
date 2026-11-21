@@ -1,5 +1,6 @@
 package me.leoank.saarthi
 
+import uniffi.saarthi_core.PendingInfo
 import androidx.compose.foundation.clickable
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Box
@@ -163,12 +164,19 @@ fun HomeScreen(
                 modifier = Modifier.fillMaxSize(),
             ) {
                 item(key = "scope") { ScopeChips(model) }
-                if (waiting.isNotEmpty()) {
-                    item(key = "waiting") { SectionTitle("Needs you", count = waiting.size, hot = true) }
-                    items(waiting, key = { "p" + it.id }) { p ->
-                        val s = model.sessions.firstOrNull { it.id == p.sessionId && it.nodeId == p.nodeId }
-                        val where = listOfNotNull(model.node(p.nodeId)?.name, s?.title()).joinToString(" / ")
-                        PendingCard(model, p, where, Modifier.padding(bottom = 8.dp).clickable(enabled = s != null) { s?.let(openSession) })
+                // A session that asks is a row like the rest, marked `input`, with one line on
+                // what it asks (ADR-0069); the request itself is answered in its chat. Only a
+                // request whose session this phone does not know shows here in full.
+                val orphans = waiting.filter { p -> live.none { it.id == p.sessionId && it.nodeId == p.nodeId } }
+                if (asking.isNotEmpty() || orphans.isNotEmpty()) {
+                    item(key = "waiting") { SectionTitle("Needs you", count = asking.size + orphans.size, hot = true) }
+                    val oldestFirst = asking.sortedBy { s -> model.pendingFor(s).minOfOrNull { it.createdMs } ?: Long.MAX_VALUE }
+                    itemsIndexed(oldestFirst, key = { _, it -> "a" + it.nodeId + it.id }) { i, s ->
+                        val asks = model.pendingFor(s)
+                        SessionRow(s, asks.size, if (oneNode) null else model.node(s.nodeId)?.name, first = i == 0, asks = asks.firstOrNull()?.let(::askLine)) { openSession(s) }
+                    }
+                    items(orphans, key = { "p" + it.id }) { p ->
+                        PendingCard(model, p, model.node(p.nodeId)?.name.orEmpty(), Modifier.padding(vertical = 8.dp))
                     }
                 }
                 for ((name, list) in listOf("Working" to working, "Ready" to ready)) {
@@ -269,11 +277,15 @@ private fun ScopeChips(model: HubModel) {
     }
 }
 
+/** What a request asks, on one line: the question, or the tool and what it would act on. */
+private fun askLine(p: PendingInfo): String =
+    p.questions.firstOrNull()?.question?.let { "asks: $it" } ?: listOf("allow ${p.toolName}", p.summary).filter { it.isNotBlank() }.joinToString(": ")
+
 /** A session as a terminal row (ADR-0069): a gutter mark, the title as Claude or the owner
  *  named it, its state as a word, `repo:branch · machine · age` in mono, and the last reply;
  *  rows are set apart by dashed hairlines, and one that needs the owner gets an amber wash. */
 @Composable
-private fun SessionRow(s: SessionInfo, waiting: Int, machine: String?, first: Boolean, onOpen: () -> Unit) {
+private fun SessionRow(s: SessionInfo, waiting: Int, machine: String?, first: Boolean, asks: String? = null, onOpen: () -> Unit) {
     val state = s.state(waiting)
     Row(
         Modifier
@@ -323,7 +335,17 @@ private fun SessionRow(s: SessionInfo, waiting: Int, machine: String?, first: Bo
                 overflow = TextOverflow.Ellipsis,
                 modifier = Modifier.padding(top = 1.dp),
             )
-            if (s.lastReply.isNotBlank()) {
+            if (asks != null) {
+                // What it asks, in place of its last reply.
+                Text(
+                    asks,
+                    style = MaterialTheme.typography.bodySmall,
+                    color = Flame.Hot,
+                    maxLines = 2,
+                    overflow = TextOverflow.Ellipsis,
+                    modifier = Modifier.padding(top = 4.dp),
+                )
+            } else if (s.lastReply.isNotBlank()) {
                 Text(
                     s.lastReply,
                     style = MaterialTheme.typography.bodySmall,
