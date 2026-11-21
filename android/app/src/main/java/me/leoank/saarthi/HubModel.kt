@@ -630,8 +630,23 @@ class HubModel(app: Application) : AndroidViewModel(app) {
      *  queue (phase PHS-20261117-f22kxe item 7); an older node delivers it at once. */
     fun prompt(s: SessionInfo, text: String, sent: () -> Unit) {
         val photos = photosOf(s)
-        send(s, text, { this.photos.remove(key(s)); sent() }, photos.size) {
+        send(s, text, { this.photos.remove(key(s)); keepSent(s, photos); sent() }, photos.size) {
             it.prompt(s.nodeId, s.id, text, s.busy, photos.map { p -> Photo(p.name, p.bytes) })
+        }
+    }
+
+    /** Where this phone keeps copies of the photos it sent to session [s], by the name the
+     *  node saves each under, so its prompts can show them (ADR-0071). */
+    fun photoDir(s: SessionInfo): File = File(getApplication<Application>().filesDir, "photos/" + key(s))
+
+    private fun keepSent(s: SessionInfo, photos: List<Attached>) {
+        if (photos.isEmpty()) return
+        val dir = photoDir(s)
+        viewModelScope.launch(kotlinx.coroutines.Dispatchers.IO) {
+            runCatching {
+                dir.mkdirs()
+                for (p in photos) File(dir, savedName(p.name)).writeBytes(p.bytes)
+            }
         }
     }
 
@@ -675,6 +690,7 @@ class HubModel(app: Application) : AndroidViewModel(app) {
         searchHits.removeAll { h -> h.session.nodeId == s.nodeId && h.session.id == s.id }
         caches.remove(key(s))
         File(cacheDir, key(s) + ".json").delete()
+        photoDir(s).deleteRecursively()
         say("Deleted")
         done()
     }

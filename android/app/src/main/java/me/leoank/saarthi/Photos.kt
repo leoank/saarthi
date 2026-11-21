@@ -67,6 +67,14 @@ private fun displayName(context: Context, uri: Uri): String =
 /** The name with `.jpg` in place of its own extension, as the bytes now are. */
 private fun jpegName(name: String): String = name.substringBeforeLast('.').ifBlank { "photo" } + ".jpg"
 
+/** The name the node saves a photo under, less its time prefix: letters, digits, `.`, `-`
+ *  and `_` only, never empty or hidden (crates/node/src/uploads.rs `safe_name`). */
+fun savedName(name: String): String {
+    val base = name.substringAfterLast('/').substringAfterLast('\\')
+    val clean = base.map { if (it.isLetterOrDigit() && it.code < 128 || it in ".-_") it else '_' }.take(80).joinToString("").trimStart('.')
+    return clean.ifEmpty { "photo.jpg" }
+}
+
 /** A new file for the camera to write into, and the address it is handed. */
 fun cameraFile(context: Context): Uri {
     val dir = File(context.cacheDir, "camera").apply { mkdirs() }

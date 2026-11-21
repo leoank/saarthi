@@ -13,6 +13,7 @@ import androidx.compose.material.icons.filled.AddPhotoAlternate
 import androidx.compose.material.icons.filled.PhotoCamera
 import androidx.compose.material.icons.filled.PhotoLibrary
 import androidx.compose.ui.layout.ContentScale
+import androidx.compose.ui.graphics.asImageBitmap
 import androidx.compose.ui.platform.LocalContext
 import android.Manifest
 import android.content.pm.PackageManager
@@ -631,7 +632,7 @@ private fun Conversation(
             Empty("Nothing here yet", "The conversation appears as the session's transcript is written.")
         }
         // A long press selects text to copy, as in any other app.
-        CompositionLocalProvider(LocalFind provides if (searching) query else "") {
+        CompositionLocalProvider(LocalFind provides if (searching) query else "", LocalPhotos provides model.photoDir(s)) {
         SelectionContainer {
         LazyColumn(
             state = list,
@@ -1025,15 +1026,13 @@ private fun UserTurn(text: String, ticks: Int = 0, timeMs: Long? = null) {
                         color = MaterialTheme.colorScheme.onSurface,
                     )
                 }
-                for (path in images) {
-                    Text(
-                        "▣ " + path.substringAfterLast('/').replace(Regex("^\\d+-\\d+-"), ""),
-                        style = MonoMeta,
-                        color = Flame.Soft,
-                        maxLines = 1,
-                        overflow = TextOverflow.Ellipsis,
-                        modifier = Modifier.padding(top = 4.dp).background(Flame.S2, RoundedCornerShape(3.dp)).padding(horizontal = 6.dp, vertical = 2.dp),
-                    )
+                // Each photo as this phone kept it when it sent it; one sent from elsewhere,
+                // which it has no copy of, as a tag with its name.
+                val dir = LocalPhotos.current
+                if (images.isNotEmpty()) {
+                    Row(horizontalArrangement = Arrangement.spacedBy(6.dp), modifier = Modifier.padding(top = 6.dp).horizontalScroll(rememberScrollState())) {
+                        for (path in images) SentPhoto(path.substringAfterLast('/').replace(Regex("^\\d+-\\d+-"), ""), dir)
+                    }
                 }
             }
             if (timeMs != null) {
@@ -1051,6 +1050,59 @@ private fun UserTurn(text: String, ticks: Int = 0, timeMs: Long? = null) {
                     tint = MaterialTheme.colorScheme.onSurfaceVariant.copy(alpha = 0.7f),
                     modifier = Modifier.padding(bottom = 2.dp).size(14.dp),
                 )
+            }
+        }
+    }
+}
+
+/** Where the open session's sent photos are kept on this phone (ADR-0071). */
+private val LocalPhotos = androidx.compose.runtime.compositionLocalOf<java.io.File?> { null }
+
+/** A photo in a sent prompt: its thumbnail from this phone's copy, opened full size on a
+ *  tap; with no copy, its name as a tag. */
+@Composable
+private fun SentPhoto(name: String, dir: java.io.File?) {
+    val file = dir?.let { java.io.File(it, name) }
+    val image by androidx.compose.runtime.produceState<androidx.compose.ui.graphics.ImageBitmap?>(null, file) {
+        value = file?.takeIf { it.isFile }?.let { f ->
+            kotlinx.coroutines.withContext(kotlinx.coroutines.Dispatchers.IO) {
+                runCatching { android.graphics.BitmapFactory.decodeFile(f.path)?.asImageBitmap() }.getOrNull()
+            }
+        }
+    }
+    var open by remember { mutableStateOf(false) }
+    val shown = image
+    if (shown == null) {
+        Text(
+            "▣ $name",
+            style = MonoMeta,
+            color = Flame.Soft,
+            maxLines = 1,
+            overflow = TextOverflow.Ellipsis,
+            modifier = Modifier.background(Flame.S2, RoundedCornerShape(3.dp)).padding(horizontal = 6.dp, vertical = 2.dp),
+        )
+        return
+    }
+    Image(
+        shown,
+        name,
+        contentScale = ContentScale.Crop,
+        modifier = Modifier
+            .size(96.dp)
+            .clip(RoundedCornerShape(4.dp))
+            .border(1.dp, Flame.LineStrong, RoundedCornerShape(4.dp))
+            .clickable { open = true },
+    )
+    if (open) {
+        androidx.compose.ui.window.Dialog(
+            onDismissRequest = { open = false },
+            properties = androidx.compose.ui.window.DialogProperties(usePlatformDefaultWidth = false),
+        ) {
+            Box(
+                contentAlignment = Alignment.Center,
+                modifier = Modifier.fillMaxSize().background(Color.Black).clickable { open = false },
+            ) {
+                Image(shown, name, contentScale = ContentScale.Fit, modifier = Modifier.fillMaxSize())
             }
         }
     }
