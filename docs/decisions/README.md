@@ -87,6 +87,7 @@ spawns, with the owner's answers of 2026-11-07.
 | [ADR-0070](ADR-0070-dictation-with-android-s-recognizer.md) | Dictation with Android's recognizer | accepted |
 | [ADR-0071](ADR-0071-photos-saved-on-the-node.md) | Photos saved on the node | accepted |
 | [ADR-0072](ADR-0072-the-prompt-box-holds-its-tools.md) | The prompt box holds its tools | accepted |
+| [ADR-0073](ADR-0073-push-to-talk-after-all.md) | Push to talk after all | accepted |
 
 Each record:
 

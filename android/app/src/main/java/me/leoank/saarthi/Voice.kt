@@ -16,9 +16,10 @@ import androidx.compose.runtime.rememberUpdatedState
 import androidx.compose.runtime.setValue
 import androidx.compose.ui.platform.LocalContext
 
-/** Dictation into the prompt (ADR-0070): Android's own recognizer, on the device where the
- *  phone has one. A tap starts it; a second tap, or a pause, ends it, and the words go to
- *  [heard]. Nothing is sent by itself. */
+/** Dictation into the prompt (ADR-0070, ADR-0073): Android's own recognizer, on the device
+ *  where the phone has one, for as long as the mic is held. The recognizer ends at each
+ *  pause; while held, what it heard goes to [heard] and it listens again at once, so a pause
+ *  to think does not end the dictation. Letting go ends it. Nothing is sent by itself. */
 class Dictation(private val context: Context, private val heard: (String) -> Unit) {
     var listening by mutableStateOf(false)
         private set
@@ -39,24 +40,50 @@ class Dictation(private val context: Context, private val heard: (String) -> Uni
     val available: Boolean = SpeechRecognizer.isRecognitionAvailable(context)
     private var recognizer: SpeechRecognizer? = null
 
-    fun start() {
-        if (listening) return
+    /** Whether the mic is held down. */
+    private var held = false
+    /** Whether anything was heard since the mic was pressed. */
+    private var heardAny = false
+
+    /** The mic pressed: listening starts. */
+    fun hold() {
+        held = true
+        heardAny = false
+        problem = null
+        listen()
+    }
+
+    /** The mic let go: listening ends, and what was heard so far still comes. */
+    fun letGo() {
+        if (!held) return
+        held = false
+        if (listening) recognizer?.stopListening()
+    }
+
+    private fun listen() {
         val r = recognizer ?: create().also { recognizer = it }
         val intent = Intent(RecognizerIntent.ACTION_RECOGNIZE_SPEECH).apply {
             putExtra(RecognizerIntent.EXTRA_LANGUAGE_MODEL, RecognizerIntent.LANGUAGE_MODEL_FREE_FORM)
             putExtra(RecognizerIntent.EXTRA_PARTIAL_RESULTS, true)
             putExtra(RecognizerIntent.EXTRA_CALLING_PACKAGE, context.packageName)
+            // Longer pauses before it ends, where the recognizer heeds them.
+            putExtra(RecognizerIntent.EXTRA_SPEECH_INPUT_COMPLETE_SILENCE_LENGTH_MILLIS, 6000L)
+            putExtra(RecognizerIntent.EXTRA_SPEECH_INPUT_POSSIBLY_COMPLETE_SILENCE_LENGTH_MILLIS, 6000L)
         }
         partial = ""
-        problem = null
         listening = true
         r.startListening(intent)
     }
 
-    /** Ends listening; what was heard still comes. */
-    fun stop() = recognizer?.stopListening()
+    /** A stretch of listening ended: while held, listen again. */
+    private fun ended() {
+        partial = ""
+        level = 0f
+        if (held) listen() else listening = false
+    }
 
     fun release() {
+        held = false
         recognizer?.destroy()
         recognizer = null
         listening = false
@@ -75,11 +102,13 @@ class Dictation(private val context: Context, private val heard: (String) -> Uni
             override fun onBufferReceived(buffer: ByteArray?) {}
             override fun onEndOfSpeech() {}
             override fun onError(error: Int) {
-                listening = false
-                partial = ""
-                level = 0f
+                // A pause with nothing said, while still held: listen on.
+                val silence = error == SpeechRecognizer.ERROR_NO_MATCH || error == SpeechRecognizer.ERROR_SPEECH_TIMEOUT
+                if (silence && held) return ended()
+                held = false
+                ended()
                 problem = when (error) {
-                    SpeechRecognizer.ERROR_NO_MATCH, SpeechRecognizer.ERROR_SPEECH_TIMEOUT -> "Heard nothing"
+                    SpeechRecognizer.ERROR_NO_MATCH, SpeechRecognizer.ERROR_SPEECH_TIMEOUT -> if (heardAny) null else "Heard nothing"
                     SpeechRecognizer.ERROR_INSUFFICIENT_PERMISSIONS -> "No microphone permission"
                     SpeechRecognizer.ERROR_NETWORK, SpeechRecognizer.ERROR_NETWORK_TIMEOUT -> "The recognizer needs the network"
                     SpeechRecognizer.ERROR_RECOGNIZER_BUSY -> "The recognizer is busy"
@@ -88,11 +117,13 @@ class Dictation(private val context: Context, private val heard: (String) -> Uni
                 }
             }
             override fun onResults(results: Bundle?) {
-                listening = false
-                partial = ""
-                level = 0f
-                results?.getStringArrayList(SpeechRecognizer.RESULTS_RECOGNITION)?.firstOrNull()?.takeIf { it.isNotBlank() }?.let(heard)
-                    ?: run { problem = "Heard nothing" }
+                val words = results?.getStringArrayList(SpeechRecognizer.RESULTS_RECOGNITION)?.firstOrNull()?.takeIf { it.isNotBlank() }
+                if (words != null) {
+                    heardAny = true
+                    heard(words)
+                }
+                ended()
+                if (!listening && !heardAny) problem = "Heard nothing"
             }
             override fun onPartialResults(partialResults: Bundle?) {
                 partialResults?.getStringArrayList(SpeechRecognizer.RESULTS_RECOGNITION)?.firstOrNull()?.let { partial = it }

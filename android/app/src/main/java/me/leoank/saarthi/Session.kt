@@ -1,5 +1,7 @@
 package me.leoank.saarthi
 
+import androidx.compose.ui.platform.LocalHapticFeedback
+import androidx.compose.ui.hapticfeedback.HapticFeedbackType
 import android.net.Uri
 import androidx.activity.result.PickVisualMediaRequest
 import androidx.compose.foundation.Image
@@ -1385,13 +1387,13 @@ private fun PromptBar(
         onText(t)
     }
     val context = LocalContext.current
-    val askMic = rememberLauncherForActivityResult(ActivityResultContracts.RequestPermission()) { granted ->
-        if (granted) dictation.start()
-    }
-    fun mic() = when {
-        dictation.listening -> dictation.stop()
-        ContextCompat.checkSelfPermission(context, Manifest.permission.RECORD_AUDIO) == PackageManager.PERMISSION_GRANTED -> dictation.start()
-        else -> askMic.launch(Manifest.permission.RECORD_AUDIO)
+    // Push to talk (ADR-0073): held, it listens; let go, it stops. The first press asks
+    // for the microphone instead.
+    val askMic = rememberLauncherForActivityResult(ActivityResultContracts.RequestPermission()) { }
+    fun micDown(): Boolean {
+        val granted = ContextCompat.checkSelfPermission(context, Manifest.permission.RECORD_AUDIO) == PackageManager.PERMISSION_GRANTED
+        if (granted) dictation.hold() else askMic.launch(Manifest.permission.RECORD_AUDIO)
+        return granted
     }
     // Photos from the phone's picker or its camera, shrunk before they are shown.
     val scope = rememberCoroutineScope()
@@ -1547,7 +1549,7 @@ private fun PromptBar(
                     Spacer(Modifier.width(2.dp))
                 }
                 if (dictation.available && !outgoing) {
-                    MicButton(dictation.listening, dictation.level, ::mic)
+                    MicButton(dictation.listening, dictation.level, ::micDown, dictation::letGo)
                     Spacer(Modifier.width(6.dp))
                 }
                 // While listening, the words so far; after a try that gave nothing, why.
@@ -1599,16 +1601,31 @@ private fun PromptBar(
 
 private val ROUND_BUTTON = 36.dp
 
-/** The mic: dim at rest; listening, amber, with a ring that swells with the voice. */
+/** The mic, held to talk: dim at rest; held, amber, with a ring that swells with the voice.
+ *  [down] says whether listening started; [up] is the finger lifted, or the press taken by
+ *  a scroll. */
 @Composable
-private fun MicButton(listening: Boolean, level: Float, onClick: () -> Unit) {
+private fun MicButton(listening: Boolean, level: Float, down: () -> Boolean, up: () -> Unit) {
+    val haptics = LocalHapticFeedback.current
     Box(
         contentAlignment = Alignment.Center,
         modifier = Modifier
             .size(ROUND_BUTTON)
             .clip(RoundedCornerShape(4.dp))
             .then(if (listening) Modifier.background(Flame.soft(Flame.Hot, 0.12f)) else Modifier)
-            .clickable(role = androidx.compose.ui.semantics.Role.Button, onClick = onClick),
+            .semantics { contentDescription = "Hold to dictate" }
+            .pointerInput(Unit) {
+                awaitEachGesture {
+                    awaitFirstDown().consume()
+                    if (down()) haptics.performHapticFeedback(HapticFeedbackType.LongPress)
+                    // Up, or cancelled: either ends it.
+                    do {
+                        val event = awaitPointerEvent()
+                        event.changes.forEach { it.consume() }
+                    } while (event.changes.any { it.pressed })
+                    up()
+                }
+            },
     ) {
         if (listening) {
             Box(
@@ -1619,7 +1636,7 @@ private fun MicButton(listening: Boolean, level: Float, onClick: () -> Unit) {
         }
         Icon(
             if (listening) Icons.Filled.Mic else Icons.Filled.MicNone,
-            if (listening) "Stop dictating" else "Dictate",
+            null,
             tint = if (listening) Flame.Hot else Flame.Soft,
             modifier = Modifier.size(20.dp),
         )
