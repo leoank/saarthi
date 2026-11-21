@@ -133,3 +133,4 @@ touching the code:
 - [[EXP-20261114-raqkym]] Do the app's bench timers fire on time with the screen off for hours, and do checklist ticks made out of reach arrive once each when back in reach; planned, for ADR-0053
 - [[EXP-20261117-de4f82]] /yajna:project spawned from the app runs, but `-p` has no AskUserQuestion: its interview came as plain text, and with the node's question tool (ADR-0061) as question cards
 - [[EXP-20261118-298ryc]] `set_model`, `list_models` and `apply_flag_settings` (`effortLevel`) all work in a `claude -p` session, and each reply's transcript line records its model and effort; the model switch in the app rests on it (phase item 18)
+- [[EXP-20261121-3k3cxv]] Does the notifications stream the app holds to the hub (ADR-0075) survive Doze and network changes, how fast, at what battery cost; on the emulator it came through forced deep idle in 14 s and back by itself after airplane mode, the phone's day still to run

@@ -193,8 +193,63 @@ fun SettingsScreen(model: HubModel, snackbar: SnackbarHostState, back: (() -> Un
                 }
             }
 
-            Heading("About")
+            Heading("Notifications")
             val context = LocalContext.current
+            var link by remember { mutableStateOf(LinkService.enabled(context)) }
+            // Looked at again each time Settings is shown: the answer comes from a system screen.
+            var unrestricted by remember { mutableStateOf(LinkService.unrestricted(context)) }
+            androidx.lifecycle.compose.LifecycleResumeEffect(Unit) {
+                unrestricted = LinkService.unrestricted(context)
+                onPauseOrDispose { }
+            }
+            Group {
+                Row(
+                    verticalAlignment = Alignment.CenterVertically,
+                    modifier = Modifier
+                        .fillMaxWidth()
+                        .clickable { link = !link; LinkService.setEnabled(context, link) }
+                        .padding(start = 16.dp, end = 12.dp, top = 8.dp, bottom = 8.dp),
+                ) {
+                    Column(Modifier.weight(1f)) {
+                        Text("Hold a link to the hub", style = MaterialTheme.typography.bodyLarge)
+                        Text(
+                            "Notifications come straight from the hub, over its tailnet, with no push server or " +
+                                "ntfy app; a silent notification shows while it holds the link. Off, they come " +
+                                "through UnifiedPush.",
+                            style = MaterialTheme.typography.bodySmall,
+                            color = MaterialTheme.colorScheme.onSurfaceVariant,
+                        )
+                    }
+                    Switch(checked = link, onCheckedChange = { link = it; LinkService.setEnabled(context, it) })
+                }
+                if (link && !unrestricted) {
+                    Divider()
+                    Row(
+                        verticalAlignment = Alignment.CenterVertically,
+                        modifier = Modifier
+                            .fillMaxWidth()
+                            .clickable {
+                                context.startActivity(
+                                    android.content.Intent(android.provider.Settings.ACTION_REQUEST_IGNORE_BATTERY_OPTIMIZATIONS)
+                                        .setData(android.net.Uri.parse("package:${context.packageName}")),
+                                )
+                            }
+                            .padding(start = 16.dp, end = 12.dp, top = 10.dp, bottom = 10.dp),
+                    ) {
+                        Column(Modifier.weight(1f)) {
+                            Text("Let it run in the background", style = MaterialTheme.typography.bodyLarge, color = Flame.Hot)
+                            Text(
+                                "Android's battery saving cuts the link while the phone sleeps; let saarthi " +
+                                    "keep it, as the ntfy app does.",
+                                style = MaterialTheme.typography.bodySmall,
+                                color = MaterialTheme.colorScheme.onSurfaceVariant,
+                            )
+                        }
+                    }
+                }
+            }
+
+            Heading("About")
             val pkg = remember { context.packageManager.getPackageInfo(context.packageName, 0) }
             val core = remember { runCatching { coreVersion() }.getOrDefault("not loaded") }
             Group {

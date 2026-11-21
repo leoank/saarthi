@@ -342,6 +342,17 @@ pub trait WatchListener: Send + Sync {
     fn on_error(&self, message: String);
 }
 
+/// Receives the hub's notifications on a held stream (ADR-0075).
+#[uniffi::export(with_foreign)]
+pub trait NotificationListener: Send + Sync {
+    /// One notification, as the JSON a UnifiedPush endpoint would get.
+    fn on_notification(&self, push_json: String);
+    /// The hub's keep-alive: the stream is still open.
+    fn on_beat(&self);
+    /// The stream ended; open it again.
+    fn on_error(&self, message: String);
+}
+
 /// Receives a session's conversation, stored items first, then live ones.
 #[uniffi::export(with_foreign)]
 pub trait SessionListener: Send + Sync {
@@ -1016,6 +1027,35 @@ impl Hub {
                                 listener.on_change(c);
                             }
                         }
+                        Ok(None) => return listener.on_error("the hub closed the stream".into()),
+                        Err(s) => return listener.on_error(s.message().to_string()),
+                    },
+                }
+            }
+        });
+        Ok(Arc::new(Subscription { stop }))
+    }
+
+    /// Holds the hub's notifications stream (ADR-0075): while held, the hub sends this
+    /// client's notifications here instead of to its UnifiedPush endpoints.
+    pub async fn notifications(
+        &self,
+        listener: Arc<dyn NotificationListener>,
+    ) -> Result<Arc<Subscription>, CoreError> {
+        let mut stream = self
+            .client
+            .clone()
+            .notifications(self.req(NotificationsRequest {}))
+            .await?
+            .into_inner();
+        let (stop, mut stopped) = watch::channel(false);
+        tokio::spawn(async move {
+            loop {
+                tokio::select! {
+                    _ = stopped.changed() => return,
+                    msg = stream.message() => match msg {
+                        Ok(Some(n)) if n.push_json.is_empty() => listener.on_beat(),
+                        Ok(Some(n)) => listener.on_notification(n.push_json),
                         Ok(None) => return listener.on_error("the hub closed the stream".into()),
                         Err(s) => return listener.on_error(s.message().to_string()),
                     },

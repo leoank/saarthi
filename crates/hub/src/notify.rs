@@ -5,7 +5,9 @@
 //! - each UnifiedPush endpoint a client registered (`RegisterPush`): a JSON message the app
 //!   turns into its own notification, with Allow and Deny on a permission request;
 //! - the ntfy topic of `--ntfy http(s)://host/topic`, if given: title, body and priority, for
-//!   anyone subscribed with the ntfy app itself.
+//!   anyone subscribed with the ntfy app itself;
+//! - each client holding the `Notifications` stream (ADR-0075): the same JSON as an endpoint
+//!   gets, and none to that client's endpoints while it holds one.
 //!
 //! The PermissionRequest itself is the trigger, since Claude Code's own Notification hook
 //! arrives only after it returns (EXP-0001). Sending never blocks the node's stream: each
@@ -31,6 +33,29 @@ pub struct Notifier {
     hold_alerts: std::time::Duration,
     /// How long a turn must have run for its end to be worth an alert.
     long_turn: std::time::Duration,
+    /// The clients' held streams (ADR-0075): every message, and how many streams each
+    /// client holds.
+    live: tokio::sync::broadcast::Sender<std::sync::Arc<String>>,
+    holding: std::sync::Mutex<std::collections::HashMap<String, usize>>,
+}
+
+/// A client's hold on the notifications stream, given up when dropped.
+pub struct Held {
+    notifier: std::sync::Arc<Notifier>,
+    client: String,
+    pub messages: tokio::sync::broadcast::Receiver<std::sync::Arc<String>>,
+}
+
+impl Drop for Held {
+    fn drop(&mut self) {
+        let mut holding = self.notifier.holding.lock().expect("the holders' lock");
+        if let Some(n) = holding.get_mut(&self.client) {
+            *n -= 1;
+            if *n == 0 {
+                holding.remove(&self.client);
+            }
+        }
+    }
 }
 
 /// One notification: ntfy's title, body and priority (1 to 5), and what the app receives.
@@ -53,6 +78,18 @@ impl Notifier {
             off,
             hold_alerts: std::time::Duration::from_secs(10),
             long_turn: std::time::Duration::from_secs(60),
+            live: tokio::sync::broadcast::channel(64).0,
+            holding: Default::default(),
+        }
+    }
+
+    /// Holds the notifications stream for `client` until the returned hold is dropped.
+    pub fn hold(self: &std::sync::Arc<Self>, client: &str) -> Held {
+        *self.holding.lock().expect("the holders' lock").entry(client.to_string()).or_default() += 1;
+        Held {
+            notifier: self.clone(),
+            client: client.to_string(),
+            messages: self.live.subscribe(),
         }
     }
 
@@ -137,7 +174,11 @@ impl Notifier {
         if m.push["kind"].as_str().is_some_and(|k| self.off.iter().any(|o| o == k)) {
             return;
         }
+        let body = m.push.to_string();
+        let _ = self.live.send(std::sync::Arc::new(body.clone()));
         let (client, topic, db) = (self.client.clone(), self.topic_url.clone(), self.db.clone());
+        // A client holding the stream has it there; its endpoints would only repeat it.
+        let skip: Vec<String> = self.holding.lock().expect("the holders' lock").keys().cloned().collect();
         tokio::spawn(async move {
             if let Some(topic) = topic {
                 let sent = client
@@ -152,9 +193,8 @@ impl Notifier {
                     tracing::warn!(error = %e, "ntfy publish failed");
                 }
             }
-            let endpoints = db.push_endpoints().await.unwrap_or_default();
-            let body = m.push.to_string();
-            for endpoint in endpoints {
+            let endpoints = db.push_endpoints_by_client().await.unwrap_or_default();
+            for (endpoint, _) in endpoints.into_iter().filter(|(_, c)| !skip.contains(c)) {
                 match client.post(&endpoint).body(body.clone()).send().await {
                     Ok(r) if r.status() == 404 || r.status() == 410 => {
                         tracing::info!(%endpoint, "push endpoint gone; forgetting it");

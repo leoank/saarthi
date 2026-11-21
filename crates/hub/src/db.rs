@@ -817,6 +817,15 @@ impl Db {
         )
     }
 
+    /// Every push endpoint with the client that registered it.
+    pub async fn push_endpoints_by_client(&self) -> Result<Vec<(String, String)>> {
+        Ok(
+            sqlx::query_as("SELECT endpoint, client FROM push_endpoints ORDER BY created_ms")
+                .fetch_all(&self.pool)
+                .await?,
+        )
+    }
+
     /// Every stored seq for a node, in order.
     pub async fn event_seqs(&self, node_name: &str) -> Result<Vec<u64>> {
         let seqs: Vec<i64> = sqlx::query_scalar(

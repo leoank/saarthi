@@ -202,6 +202,32 @@ async fn a_client_streams_a_session_reads_health_and_is_notified() {
         (&json!("permission"), &json!("Bash"), &json!(node_id))
     );
 
+    // Holding the notifications stream (ADR-0075), the phone gets the request there and
+    // nothing at its endpoint; let go, the endpoint gets them again.
+    let mut stream = c.notifications(req(NotificationsRequest {})).await.unwrap().into_inner();
+    tokio::time::sleep(Duration::from_millis(100)).await;
+    pushed.lock().unwrap().clear();
+    post_hook(node.hooks, held.to_string()).await;
+    let first = loop {
+        let n = tokio::time::timeout(Duration::from_secs(10), stream.message()).await.unwrap().unwrap().unwrap();
+        if !n.push_json.is_empty() {
+            break n;
+        }
+    };
+    let on_stream: serde_json::Value = serde_json::from_str(&first.push_json).unwrap();
+    assert_eq!((&on_stream["kind"], &on_stream["tool"]), (&json!("permission"), &json!("Bash")));
+    tokio::time::sleep(Duration::from_millis(500)).await;
+    assert!(pushed.lock().unwrap().iter().all(|(t, _)| t != "up"), "{:?}", pushed.lock().unwrap());
+    drop(stream);
+    tokio::time::sleep(Duration::from_millis(200)).await;
+    pushed.lock().unwrap().clear();
+    post_hook(node.hooks, held.to_string()).await;
+    let start = std::time::Instant::now();
+    while !pushed.lock().unwrap().iter().any(|(t, _)| t == "up") {
+        assert!(start.elapsed() < Duration::from_secs(10), "{:?}", pushed.lock().unwrap());
+        tokio::time::sleep(Duration::from_millis(20)).await;
+    }
+
     // Unregistered, the phone gets nothing more.
     let unregister = RegisterPushRequest {
         endpoint: up,

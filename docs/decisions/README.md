@@ -89,6 +89,7 @@ spawns, with the owner's answers of 2026-11-07.
 | [ADR-0072](ADR-0072-the-prompt-box-holds-its-tools.md) | The prompt box holds its tools | accepted |
 | [ADR-0073](ADR-0073-push-to-talk-after-all.md) | Push to talk after all | accepted |
 | [ADR-0074](ADR-0074-tap-or-hold-and-a-continuous-session.md) | Tap or hold, and a continuous session | accepted |
+| [ADR-0075](ADR-0075-notifications-held-from-the-hub.md) | Notifications held from the hub | accepted |
 
 Each record:
 

@@ -186,6 +186,41 @@ impl ControlService for Hub {
         Ok(Response::new(stream))
     }
 
+    type NotificationsStream = Stream_<Notification>;
+
+    async fn notifications(
+        &self,
+        request: Request<NotificationsRequest>,
+    ) -> Result<Response<Self::NotificationsStream>, Status> {
+        let client = self.client(&request)?;
+        let mut held = self.notifier.hold(&client);
+        tracing::info!(%client, "holds the notifications stream");
+        let stream = async_stream(move |tx| async move {
+            let mut beat = tokio::time::interval(NOTIFICATION_BEAT);
+            loop {
+                let next = tokio::select! {
+                    m = held.messages.recv() => match m {
+                        Ok(m) => m.to_string(),
+                        // Missed some: carry on with the next; what was missed shows in the app.
+                        Err(RecvError::Lagged(_)) => continue,
+                        Err(RecvError::Closed) => return,
+                    },
+                    _ = beat.tick() => String::new(),
+                    // Gone: let go at once, so the next message goes to its endpoints.
+                    _ = tx.closed() => {
+                        tracing::info!(%client, "let go of the notifications stream");
+                        return;
+                    }
+                };
+                if tx.send(Ok(Notification { push_json: next })).await.is_err() {
+                    tracing::info!(%client, "let go of the notifications stream");
+                    return;
+                }
+            }
+        });
+        Ok(Response::new(stream))
+    }
+
     type StreamSessionStream = Stream_<Event>;
 
     async fn stream_session(
@@ -697,6 +732,10 @@ impl ControlService for Hub {
 }
 
 /// A response stream fed by a task, which ends when the client goes away.
+/// How often an empty notification goes out on a held stream, so a dead link is noticed
+/// and a quiet one stays open through NATs and the phone's radio.
+const NOTIFICATION_BEAT: std::time::Duration = std::time::Duration::from_secs(45);
+
 fn async_stream<T, F, Fut>(f: F) -> Stream_<T>
 where
     T: Send + 'static,

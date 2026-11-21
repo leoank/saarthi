@@ -172,7 +172,13 @@ fun App(
     // with the phone's distributor.
     val activity = LocalActivity.current
     val connected = model.link == Link.Connected && model.demo == null
-    LaunchedEffect(connected, model.activeId) { if (connected) activity?.let { Push.start(it) } }
+    LaunchedEffect(connected, model.activeId) {
+        if (connected) activity?.let {
+            Push.start(it)
+            // Notifications held from the hub itself, the push server the fallback (ADR-0075).
+            LinkService.start(it)
+        }
+    }
 
     // A notification tap lands on its session once the lists are in; a usage alert, which
     // has none, on the node's health.

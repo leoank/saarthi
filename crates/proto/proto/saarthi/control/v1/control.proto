@@ -52,6 +52,10 @@ service ControlService {
   // Adds (or with `unregister`, removes) a UnifiedPush endpoint the hub posts notifications
   // to: a JSON object per held request or finished turn (ADR-0026).
   rpc RegisterPush(RegisterPushRequest) returns (RegisterPushResponse);
+  // The same notifications as a stream the app holds open itself, over its tailnet, in
+  // place of a push server (ADR-0075): while a client holds one, the hub posts nothing to
+  // that client's UnifiedPush endpoints. An empty one now and then keeps the stream alive.
+  rpc Notifications(NotificationsRequest) returns (stream Notification);
   // An HTTP request to one of a node's local services, relayed through the node's link
   // (ADR-0052): the head first, then the body in pieces of at most 1 MB; back come the
   // answer's head and its body as it arrives, for as long as the service keeps it open.
@@ -307,6 +311,12 @@ message RegisterPushRequest {
 }
 
 message RegisterPushResponse {}
+
+message NotificationsRequest {}
+
+message Notification {
+  string push_json = 1;         // what a UnifiedPush endpoint would get; empty to keep alive
+}
 
 // The node's CommandResult, passed through once the node has acted on the command.
 message CommandResponse {

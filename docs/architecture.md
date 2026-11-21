@@ -188,8 +188,10 @@ One Rust binary, tonic for gRPC, sqlx on SQLite in WAL mode.
   human, finishes a turn, or ends, and when a rate-limit window is used too fast, nearly
   used up or used up, once per window and reset (ADR-0032): to the UnifiedPush endpoint
   each phone registered, which the app shows as its own notification with Allow and Deny
-  (ADR-0026), and to an optional ntfy topic (ADR-0025). Each kind can be switched off
-  with `--no-notify <kind>` (ADR-0029).
+  (ADR-0026), and to an optional ntfy topic (ADR-0025). A phone may hold the
+  `Notifications` stream instead, from a foreground service over its tailnet; while it
+  does, the hub posts nothing to that client's endpoints (ADR-0075). Each kind can be
+  switched off with `--no-notify <kind>` (ADR-0029).
 - **Tailnet identities.** One embedded tsnet identity per tailnet the hub serves
   (`--tailnet`, repeatable), each serving both services beside the TCP listener. On each
   node registration over a tailnet the hub records which tailnet and who the tailnet says

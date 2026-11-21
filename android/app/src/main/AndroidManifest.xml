@@ -7,6 +7,12 @@
     <uses-permission android:name="android.permission.ACCESS_NETWORK_STATE" />
     <!-- Dictation into the prompt (ADR-0070). -->
     <uses-permission android:name="android.permission.RECORD_AUDIO" />
+    <!-- Notifications held from the hub (ADR-0075): a foreground service, kept through Doze
+         when the owner lets it, and started again at boot. -->
+    <uses-permission android:name="android.permission.FOREGROUND_SERVICE" />
+    <uses-permission android:name="android.permission.FOREGROUND_SERVICE_REMOTE_MESSAGING" />
+    <uses-permission android:name="android.permission.REQUEST_IGNORE_BATTERY_OPTIMIZATIONS" />
+    <uses-permission android:name="android.permission.RECEIVE_BOOT_COMPLETED" />
 
     <!-- Android 11+ shows the app only the recognizers it asks for. -->
     <queries>
@@ -37,6 +43,19 @@
                 <data android:scheme="saarthi" android:host="pair" />
             </intent-filter>
         </activity>
+
+        <!-- The hub's notifications, held open (ADR-0075). -->
+        <service
+            android:name=".LinkService"
+            android:exported="false"
+            android:foregroundServiceType="remoteMessaging" />
+        <receiver
+            android:name=".LinkService$Boot"
+            android:exported="true">
+            <intent-filter>
+                <action android:name="android.intent.action.BOOT_COMPLETED" />
+            </intent-filter>
+        </receiver>
 
         <!-- Where the camera writes a photo for a prompt (ADR-0071). -->
         <provider
