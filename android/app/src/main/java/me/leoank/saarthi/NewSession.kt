@@ -66,6 +66,7 @@ internal val models = listOf("Default" to "", "Fable" to "fable", "Opus" to "opu
 private val modes = listOf(
     Triple("Ask", "", "Permission requests come to this app"),
     Triple("Accept edits", "acceptEdits", "File edits go ahead; other tools ask"),
+    Triple("Auto", "auto", "Claude Code decides what is safe to run; the rest asks"),
     Triple("Plan", "plan", "Reads and plans; changes nothing"),
     Triple("Bypass", "bypassPermissions", "Every tool runs without asking"),
 )
