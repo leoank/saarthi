@@ -3,6 +3,7 @@ package me.leoank.saarthi
 import androidx.compose.foundation.background
 import androidx.compose.foundation.border
 import androidx.compose.foundation.clickable
+import androidx.compose.foundation.combinedClickable
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.Column
@@ -90,6 +91,8 @@ fun SwitcherSheet(
     places: List<Place>,
     current: Place?,
     go: (Place) -> Unit,
+    /** Opens it in the other pane, when the screen is split. */
+    goOther: ((Place) -> Unit)? = null,
     close: (Place) -> Unit,
     dismiss: () -> Unit,
 ) {
@@ -109,7 +112,7 @@ fun SwitcherSheet(
                     modifier = Modifier
                         .fillMaxWidth()
                         .background(if (p == current) Flame.S2 else Color.Transparent)
-                        .clickable { go(p) }
+                        .combinedClickable(onLongClick = goOther?.let { o -> { o(p) } }) { go(p) }
                         .padding(start = 16.dp, end = 4.dp, top = 8.dp, bottom = 8.dp),
                 ) {
                     Box(

@@ -9,6 +9,19 @@ import androidx.activity.compose.setContent
 import androidx.activity.SystemBarStyle
 import androidx.activity.enableEdgeToEdge
 import androidx.compose.foundation.layout.WindowInsets
+import androidx.compose.foundation.background
+import androidx.compose.foundation.gestures.awaitEachGesture
+import androidx.compose.foundation.gestures.awaitFirstDown
+import androidx.compose.foundation.layout.fillMaxHeight
+import androidx.compose.foundation.layout.fillMaxWidth
+import androidx.compose.foundation.layout.height
+import androidx.compose.foundation.layout.padding
+import androidx.compose.foundation.layout.statusBars
+import androidx.compose.foundation.layout.width
+import androidx.compose.foundation.layout.windowInsetsPadding
+import androidx.compose.ui.input.pointer.pointerInput
+import androidx.compose.ui.unit.dp
+import androidx.compose.ui.unit.sp
 import androidx.compose.foundation.layout.consumeWindowInsets
 import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.foundation.layout.navigationBars
@@ -102,6 +115,40 @@ private fun Screen.key(): String = when (this) {
     else -> toString()
 }
 
+/** A pane (ADR-0076): the workspace it holds and that workspace's screens in it. */
+private class Slot(w: Workspace) {
+    var w by mutableStateOf(w)
+    val screens = androidx.compose.runtime.mutableStateMapOf<Workspace, Screen>()
+}
+
+/** A pane's header on a wide screen: its workspace, its hue along the top while focused,
+ *  and buttons to swap the panes and to give this one the whole width, or, while it has
+ *  it ([swap] null), to split the screen again. */
+@Composable
+private fun PaneHeader(w: Workspace, focused: Boolean, swap: (() -> Unit)?, whole: () -> Unit) {
+    androidx.compose.foundation.layout.Column(
+        androidx.compose.ui.Modifier
+            .fillMaxWidth()
+            .background(Flame.S0)
+            .windowInsetsPadding(androidx.compose.foundation.layout.WindowInsets.statusBars),
+    ) {
+        androidx.compose.foundation.layout.Box(
+            androidx.compose.ui.Modifier.fillMaxWidth().height(2.dp).background(if (focused) w.hue else androidx.compose.ui.graphics.Color.Transparent),
+        )
+        androidx.compose.foundation.layout.Row(
+            verticalAlignment = androidx.compose.ui.Alignment.CenterVertically,
+            modifier = androidx.compose.ui.Modifier.fillMaxWidth().height(34.dp).padding(start = 12.dp),
+        ) {
+            androidx.compose.material3.Text(w.glyph, fontFamily = Mono, fontSize = 12.sp, color = if (focused) w.hue else Flame.Dim)
+            androidx.compose.foundation.layout.Spacer(androidx.compose.ui.Modifier.width(8.dp))
+            androidx.compose.material3.Text(w.label, fontFamily = Mono, fontSize = 12.sp, color = if (focused) Flame.Text else Flame.Dim, modifier = androidx.compose.ui.Modifier.weight(1f))
+            if (swap != null) androidx.compose.material3.TextButton(onClick = swap) { androidx.compose.material3.Text("⇆", fontFamily = Mono, color = Flame.Dim) }
+            androidx.compose.material3.TextButton(onClick = whole) { androidx.compose.material3.Text(if (swap != null) "▢" else "◫", fontFamily = Mono, color = Flame.Dim) }
+        }
+        androidx.compose.foundation.layout.Box(androidx.compose.ui.Modifier.fillMaxWidth().height(1.dp).background(Flame.Line))
+    }
+}
+
 @OptIn(androidx.compose.foundation.layout.ExperimentalLayoutApi::class)
 @Composable
 fun App(
@@ -113,18 +160,27 @@ fun App(
 ) {
     val conn = model.conn
     val agents = model.agents
-    // Each workspace keeps its own screen, so its tab returns to where it was (ADR-0068).
-    var tab by remember { mutableStateOf(Workspace.Agents) }
-    val screens = remember { androidx.compose.runtime.mutableStateMapOf<Workspace, Screen>() }
+    // Two panes when the screen is wide enough (ADR-0076), each a slot with its workspace
+    // and that workspace's screens, so a tab returns to where it was (ADR-0068) in each.
+    // Folded, the focused one shows.
+    val slots = remember { listOf(Slot(Workspace.Agents), Slot(Workspace.Yajna)) }
+    var focus by remember { mutableStateOf(0) }
+    val wide = androidx.compose.ui.platform.LocalConfiguration.current.screenWidthDp >= 600
+    var full by remember { mutableStateOf(false) }
+    val split = wide && !full
+    var tab by object : kotlin.properties.ReadWriteProperty<Any?, Workspace> {
+        override fun getValue(thisRef: Any?, property: kotlin.reflect.KProperty<*>) = slots[focus].w
+        override fun setValue(thisRef: Any?, property: kotlin.reflect.KProperty<*>, value: Workspace) { slots[focus].w = value }
+    }
     fun root(w: Workspace): Screen = when (w) {
         Workspace.Agents -> Screen.Home
         Workspace.Yajna -> Screen.Yajna
         Workspace.Machines -> Screen.Machines
     }
-    fun screenOf(w: Workspace): Screen = screens[w] ?: root(w)
+    fun screenOf(w: Workspace, i: Int = focus): Screen = slots[i].screens[w] ?: root(w)
     var screen by object : kotlin.properties.ReadWriteProperty<Any?, Screen> {
         override fun getValue(thisRef: Any?, property: kotlin.reflect.KProperty<*>) = screenOf(tab)
-        override fun setValue(thisRef: Any?, property: kotlin.reflect.KProperty<*>, value: Screen) { screens[tab] = value }
+        override fun setValue(thisRef: Any?, property: kotlin.reflect.KProperty<*>, value: Screen) { slots[focus].screens[tab] = value }
     }
     // Settings over whatever is showing, on the tab of the workspace in front (ADR-0076).
     var settings by remember { mutableStateOf(false) }
@@ -140,15 +196,17 @@ fun App(
     var switcher by remember { mutableStateOf(false) }
     var needs by remember { mutableStateOf(false) }
 
-    /** Goes to [p] in its workspace; a session is opened again if it was let go. */
-    fun go(p: Place, step: Boolean = false) {
+    /** Goes to [p] in its workspace, in the focused pane or with [other] the other one; a
+     *  session is opened again if it was let go. */
+    fun go(p: Place, step: Boolean = false, other: Boolean = false) {
         (p.screen as? Screen.Session)?.let { s ->
             if (agents.opened(s.nodeId, s.sessionId) == null) conn.session(s.nodeId, s.sessionId)?.let { agents.open(it) }
         }
         stepping = step
         settings = false
-        tab = p.w
-        screens[p.w] = p.screen
+        val slot = slots[if (other && split) 1 - focus else focus]
+        slot.w = p.w
+        slot.screens[p.w] = p.screen
     }
     fun step(by: Int) {
         val list = places.filter { model.label(it) != null }
@@ -164,7 +222,7 @@ fun App(
             is Screen.Session -> agents.opened(s.nodeId, s.sessionId)?.let { agents.close(it) }
             else -> {}
         }
-        if (screenOf(p.w).key() == p.screen.key()) screens[p.w] = root(p.w)
+        for (slot in slots) if ((slot.screens[p.w] ?: root(p.w)).key() == p.screen.key()) slot.screens[p.w] = root(p.w)
     }
     // A machine's health is in Machines (ADR-0076), from wherever it is asked for.
     fun showHealth(nodeId: String) {
@@ -295,11 +353,12 @@ fun App(
         }
     }
 
-    /** One workspace's screen, [w]'s own back stack moving as it is used. */
+    /** Pane [i]'s screen, its workspace's own back stack moving as it is used. */
     @Composable
-    fun Pane(w: Workspace) {
-        fun set(x: Screen) { screens[w] = x }
-        when (val s = screenOf(w)) {
+    fun Pane(i: Int) {
+        val w = slots[i].w
+        fun set(x: Screen) { slots[i].screens[w] = x }
+        when (val s = screenOf(w, i)) {
             Screen.Home -> HomeScreen(
                 agents, snackbar,
                 openSession = {
@@ -367,7 +426,38 @@ fun App(
                 back = if (noHub) null else ({ settings = false }),
                 tryDemo = { conn.startDemo(); tab = Workspace.Agents; screen = Screen.Home; settings = false },
                 start = settingsFrom,
-            ) else Pane(tab)
+            ) else if (wide && full) androidx.compose.foundation.layout.Column(androidx.compose.ui.Modifier.fillMaxSize()) {
+                PaneHeader(slots[focus].w, focused = true, swap = null, whole = { full = false })
+                androidx.compose.foundation.layout.Box(androidx.compose.ui.Modifier.weight(1f).consumeWindowInsets(androidx.compose.foundation.layout.WindowInsets.statusBars)) { Pane(focus) }
+            } else if (!split) Pane(focus) else androidx.compose.foundation.layout.Row(androidx.compose.ui.Modifier.fillMaxSize()) {
+                for (i in slots.indices) {
+                    if (i > 0) androidx.compose.foundation.layout.Box(androidx.compose.ui.Modifier.width(1.dp).fillMaxHeight().background(Flame.Line))
+                    androidx.compose.foundation.layout.Column(
+                        androidx.compose.ui.Modifier
+                            .weight(1f)
+                            .fillMaxHeight()
+                            // A touch anywhere in a pane focuses it, the touch going on.
+                            .pointerInput(i) {
+                                awaitEachGesture {
+                                    awaitFirstDown(requireUnconsumed = false, pass = androidx.compose.ui.input.pointer.PointerEventPass.Initial)
+                                    focus = i
+                                }
+                            },
+                    ) {
+                        PaneHeader(
+                            slots[i].w, focused = i == focus,
+                            swap = {
+                                val (a, b) = slots
+                                val w = a.w; a.w = b.w; b.w = w
+                                val m = a.screens.toMap(); a.screens.clear(); a.screens.putAll(b.screens); b.screens.clear(); b.screens.putAll(m)
+                                focus = 1 - focus
+                            },
+                            whole = { focus = i; full = true },
+                        )
+                        androidx.compose.foundation.layout.Box(androidx.compose.ui.Modifier.weight(1f).consumeWindowInsets(androidx.compose.foundation.layout.WindowInsets.statusBars)) { Pane(i) }
+                    }
+                }
+            }
         }
         if (bar) WorkspaceBar(
             tab,
@@ -378,11 +468,15 @@ fun App(
             answer = { needs = true },
             switcher = { switcher = true },
             step = ::step,
+            // Held, a tab opens its workspace in the other pane.
+            hold = { w -> if (split) slots[1 - focus].w = w },
+            panes = if (split) slots.mapIndexed { i, sl -> sl.w to if (i == 0) "L" else "R" }.groupBy({ it.first }, { it.second }).mapValues { it.value.joinToString("") } else emptyMap(),
         )
     }
     if (switcher) SwitcherSheet(
         model, places, places.firstOrNull { it.w == tab && it.screen.key() == screen.key() },
         go = { switcher = false; go(it) },
+        goOther = if (split) ({ switcher = false; go(it, other = true) }) else null,
         close = { drop(it) },
         dismiss = { switcher = false },
     )

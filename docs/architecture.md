@@ -264,7 +264,11 @@ up, and ends in a gear that opens Settings, on the tab of the workspace in front
 notebook pages, shells, a machine's health, a session's changes, gathers in a switcher, most
 recent first, opened by a drag up on the bar; a sideways swipe along the bar steps to the
 previous or next one without opening it. The amber count on *agents* opens what waits on
-the owner as a sheet, answered there from any workspace.
+the owner as a sheet, answered there from any workspace. On a screen 600 dp wide or more (the phone
+unfolded) the app shows two panes, each with a workspace and its own screens, so two
+sessions can be side by side; the bar acts on the focused pane and marks which workspace
+each pane holds, a long press on a tab or a switcher entry opens it in the other, and a
+pane's header swaps the two or gives one the whole width. Folded, the focused pane shows.
 
 ### Agent adapter
 
