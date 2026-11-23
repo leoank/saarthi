@@ -58,9 +58,6 @@ import androidx.compose.ui.window.DialogProperties
 import uniffi.saarthi_core.ClaudeTokenInfo
 import uniffi.saarthi_core.NodeInfo
 
-/** Models offered for a new session: claude's `--model` aliases, empty for its default. */
-internal val models = listOf("Default" to "", "Fable" to "fable", "Opus" to "opus", "Sonnet" to "sonnet", "Haiku" to "haiku")
-
 /** Permission modes offered: claude's `--permission-mode` values, empty for the user's
  *  default, each with a line saying what it means. */
 private val modes = listOf(
@@ -70,9 +67,6 @@ private val modes = listOf(
     Triple("Plan", "plan", "Reads and plans; changes nothing"),
     Triple("Bypass", "bypassPermissions", "Every tool runs without asking"),
 )
-
-/** A path with the home directory as `~`. */
-internal fun short(path: String): String = path.replace(Regex("^/(Users|home)/[^/]+"), "~")
 
 /** A new headless session (ADR-0034), as a full-screen sheet: the first prompt on top, then
  *  where it runs (a node that allows spawning, a directory under one of its roots, made if
@@ -277,87 +271,6 @@ fun NewSessionDialog(
                 }
                 Spacer(Modifier.height(24.dp))
             }
-        }
-    }
-}
-
-/** A settings section's heading, as a rule (ADR-0069). */
-@Composable
-internal fun Heading(text: String) = SectionTitle(text, Modifier.padding(top = 4.dp))
-
-/** Rows on one surface, like a settings group, with a hairline round it. */
-@Composable
-internal fun Group(modifier: Modifier = Modifier, content: @Composable () -> Unit) {
-    Column(
-        modifier
-            .fillMaxWidth()
-            .clip(RoundedCornerShape(6.dp))
-            .background(MaterialTheme.colorScheme.surfaceContainerLow)
-            .border(1.dp, Flame.Line, RoundedCornerShape(6.dp)),
-    ) { content() }
-}
-
-@Composable
-internal fun Divider() {
-    HorizontalDivider(Modifier.padding(horizontal = 16.dp), color = MaterialTheme.colorScheme.outlineVariant)
-}
-
-/** A row showing a setting and its value; a tap opens a menu of `options` (label to value),
- *  each with an optional line under it from `details`. */
-@Composable
-internal fun Choice(
-    label: String,
-    value: String,
-    options: List<Pair<String, String>>,
-    selected: String,
-    details: Map<String, String> = emptyMap(),
-    pick: (String) -> Unit,
-) {
-    var open by remember { mutableStateOf(false) }
-    Box {
-        Row(
-            verticalAlignment = Alignment.CenterVertically,
-            modifier = Modifier
-                .fillMaxWidth()
-                .clickable { open = true }
-                .padding(start = 16.dp, end = 12.dp, top = 14.dp, bottom = 14.dp),
-        ) {
-            Text(label, style = MaterialTheme.typography.bodyLarge, modifier = Modifier.weight(1f))
-            Text(
-                value,
-                style = MaterialTheme.typography.bodyLarge,
-                color = MaterialTheme.colorScheme.onSurfaceVariant,
-                maxLines = 1,
-                overflow = TextOverflow.Ellipsis,
-            )
-            Icon(
-                Icons.Filled.UnfoldMore,
-                null,
-                tint = MaterialTheme.colorScheme.onSurfaceVariant,
-                modifier = Modifier.padding(start = 4.dp).size(18.dp),
-            )
-        }
-        // Anchored at the row's bottom right, under the value it changes.
-        Box(Modifier.align(Alignment.BottomEnd)) {
-        DropdownMenu(expanded = open, onDismissRequest = { open = false }) {
-            for ((text, v) in options) {
-                val detail = details[v].orEmpty()
-                DropdownMenuItem(
-                    text = {
-                        Column {
-                            Text(
-                                text,
-                                color = if (v == selected) MaterialTheme.colorScheme.primary else MaterialTheme.colorScheme.onSurface,
-                            )
-                            if (detail.isNotEmpty()) {
-                                Text(detail, style = MaterialTheme.typography.bodySmall, color = MaterialTheme.colorScheme.onSurfaceVariant)
-                            }
-                        }
-                    },
-                    onClick = { open = false; pick(v) },
-                )
-            }
-        }
         }
     }
 }

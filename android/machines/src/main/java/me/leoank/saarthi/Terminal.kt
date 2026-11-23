@@ -1,5 +1,6 @@
 package me.leoank.saarthi
 
+import me.leoank.saarthi.ui.R
 import android.content.Context
 import android.graphics.Paint
 import android.text.InputType

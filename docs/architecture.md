@@ -256,7 +256,9 @@ one line on how many machines are up. The hub says which tailnet a client's own 
 over (`ListNodesResponse.tailnet`), shown beside the hub's name, and which one each node's
 link came over, shown on each machine and on each session's line. The app's state is one
 connection to the hub shared by a model per workspace (ADR-0077); a session opened on the
-phone keeps its own conversation and stream, so more than one can be open at once.
+phone keeps its own conversation and stream, so more than one can be open at once. The code
+follows: `:core` (the bindings, the native libraries and the connection), `:ui`, a module per
+workspace that depends on those two only, and `:app`, the shell that routes between them.
 
 The bar with the workspaces is on every screen, stepping aside only while the keyboard is
 up, and ends in a gear that opens Settings, on the tab of the workspace in front with
@@ -626,7 +628,11 @@ saarthi/
     node/
     core/                uniffi client core
     uniffi-bindgen/      generates the Kotlin bindings for core
-  android/               compose app, consumes core as an aar
+  android/               compose app, a module per part (ADR-0077)
+    core/                the core's bindings and native libraries, the shared connection
+    ui/                  theme, shared pieces, fonts
+    agents/ yajna/ machines/   a workspace each
+    app/                 the shell: activity, bar, switcher, panes, settings, push
   .github/workflows/     the user guide to GitHub Pages
   nix/
     hub-module.nix       nixos module, `nixosModules.saarthi-hub`

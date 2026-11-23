@@ -14,8 +14,16 @@ class HubModel(app: Application) : AndroidViewModel(app) {
     val yajna = YajnaModel(conn)
     val machines = MachinesModel(conn)
 
+    /** The boot log shown while the app starts (see Boot.kt). */
+    val bootLog = BootLog()
+
     init {
-        viewModelScope.launch { conn.bootLog.boot(conn, app) }
+        viewModelScope.launch { bootLog.boot(conn, app) }
+    }
+
+    /** After a failed start, the boot log's Retry. */
+    fun retryBoot() {
+        viewModelScope.launch { bootLog.retry(conn) }
     }
 
     override fun onCleared() {

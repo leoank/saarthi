@@ -98,9 +98,6 @@ class Connection(val app: Application, val scope: CoroutineScope) {
     fun onDropped(block: () -> Unit) { dropped += block }
     fun onSwitch(block: () -> Unit) { switching += block }
 
-    /** The boot log shown while the app starts (see Boot.kt). */
-    val bootLog = BootLog()
-
     /** The active hub's name, for titles. */
     val hubName: String
         get() = if (demo != null) "Demo · add a hub in Settings" else active?.title ?: "no hub"
@@ -207,13 +204,8 @@ class Connection(val app: Application, val scope: CoroutineScope) {
         }
     }
 
-    /** After a failed start, the boot log's Retry. */
-    fun retryBoot() {
-        scope.launch { bootLog.retry(this@Connection) }
-    }
-
     /** [connect], awaited: null once connected, else why not. For the boot log. */
-    internal suspend fun connectNow(): String? {
+    suspend fun connectNow(): String? {
         reconnect?.cancel()
         link = Link.Connecting
         connectError = null
@@ -241,7 +233,7 @@ class Connection(val app: Application, val scope: CoroutineScope) {
     /** Opens the connection, lists everything, and starts the watch and what the
      *  workspaces stream. The old hub object goes first: a command or refresh while the new
      *  connection is being made must see "not connected", not a destroyed object. */
-    internal suspend fun establish() {
+    suspend fun establish() {
         watch?.cancel()
         hub?.let { old -> hub = null; old.close() }
         val h = active!!.connect(app)

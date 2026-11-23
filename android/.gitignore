@@ -3,5 +3,5 @@ build/
 app/build/
 local.properties
 # Built by the buildCore task from crates/core.
-app/src/main/jniLibs/
-app/src/main/res/font/
+core/src/main/jniLibs/
+ui/src/main/res/font/

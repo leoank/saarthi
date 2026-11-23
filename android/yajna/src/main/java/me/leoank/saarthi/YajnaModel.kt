@@ -7,11 +7,6 @@ import androidx.compose.runtime.setValue
 import kotlinx.coroutines.launch
 import uniffi.saarthi_core.NotebookInfo
 
-/** The node service that answers for a machine's notebooks: `yajna serve --socket`. */
-const val NOTEBOOK_SERVICE = "yajna"
-/** The node's own service of what a session changed (ADR-0067). */
-const val CHANGES_SERVICE = "changes"
-
 /** The yajna workspace (ADR-0076, ADR-0077): each machine's notebooks. */
 class YajnaModel(val conn: Connection) {
     /** Each node's notebooks, by node id, from its `yajna` service (ADR-0053), and why a

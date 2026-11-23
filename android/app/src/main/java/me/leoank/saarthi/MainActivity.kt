@@ -275,11 +275,11 @@ fun App(
     }
     if (!booted) {
         BootScreen(
-            conn.bootLog,
-            retry = { conn.retryBoot() },
+            model.bootLog,
+            retry = { model.retryBoot() },
             settings = { openSettings(null); booted = true },
             finished = {
-                if (conn.bootLog.state == BootLog.State.NoHub) {
+                if (model.bootLog.state == BootLog.State.NoHub) {
                     openSettings(null)
                     firstRun = true
                 }

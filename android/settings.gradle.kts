@@ -13,4 +13,5 @@ dependencyResolutionManagement {
     }
 }
 rootProject.name = "saarthi"
-include(":app")
+// The app is its shell and shared pieces, each workspace a module of its own (ADR-0077).
+include(":app", ":core", ":ui", ":agents", ":yajna", ":machines")
