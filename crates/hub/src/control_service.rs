@@ -8,7 +8,8 @@ use saarthi_proto::control::v1::control_service_server::ControlService;
 use saarthi_proto::control::v1::*;
 use saarthi_proto::event::v1::{Event, resolution};
 use saarthi_proto::node::v1::{
-    self as node, CommandResult, Interrupt, Kill, Prompt, Resume, SetKeepAwake, SetModel, Spawn, Unqueue, command,
+    self as node, CommandResult, Interrupt, Kill, KillShell, ListShells, Prompt, Resume, SetKeepAwake, SetModel, Spawn, Unqueue,
+    command,
 };
 use tokio::sync::broadcast::error::RecvError;
 use tokio_stream::Stream;
@@ -468,6 +469,29 @@ impl ControlService for Hub {
             self.live.publish(Update { body: Some(update::Body::Session(session)) });
         }
         Ok(response(result))
+    }
+
+    async fn list_shells(
+        &self,
+        request: Request<ListShellsRequest>,
+    ) -> Result<Response<ListShellsResponse>, Status> {
+        self.client(&request)?;
+        let r = request.into_inner();
+        let result = self.live.command(&r.node_id, "", command::Action::ListShells(ListShells {})).await?;
+        if !result.ok {
+            return Err(Status::failed_precondition(result.error));
+        }
+        Ok(Response::new(ListShellsResponse { shells: result.shells }))
+    }
+
+    async fn kill_shell(
+        &self,
+        request: Request<KillShellRequest>,
+    ) -> Result<Response<CommandResponse>, Status> {
+        self.client(&request)?;
+        let r = request.into_inner();
+        let action = command::Action::KillShell(KillShell { shell_id: r.shell_id });
+        Ok(response(self.live.command(&r.node_id, "", action).await?))
     }
 
     async fn spawn(

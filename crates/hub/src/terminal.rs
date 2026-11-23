@@ -54,9 +54,9 @@ pub async fn open(hub: &Hub, client: &str, mut inbound: Streaming<TerminalUp>) -
         }
     });
     hub.live
-        .open_terminal(&first.node_id, size.cols, size.rows, input_rx, to_client)
+        .open_terminal(&first.node_id, size.cols, size.rows, first.shell_id.clone(), input_rx, to_client)
         .await?;
-    tracing::info!(%client, node_id = %first.node_id, cols = size.cols, rows = size.rows, "a terminal opened");
+    tracing::info!(%client, node_id = %first.node_id, shell = %first.shell_id, cols = size.cols, rows = size.rows, "a terminal opened");
     Ok(Box::pin(ReceiverStream::new(from_node)))
 }
 

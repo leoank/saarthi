@@ -283,12 +283,14 @@ async fn stream(
                                 gone: false,
                                 queued: false,
                                 session_id: String::new(),
+                                shells: Vec::new(),
                             })
                             .await;
                     });
                 }
                 Some(hub_message::Body::Command(cmd)) => {
-                    let result = act(&cmd, parts).await;
+                    let holder = cfg.terminal.is_some().then_some(cfg.shells.as_path());
+                    let result = act(&cmd, parts, holder).await;
                     queue.push_back(NodeMessage { body: Some(Body::CommandResult(result)) });
                 }
                 // A client's request to a local service: answered over a stream of its own,
@@ -307,9 +309,11 @@ async fn stream(
     }
 }
 
-/// Carries out one command from the hub. Ok carries a note for the person, if any.
-async fn act(cmd: &Command, parts: &Parts) -> CommandResult {
+/// Carries out one command from the hub. Ok carries a note for the person, if any. `holder`
+/// is the shell holder's socket when the node offers a terminal (ADR-0078).
+async fn act(cmd: &Command, parts: &Parts, holder: Option<&std::path::Path>) -> CommandResult {
     let mut gone = false;
+    let mut shells = Vec::new();
     let mut queued = false;
     let mut forked = String::new();
     let Parts {
@@ -416,6 +420,28 @@ async fn act(cmd: &Command, parts: &Parts) -> CommandResult {
             Ok(String::new())
         }
         Some(command::Action::Probe(_)) => Err("a probe is run apart".to_string()),
+        Some(command::Action::ListShells(_)) | Some(command::Action::KillShell(_)) if holder.is_none() => {
+            Err("this node offers no terminal: it runs without --terminal".to_string())
+        }
+        // No holder answering holds no shells.
+        Some(command::Action::ListShells(_)) => match crate::shells::connect(holder.unwrap()).await {
+            Ok(mut c) => match c.list(saarthi_proto::shells::v1::ListRequest {}).await {
+                Ok(r) => {
+                    shells = r.into_inner().shells;
+                    Ok(String::new())
+                }
+                Err(e) => Err(format!("the shell holder: {}", e.message())),
+            },
+            Err(_) => Ok(String::new()),
+        },
+        Some(command::Action::KillShell(k)) => match crate::shells::connect(holder.unwrap()).await {
+            Ok(mut c) => match c.kill(saarthi_proto::shells::v1::KillRequest { id: k.shell_id.clone() }).await {
+                Ok(r) if r.get_ref().killed => Ok(String::new()),
+                Ok(_) => Err("no such shell: it ended or was killed".to_string()),
+                Err(e) => Err(format!("the shell holder: {}", e.message())),
+            },
+            Err(_) => Err("no such shell: the shell holder is not running".to_string()),
+        },
         None => Err("the command has no action".to_string()),
     };
     if let Err(e) = &outcome {
@@ -434,6 +460,7 @@ async fn act(cmd: &Command, parts: &Parts) -> CommandResult {
         gone,
         queued,
         session_id: forked,
+        shells,
     }
 }
 

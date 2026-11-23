@@ -5,6 +5,7 @@ syntax = "proto3";
 package saarthi.node.v1;
 
 import "saarthi/event/v1/event.proto";
+import "saarthi/shells/v1/shells.proto";
 
 service NodeService {
   rpc Link(stream NodeMessage) returns (stream HubMessage);
@@ -193,7 +194,17 @@ message Command {
     Probe probe = 10;
     Unqueue unqueue = 11;
     SetModel set_model = 12;
+    ListShells list_shells = 13;
+    KillShell kill_shell = 14;
   }
+}
+
+// The shells this machine's holder keeps (ADR-0078), in `CommandResult.shells`; no session.
+message ListShells {}
+
+// Ends one of them; no session.
+message KillShell {
+  string shell_id = 1;
 }
 
 // Switches a session's model and reasoning effort (phase PHS-20261117-f22kxe item 18,
@@ -309,4 +320,6 @@ message CommandResult {
   bool queued = 7;
   // Resume only: the new session a resume forked into, when the copies diverged (ADR-0066).
   string session_id = 8;
+  // ListShells only: the shells the holder keeps (ADR-0078).
+  repeated saarthi.shells.v1.Shell shells = 9;
 }

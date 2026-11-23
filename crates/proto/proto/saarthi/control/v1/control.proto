@@ -6,6 +6,7 @@ package saarthi.control.v1;
 
 import "saarthi/event/v1/event.proto";
 import "saarthi/node/v1/node.proto";
+import "saarthi/shells/v1/shells.proto";
 
 service ControlService {
   rpc ListNodes(ListNodesRequest) returns (ListNodesResponse);
@@ -64,6 +65,9 @@ service ControlService {
   // then keystrokes and resizes go up and the shell's output comes down, until either side
   // closes; the stream ending ends the shell.
   rpc Terminal(stream TerminalUp) returns (stream saarthi.node.v1.TerminalOut);
+  // The shells a node's holder keeps, to attach to again (ADR-0078), and ending one.
+  rpc ListShells(ListShellsRequest) returns (ListShellsResponse);
+  rpc KillShell(KillShellRequest) returns (CommandResponse);
 }
 
 message Node {
@@ -333,6 +337,22 @@ message CommandResponse {
 message TerminalUp {
   string node_id = 1;                               // the first message only
   saarthi.node.v1.TerminalIn in = 2;                // its size in the first; then keys, resizes
+  // The first message only: the shell to attach to (ADR-0078); empty for a new one. The
+  // first message down names the shell attached to, and the screen as it is follows.
+  string shell_id = 3;
+}
+
+message ListShellsRequest {
+  string node_id = 1;
+}
+
+message ListShellsResponse {
+  repeated saarthi.shells.v1.Shell shells = 1;
+}
+
+message KillShellRequest {
+  string node_id = 1;
+  string shell_id = 2;
 }
 
 message ServiceRequestPart {

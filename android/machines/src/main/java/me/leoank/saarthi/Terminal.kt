@@ -80,6 +80,8 @@ class Shell(val id: Int, val nodeId: String, val nodeName: String) {
         private set
     /** Why the shell ended, once it has; it stays listed until closed. */
     var ended by mutableStateOf<String?>(null)
+    /** The shell its machine's holder keeps it as (ADR-0078), once attached. */
+    var shellId by mutableStateOf("")
     /** Bumped by *Open again*, which starts a new shell in its place. */
     var generation by mutableIntStateOf(0)
         private set
@@ -92,7 +94,11 @@ class Shell(val id: Int, val nodeId: String, val nodeName: String) {
         this.cols = cols
         this.rows = rows
         // The pixels are the terminal's: a cell's whole pixels times the cells.
-        val h = model.openTerminal(nodeId, cols, rows, cols * cellW, rows * cellH, object : TerminalListener {
+        val h = model.openTerminal(nodeId, "", cols, rows, cols * cellW, rows * cellH, object : TerminalListener {
+            override fun onAttached(shellId: String) {
+                this@Shell.shellId = shellId
+            }
+
             override fun onOutput(bytes: ByteArray) {
                 synchronized(this@Shell) {
                     if (vt != v) return
@@ -102,6 +108,10 @@ class Shell(val id: Int, val nodeId: String, val nodeName: String) {
             }
 
             override fun onEnded(reason: String) {
+                ended = reason
+            }
+
+            override fun onDropped(reason: String) {
                 ended = reason
             }
         })

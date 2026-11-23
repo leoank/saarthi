@@ -90,6 +90,19 @@ pub struct NodeInfo {
     pub tailnet: String,
 }
 
+/// A shell a node's holder keeps (ADR-0078), to attach to again.
+#[derive(Debug, Clone, PartialEq, uniffi::Record)]
+pub struct ShellInfo {
+    pub id: String,
+    pub started_ms: i64,
+    /// Clients attached now.
+    pub clients: u32,
+    pub cols: u32,
+    pub rows: u32,
+    /// The window title the shell or its program last set; empty if none.
+    pub title: String,
+}
+
 /// A notebook a node's `yajna serve` answers for (yajna's ADR-0036).
 #[derive(Debug, Clone, PartialEq, uniffi::Record)]
 pub struct NotebookInfo {
@@ -372,12 +385,19 @@ pub trait SessionListener: Send + Sync {
     fn on_error(&self, message: String);
 }
 
-/// Receives a terminal's output (ADR-0054): the shell's bytes as they come, then once why
-/// it ended.
+/// Receives a terminal's output (ADR-0054, ADR-0078): first the shell it attached to, then
+/// the shell's screen as it is and its bytes as they come; then once either why the shell
+/// ended, or that the stream was lost while the shell may well go on, to attach to again.
 #[uniffi::export(with_foreign)]
 pub trait TerminalListener: Send + Sync {
+    /// The shell attached to, by the id its node's holder gives it; a node older than 0.22
+    /// sends none.
+    fn on_attached(&self, shell_id: String);
     fn on_output(&self, bytes: Vec<u8>);
+    /// The shell ended, or could not start or be found: nothing to attach to again.
     fn on_ended(&self, reason: String);
+    /// The stream went (the connection, the hub, the node), not the shell.
+    fn on_dropped(&self, reason: String);
 }
 
 /// An open terminal on a node: what is typed goes in, in order; closing it, or dropping it,
@@ -402,7 +422,8 @@ impl TerminalHandle {
         }
     }
 
-    /// Ends the shell. (Not `close`: UniFFI gives every object a `close` that frees it.)
+    /// Detaches from the shell, which goes on in its holder (ADR-0078). (Not `close`: UniFFI
+    /// gives every object a `close` that frees it.)
     pub fn hang_up(&self) {
         if let Ok(mut up) = self.up.lock() {
             up.take();
@@ -415,7 +436,7 @@ impl TerminalHandle {
         if let Ok(up) = self.up.lock()
             && let Some(up) = up.as_ref()
         {
-            let _ = up.send(TerminalUp { node_id: String::new(), r#in: Some(m) });
+            let _ = up.send(TerminalUp { node_id: String::new(), r#in: Some(m), shell_id: String::new() });
         }
     }
 }
@@ -944,11 +965,13 @@ impl Hub {
         }))
     }
 
-    /// A shell on a node (ADR-0054), `cols` by `rows`: its output goes to the listener until
-    /// it ends; the handle takes what is typed.
+    /// A shell on a node (ADR-0054), `cols` by `rows`: a new one, or with `shell_id` one its
+    /// holder keeps (ADR-0078). Its output goes to the listener until it ends or the stream
+    /// drops; the handle takes what is typed.
     pub async fn terminal(
         &self,
         node_id: String,
+        shell_id: String,
         cols: u32,
         rows: u32,
         width_px: u32,
@@ -957,12 +980,12 @@ impl Hub {
     ) -> Result<Arc<TerminalHandle>, CoreError> {
         let (up, up_rx) = tokio::sync::mpsc::unbounded_channel();
         let size = saarthi_proto::node::v1::TerminalIn { cols, rows, ..Default::default() };
-        let _ = up.send(TerminalUp { node_id, r#in: Some(size) });
+        let _ = up.send(TerminalUp { node_id, r#in: Some(size), shell_id });
         // The hub opens the shell at the first message's cells; the pixels follow as a
         // resize, which the hub passes on as it is.
         if width_px > 0 && height_px > 0 {
             let px = saarthi_proto::node::v1::TerminalIn { cols, rows, width_px, height_px, ..Default::default() };
-            let _ = up.send(TerminalUp { node_id: String::new(), r#in: Some(px) });
+            let _ = up.send(TerminalUp { node_id: String::new(), r#in: Some(px), shell_id: String::new() });
         }
         let mut stream = self
             .client
@@ -974,6 +997,9 @@ impl Hub {
             loop {
                 match stream.message().await {
                     Ok(Some(m)) => {
+                        if !m.shell_id.is_empty() {
+                            listener.on_attached(m.shell_id);
+                        }
                         if !m.output.is_empty() {
                             listener.on_output(m.output);
                         }
@@ -981,12 +1007,30 @@ impl Hub {
                             return listener.on_ended(m.ended);
                         }
                     }
-                    Ok(None) => return listener.on_ended("the terminal closed".into()),
-                    Err(s) => return listener.on_ended(s.message().to_string()),
+                    Ok(None) => return listener.on_dropped("the terminal's stream closed".into()),
+                    Err(s) => return listener.on_dropped(s.message().to_string()),
                 }
             }
         });
         Ok(Arc::new(TerminalHandle { up: std::sync::Mutex::new(Some(up)) }))
+    }
+
+    /// The shells a node's holder keeps (ADR-0078), oldest first.
+    pub async fn shells(&self, node_id: String) -> Result<Vec<ShellInfo>, CoreError> {
+        let r = self.client.clone().list_shells(self.req(ListShellsRequest { node_id })).await?.into_inner();
+        Ok(r.shells
+            .into_iter()
+            .map(|s| ShellInfo { id: s.id, started_ms: s.started_ms, clients: s.clients, cols: s.cols, rows: s.rows, title: s.title })
+            .collect())
+    }
+
+    /// Ends a shell a node's holder keeps; every client attached is told.
+    pub async fn kill_shell(&self, node_id: String, shell_id: String) -> Result<String, CoreError> {
+        let r = self.client.clone().kill_shell(self.req(KillShellRequest { node_id, shell_id })).await?.into_inner();
+        if !r.ok {
+            return Err(CoreError::Refused { reason: r.error });
+        }
+        Ok(r.note)
     }
 
     /// The notebooks a node's `yajna` service answers for, from yajna's

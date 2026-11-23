@@ -28,14 +28,15 @@ class MachinesModel(val conn: Connection) {
         shells.remove(s)
     }
 
-    /** Opens a shell on a node (ADR-0054); null, with the listener told why, when it cannot. */
-    suspend fun openTerminal(nodeId: String, cols: Int, rows: Int, widthPx: Int, heightPx: Int, listener: TerminalListener): TerminalHandle? {
+    /** Opens a shell on a node (ADR-0054), a new one or [shellId] its holder keeps (ADR-0078);
+     *  null, with the listener told why, when it cannot. */
+    suspend fun openTerminal(nodeId: String, shellId: String, cols: Int, rows: Int, widthPx: Int, heightPx: Int, listener: TerminalListener): TerminalHandle? {
         val h = conn.connection ?: run {
             listener.onEnded("Not connected to the hub")
             return null
         }
         return try {
-            h.terminal(nodeId, cols.toUInt(), rows.toUInt(), widthPx.toUInt(), heightPx.toUInt(), listener)
+            h.terminal(nodeId, shellId, cols.toUInt(), rows.toUInt(), widthPx.toUInt(), heightPx.toUInt(), listener)
         } catch (e: kotlinx.coroutines.CancellationException) {
             throw e
         } catch (e: Exception) {

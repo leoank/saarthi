@@ -203,6 +203,7 @@ impl Live {
         node_id: &str,
         cols: u32,
         rows: u32,
+        shell_id: String,
         input: TerminalInput,
         to_client: ToTerminalClient,
     ) -> Result<(), Status> {
@@ -216,7 +217,7 @@ impl Live {
             id.clone(),
             PendingTerminal { node_id: node_id.to_string(), input, to_client },
         );
-        let open = OpenTerminal { id: id.clone(), cols, rows, ..Default::default() };
+        let open = OpenTerminal { id: id.clone(), cols, rows, shell_id };
         if tx
             .send(Ok(HubMessage { body: Some(hub_message::Body::OpenTerminal(open)) }))
             .await

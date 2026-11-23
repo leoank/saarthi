@@ -674,7 +674,9 @@ per-user holder apart from the node (a service of its own under the node module,
 started by the node), reached over a unix socket: each a login shell under a PTY with its
 screen in libghostty-vt and 10,000 lines of scrollback, until it exits or is killed. A
 client attaching gets the screen as VT from libghostty-vt's formatter, then the live output;
-several may be attached at once; hanging up only detaches. The app keeps the screen in libghostty-vt behind a
+several may be attached at once; hanging up only detaches. A client's `Terminal` stream
+names the shell to attach to (`TerminalUp.shell_id`, empty for a new one) and learns the
+shell's id first; `ListShells` and `KillShell` reach the node's holder as node commands. The app keeps the screen in libghostty-vt behind a
 JNI shim, statically linked, and draws its cells on a canvas each frame it changed
 ([[EXP-20261114-raqjf0]]); the soft keyboard types into a view whose input connection
 keeps no text, so each key and commit goes to the shell as it comes. Push to talk and spoken replies work in every
