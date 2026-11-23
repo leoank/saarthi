@@ -249,6 +249,15 @@ usage alert the node's health. A diff or a long script shows its first lines und
 and opens whole, full screen, on a tap; one app-wide toggle, remembered, wraps monospace
 text instead of scrolling it sideways.
 
+The app's parts are workspaces (ADR-0068, ADR-0076): *Agents* (home, the sessions and
+their history), *yajna* (the notebooks) and *Machines* (the open shells, then every machine,
+whether it is up, the tailnet its link came over, a shell on it and its health); home keeps
+one line on how many machines are up. The hub says which tailnet a client's own call came
+over (`ListNodesResponse.tailnet`), shown beside the hub's name, and which one each node's
+link came over, shown on each machine and on each session's line. The app's state is one
+connection to the hub shared by a model per workspace (ADR-0077); a session opened on the
+phone keeps its own conversation and stream, so more than one can be open at once.
+
 ### Agent adapter
 
 Claude Code is the only implementation, but the daemon talks to it through a trait with

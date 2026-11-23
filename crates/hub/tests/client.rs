@@ -91,6 +91,9 @@ async fn a_client_streams_a_session_reads_health_and_is_notified() {
         }
         tokio::time::sleep(Duration::from_millis(20)).await;
     };
+    // Over plain TCP the hub names no tailnet for the call (ADR-0076).
+    let listed = c.list_nodes(req(ListNodesRequest {})).await.unwrap().into_inner();
+    assert_eq!(listed.tailnet, "");
 
     // Stored events first, then live ones as they are stored.
     let mut stream = c

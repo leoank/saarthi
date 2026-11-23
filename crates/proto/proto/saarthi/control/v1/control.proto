@@ -96,6 +96,9 @@ message ListNodesRequest {}
 
 message ListNodesResponse {
   repeated Node nodes = 1;
+  // The tailnet this call came over, by the hub's name for it; empty for plain TCP
+  // (ADR-0076), so a client can say which tailnet it reaches the hub on.
+  string tailnet = 2;
 }
 
 message ListSessionsRequest {

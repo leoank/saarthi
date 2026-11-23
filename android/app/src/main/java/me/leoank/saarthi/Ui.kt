@@ -196,19 +196,27 @@ fun SectionTitle(text: String, modifier: Modifier = Modifier, count: Int? = null
 /** A workspace root's top line, a prompt saying where you are (ADR-0069): `hub:~/agents`,
  *  and under it the hub's state in one dim line, red when it is down. */
 @Composable
-fun PromptLine(hub: String, path: String, status: String, statusColor: Color = Flame.Dim, onStatus: (() -> Unit)? = null) {
+fun PromptLine(hub: String, path: String, status: String, statusColor: Color = Flame.Dim, onStatus: (() -> Unit)? = null, tailnet: String? = null) {
     Column(Modifier.padding(start = 2.dp)) {
-        Text(
-            androidx.compose.ui.text.buildAnnotatedString {
-                withStyle(androidx.compose.ui.text.SpanStyle(color = Flame.Agents)) { append(hub.lowercase().replace(' ', '-')) }
-                withStyle(androidx.compose.ui.text.SpanStyle(color = Flame.Dim)) { append(":") }
-                withStyle(androidx.compose.ui.text.SpanStyle(color = Flame.Text, fontWeight = FontWeight.SemiBold)) { append(path) }
-            },
-            fontFamily = Mono,
-            fontSize = 15.sp,
-            maxLines = 1,
-            overflow = TextOverflow.Ellipsis,
-        )
+        Row(verticalAlignment = Alignment.CenterVertically) {
+            Text(
+                androidx.compose.ui.text.buildAnnotatedString {
+                    withStyle(androidx.compose.ui.text.SpanStyle(color = Flame.Agents)) { append(hub.lowercase().replace(' ', '-')) }
+                    withStyle(androidx.compose.ui.text.SpanStyle(color = Flame.Dim)) { append(":") }
+                    withStyle(androidx.compose.ui.text.SpanStyle(color = Flame.Text, fontWeight = FontWeight.SemiBold)) { append(path) }
+                },
+                fontFamily = Mono,
+                fontSize = 15.sp,
+                maxLines = 1,
+                overflow = TextOverflow.Ellipsis,
+                modifier = Modifier.weight(1f, fill = false),
+            )
+            // The tailnet this phone reaches the hub over (ADR-0076).
+            if (tailnet != null) {
+                Spacer(Modifier.width(8.dp))
+                NetTag(tailnet)
+            }
+        }
         Text(
             // Its leading mark green while the hub is up.
             if (status.startsWith("●")) androidx.compose.ui.text.buildAnnotatedString {
@@ -304,4 +312,40 @@ fun ActionButton(label: String, onClick: () -> Unit, modifier: Modifier = Modifi
         Text("+ ", fontFamily = Mono, fontSize = 14.sp, fontWeight = FontWeight.Bold, color = Flame.Blue)
         Text(label, fontFamily = Mono, fontSize = 14.sp, fontWeight = FontWeight.SemiBold, color = Flame.Core)
     }
+}
+
+/** A tailnet as the hub names it, `⌁ name`, or `⇄ tcp` for a link on no tailnet (ADR-0076). */
+fun netLabel(tailnet: String): String = if (tailnet.isEmpty()) "⇄ tcp" else "⌁ $tailnet"
+
+/** [netLabel] as a small outlined tag, for a header or a machine's row. */
+@Composable
+fun NetTag(tailnet: String) {
+    Text(
+        netLabel(tailnet),
+        fontFamily = Mono,
+        fontSize = 10.5.sp,
+        color = if (tailnet.isEmpty()) Flame.Dim else Flame.Soft,
+        maxLines = 1,
+        modifier = Modifier
+            .border(1.dp, Flame.LineStrong, MaterialTheme.shapes.extraSmall)
+            .background(Flame.S1, MaterialTheme.shapes.extraSmall)
+            .padding(horizontal = 5.dp, vertical = 1.dp),
+    )
+}
+
+/** A small outlined action in a row, in mono: a machine's *shell* or *health*. */
+@Composable
+fun MiniAction(label: String, color: Color = Flame.Soft, onClick: () -> Unit) {
+    Text(
+        label,
+        fontFamily = Mono,
+        fontSize = 11.5.sp,
+        color = color,
+        modifier = Modifier
+            .clip(MaterialTheme.shapes.extraSmall)
+            .border(1.dp, color.copy(alpha = 0.35f), MaterialTheme.shapes.extraSmall)
+            .background(Flame.S1)
+            .clickable(onClick = onClick)
+            .padding(horizontal = 9.dp, vertical = 5.dp),
+    )
 }

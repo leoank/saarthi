@@ -85,6 +85,9 @@ pub struct NodeInfo {
     pub services: Vec<String>,
     /// Whether it offers a shell (ADR-0054).
     pub terminal: bool,
+    /// The tailnet its link last came over, by the hub's name for it; empty for plain TCP
+    /// (ADR-0048).
+    pub tailnet: String,
 }
 
 /// A notebook a node's `yajna serve` answers for (yajna's ADR-0036).
@@ -440,6 +443,8 @@ impl Drop for Subscription {
 pub struct Hub {
     client: ControlServiceClient<Channel>,
     bearer: tonic::metadata::MetadataValue<tonic::metadata::Ascii>,
+    /// The tailnet the last node list came over, by the hub's name for it.
+    tailnet: std::sync::Mutex<String>,
 }
 
 impl Hub {
@@ -480,6 +485,7 @@ impl Hub {
         let hub = Self {
             client: ControlServiceClient::new(channel),
             bearer,
+            tailnet: std::sync::Mutex::new(String::new()),
         };
         // Fail now on a wrong token rather than at the first screen.
         hub.nodes().await?;
@@ -513,8 +519,16 @@ impl Hub {
             .client
             .clone()
             .list_nodes(self.req(ListNodesRequest {}))
-            .await?;
-        Ok(r.into_inner().nodes.into_iter().map(node).collect())
+            .await?
+            .into_inner();
+        *self.tailnet.lock().unwrap() = r.tailnet;
+        Ok(r.nodes.into_iter().map(node).collect())
+    }
+
+    /// The tailnet this connection reaches the hub over, by the hub's name for it, as of
+    /// the last node list; empty for plain TCP or a hub older than 0.22.
+    pub fn tailnet(&self) -> String {
+        self.tailnet.lock().unwrap().clone()
     }
 
     /// Live sessions, or every session with `include_ended`.
@@ -1299,6 +1313,7 @@ fn node(n: Node) -> NodeInfo {
         default_claude_token: n.default_claude_token,
         services: n.services,
         terminal: n.terminal,
+        tailnet: n.tailnet,
     }
 }
 

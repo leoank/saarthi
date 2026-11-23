@@ -106,7 +106,7 @@ fun NotebooksScreen(
             TopAppBar(
                 title = {
                     val n = model.conn.nodes.count { NOTEBOOK_SERVICE in it.services }
-                    PromptLine(model.conn.hubName, "~/notes", if (n == 1) "▤ 1 machine with notebooks" else "▤ $n machines with notebooks")
+                    PromptLine(model.conn.hubName, "~/yajna", if (n == 1) "▤ 1 machine with notebooks" else "▤ $n machines with notebooks", tailnet = model.conn.tailnet)
                 },
                 actions = {
                     IconButton(onClick = { model.loadNotebooks() }) { Icon(Icons.Filled.Refresh, "Refresh") }

@@ -45,8 +45,8 @@ import uniffi.saarthi_core.NodeInfo
  *  before it, and its hue. Nitya joins once it has anything to show. */
 enum class Workspace(val label: String, val glyph: String, val hue: Color) {
     Agents("agents", "◆", Flame.Agents),
-    Notebooks("notes", "▤", Flame.Notebooks),
-    Terminals("term", "❯_", Flame.Terminals),
+    Yajna("yajna", "▤", Flame.Yajna),
+    Machines("machines", "❯_", Flame.Machines),
 }
 
 /** The workspace bar, a tmux status line (ADR-0069): each workspace's glyph and name in
@@ -96,30 +96,37 @@ fun WorkspaceBar(current: Workspace, needsYou: Int, select: (Workspace) -> Unit)
     }
 }
 
-/** The Terminals workspace's root: the open shells, kept while the app runs (ADR-0068),
- *  each going back to where it was or closed here; then the machines, each offering a new
- *  shell (ADR-0054) or saying why not. */
+/** The Machines workspace's root (ADR-0076): the open shells, kept while the app runs
+ *  (ADR-0068), each going back to where it was or closed here; then every machine, whether
+ *  it is up, the tailnet its link came over, its version and sessions, and a shell on it
+ *  (ADR-0054) or its health. */
 @OptIn(ExperimentalMaterial3Api::class)
 @Composable
-fun TerminalsScreen(model: MachinesModel, openShell: (Shell) -> Unit, newShell: (NodeInfo) -> Unit) {
-    val nodes = model.conn.nodes.sortedWith(compareByDescending<NodeInfo> { it.connected && it.terminal }.thenBy { it.name })
+fun MachinesScreen(model: MachinesModel, openShell: (Shell) -> Unit, newShell: (NodeInfo) -> Unit, openHealth: (NodeInfo) -> Unit) {
+    val conn = model.conn
+    val nodes = conn.nodes.sortedWith(compareByDescending<NodeInfo> { it.connected }.thenBy { it.name })
     Scaffold(
         topBar = {
             TopAppBar(title = {
-                val n = nodes.count { it.connected && it.terminal }
-                PromptLine(model.conn.hubName, "~/term", "❯_ ${model.shells.size} open · $n ${if (n == 1) "machine offers" else "machines offer"} a shell")
+                val up = nodes.count { it.connected }
+                val shells = model.shells.size
+                PromptLine(
+                    conn.hubName, "~/machines",
+                    "● $up/${nodes.size} up · $shells ${if (shells == 1) "shell" else "shells"} open",
+                    tailnet = conn.tailnet,
+                )
             })
         },
     ) { padding ->
         LazyColumn(Modifier.fillMaxSize().padding(padding), contentPadding = PaddingValues(horizontal = 16.dp, vertical = 8.dp)) {
             if (model.shells.isNotEmpty()) {
-                item(key = "open") { SectionTitle("open", count = model.shells.size) }
+                item(key = "open") { SectionTitle("open shells", count = model.shells.size) }
                 items(model.shells, key = { "s${it.id}" }) { sh ->
                     Row(
                         verticalAlignment = Alignment.CenterVertically,
                         modifier = Modifier.fillMaxWidth().clickable { openShell(sh) }.padding(vertical = 8.dp),
                     ) {
-                        Text("●", color = if (sh.ended == null) Flame.Terminals else Flame.Dim, fontFamily = Mono, fontSize = 12.sp)
+                        Text("❯_", color = if (sh.ended == null) Flame.Machines else Flame.Dim, fontFamily = Mono, fontSize = 12.sp)
                         Spacer(Modifier.width(10.dp))
                         Column(Modifier.weight(1f)) {
                             Text(sh.nodeName, fontFamily = Mono, style = MaterialTheme.typography.bodyLarge)
@@ -136,34 +143,40 @@ fun TerminalsScreen(model: MachinesModel, openShell: (Shell) -> Unit, newShell: 
                     }
                 }
             }
-            item(key = "machines") { SectionTitle("machines") }
+            item(key = "machines") { SectionTitle("machines", count = nodes.size) }
             if (nodes.isEmpty()) {
-                item { Text("No machines yet.", color = Flame.Dim, modifier = Modifier.padding(vertical = 16.dp)) }
+                item { Empty("No machines yet", "Start saarthi node on a machine with this hub's address and a node token.") }
             }
             items(nodes, key = { it.id }) { n ->
-                val can = n.connected && n.terminal
-                Row(
-                    verticalAlignment = Alignment.CenterVertically,
-                    modifier = Modifier
-                        .fillMaxWidth()
-                        .clickable(enabled = can) { newShell(n) }
-                        .padding(vertical = 12.dp),
-                ) {
-                    Text(if (n.connected) "●" else "○", color = if (n.connected) Flame.Ok else Flame.Dim, fontFamily = Mono, fontSize = 12.sp)
-                    Spacer(Modifier.width(10.dp))
-                    Column(Modifier.weight(1f)) {
-                        Text(n.name, fontFamily = Mono, style = MaterialTheme.typography.bodyLarge, color = if (can) Flame.Text else Flame.Dim)
-                        Text(
-                            when {
-                                !n.connected -> "offline"
-                                !n.terminal -> "no shell: its node runs without --terminal"
-                                else -> "v${n.version}"
-                            },
-                            style = MonoMeta,
-                            color = Flame.Dim,
-                        )
+                val sessions = conn.sessions.count { it.nodeId == n.id }
+                Column(Modifier.fillMaxWidth().padding(vertical = 10.dp)) {
+                    Row(verticalAlignment = Alignment.CenterVertically) {
+                        StatusDot(n.connected)
+                        Spacer(Modifier.width(10.dp))
+                        Text(n.name, fontFamily = Mono, style = MaterialTheme.typography.bodyLarge, color = if (n.connected) Flame.Text else Flame.Dim)
+                        if (n.connected) {
+                            Spacer(Modifier.width(8.dp))
+                            NetTag(n.tailnet)
+                        }
                     }
-                    if (can) Text("new shell ›", style = MonoMeta, color = Flame.Terminals)
+                    Text(
+                        listOfNotNull(
+                            if (n.connected) "v${n.version}" else "offline · last seen ${relative(n.lastSeenMs)}",
+                            when (sessions) {
+                                0 -> null
+                                1 -> "1 session"
+                                else -> "$sessions sessions"
+                            },
+                            if (n.connected && !n.terminal) "no shell: its node runs without --terminal" else null,
+                        ).joinToString(" · "),
+                        style = MonoMeta,
+                        color = Flame.Dim,
+                        modifier = Modifier.padding(start = 18.dp, top = 3.dp),
+                    )
+                    Row(Modifier.padding(start = 18.dp, top = 8.dp), horizontalArrangement = Arrangement.spacedBy(8.dp)) {
+                        if (n.connected && n.terminal) MiniAction("❯_ shell", Flame.Machines) { newShell(n) }
+                        MiniAction("∿ health") { openHealth(n) }
+                    }
                 }
             }
         }

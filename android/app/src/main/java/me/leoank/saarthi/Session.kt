@@ -239,6 +239,8 @@ fun SessionScreen(
                             Text(
                                 listOf(
                                     if (s.gitBranch.isNotBlank()) "$node:${s.repo()}@${s.gitBranch}" else node,
+                                    // The tailnet its machine's link came over (ADR-0076).
+                                    model.conn.node(nodeId)?.tailnet?.let(::netLabel),
                                     when {
                                         ended -> "ended"
                                         model.pendingFor(s).isNotEmpty() -> "waiting for you"

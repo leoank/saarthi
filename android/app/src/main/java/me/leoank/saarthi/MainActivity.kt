@@ -76,8 +76,8 @@ class MainActivity : ComponentActivity() {
  *  navigation library. A session is named by ids so the screen follows the live SessionInfo. */
 sealed interface Screen {
     data object Home : Screen
-    /** The Terminals workspace's root: the machines that offer a shell. */
-    data object Terminals : Screen
+    /** The Machines workspace's root: the open shells and every machine (ADR-0076). */
+    data object Machines : Screen
     /** [find]: words to search the session for as it opens, from a search's hit. */
     data class Session(val nodeId: String, val sessionId: String, val from: Screen = Home, val find: String? = null) : Screen
     data object History : Screen
@@ -87,7 +87,7 @@ sealed interface Screen {
     data class Terminal(val shellId: Int, val from: Screen) : Screen
     data class Changes(val nodeId: String, val sessionId: String, val from: Screen) : Screen
     data object Settings : Screen
-    data object Notebooks : Screen
+    data object Yajna : Screen
     data class Notebook(val nodeId: String, val namespace: String, val url: String) : Screen
 }
 
@@ -106,12 +106,17 @@ fun App(
     val screens = remember { androidx.compose.runtime.mutableStateMapOf<Workspace, Screen>() }
     fun root(w: Workspace): Screen = when (w) {
         Workspace.Agents -> Screen.Home
-        Workspace.Notebooks -> Screen.Notebooks
-        Workspace.Terminals -> Screen.Terminals
+        Workspace.Yajna -> Screen.Yajna
+        Workspace.Machines -> Screen.Machines
     }
     var screen by object : kotlin.properties.ReadWriteProperty<Any?, Screen> {
         override fun getValue(thisRef: Any?, property: kotlin.reflect.KProperty<*>) = screens[tab] ?: root(tab)
         override fun setValue(thisRef: Any?, property: kotlin.reflect.KProperty<*>, value: Screen) { screens[tab] = value }
+    }
+    // A machine's health is in Machines (ADR-0076), from wherever it is asked for.
+    fun showHealth(nodeId: String) {
+        tab = Workspace.Machines
+        screen = Screen.Health(nodeId, Screen.Machines)
     }
     fun switchTo(w: Workspace) {
         // A second tap on the current tab goes to its root.
@@ -177,14 +182,14 @@ fun App(
     // has none, on the node's health.
     LaunchedEffect(requested, conn.sessions.size) {
         val (node, id) = requested ?: return@LaunchedEffect
-        tab = Workspace.Agents
         if (id.isEmpty()) {
-            screen = Screen.Health(node, Screen.Home)
+            showHealth(node)
             consumed()
             return@LaunchedEffect
         }
         val s = conn.session(node, id) ?: return@LaunchedEffect
         agents.open(s)
+        tab = Workspace.Agents
         screen = Screen.Session(node, id)
         consumed()
     }
@@ -215,7 +220,7 @@ fun App(
             is Screen.Health -> s.from
             is Screen.Terminal -> s.from
             is Screen.Changes -> s.from
-            is Screen.Notebook -> Screen.Notebooks
+            is Screen.Notebook -> Screen.Yajna
             is Screen.Session -> s.from
             else -> root(tab)
         }
@@ -235,25 +240,25 @@ fun App(
                 agents.open(it)
                 screen = Screen.Session(it.nodeId, it.id)
             },
-            openHealth = { screen = Screen.Health(it.id, Screen.Home) },
             spawned = { node, id -> spawned = node to id },
             openHistory = { screen = Screen.History },
             openTokens = { screen = Screen.Tokens },
             openSettings = { screen = Screen.Settings },
         )
-        Screen.Terminals -> TerminalsScreen(
+        Screen.Machines -> MachinesScreen(
             model.machines,
-            openShell = { screen = Screen.Terminal(it.id, Screen.Terminals) },
-            newShell = { screen = Screen.Terminal(model.machines.newShell(it).id, Screen.Terminals) },
+            openShell = { screen = Screen.Terminal(it.id, Screen.Machines) },
+            newShell = { screen = Screen.Terminal(model.machines.newShell(it).id, Screen.Machines) },
+            openHealth = { screen = Screen.Health(it.id, Screen.Machines) },
         )
-        Screen.Notebooks -> NotebooksScreen(
+        Screen.Yajna -> NotebooksScreen(
             model.yajna, snackbar,
             open = { screen = Screen.Notebook(it.nodeId, it.namespace, it.url) },
-            spawned = { node, id -> spawnedFrom = Screen.Notebooks; spawned = node to id },
+            spawned = { node, id -> spawnedFrom = Screen.Yajna; spawned = node to id },
         )
         is Screen.Notebook -> NotebookScreen(
             model.yajna, snackbar, s.nodeId, s.namespace, s.url,
-            back = { screen = Screen.Notebooks },
+            back = { screen = Screen.Yajna },
         )
         Screen.History -> HistoryScreen(
             agents, snackbar,
@@ -269,7 +274,7 @@ fun App(
         } else SessionScreen(
             agents, snackbar, s.nodeId, s.sessionId, s.find,
             back = { screen = s.from },
-            openHealth = { screen = Screen.Health(s.nodeId, s) },
+            openHealth = { showHealth(s.nodeId) },
             openChanges = { screen = Screen.Changes(s.nodeId, s.sessionId, s) },
             openSession = { id -> spawnedFrom = s.from; spawned = s.nodeId to id },
         )

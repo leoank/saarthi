@@ -26,7 +26,6 @@ import androidx.compose.material.icons.filled.MoreVert
 import androidx.compose.material.icons.filled.Refresh
 import androidx.compose.material.icons.filled.RocketLaunch
 import androidx.compose.material.icons.filled.Terminal
-import androidx.compose.material.icons.outlined.ShowChart
 import androidx.compose.material3.Badge
 import androidx.compose.material3.Card
 import androidx.compose.material3.CardDefaults
@@ -61,7 +60,6 @@ import androidx.compose.foundation.lazy.itemsIndexed
 import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.unit.dp
 import kotlinx.coroutines.delay
-import uniffi.saarthi_core.NodeInfo
 import uniffi.saarthi_core.SessionInfo
 
 /** Everything waiting on the person first, then each node with its live sessions. */
@@ -71,7 +69,6 @@ fun HomeScreen(
     model: AgentsModel,
     snackbar: SnackbarHostState,
     openSession: (SessionInfo) -> Unit,
-    openHealth: (NodeInfo) -> Unit,
     spawned: (nodeId: String, sessionId: String) -> Unit,
     openHistory: () -> Unit,
     openTokens: () -> Unit,
@@ -105,6 +102,7 @@ fun HomeScreen(
                         },
                         statusColor = if (ok) Flame.Dim else Flame.Bad,
                         onStatus = if (model.conn.link == Link.Disconnected) openSettings else null,
+                        tailnet = model.conn.tailnet,
                     )
                 },
                 actions = {
@@ -173,7 +171,7 @@ fun HomeScreen(
                     val oldestFirst = asking.sortedBy { s -> model.pendingFor(s).minOfOrNull { it.createdMs } ?: Long.MAX_VALUE }
                     itemsIndexed(oldestFirst, key = { _, it -> "a" + it.nodeId + it.id }) { i, s ->
                         val asks = model.pendingFor(s)
-                        SessionRow(s, asks.size, if (oneNode) null else model.conn.node(s.nodeId)?.name, first = i == 0, asks = asks.firstOrNull()?.let(::askLine)) { openSession(s) }
+                        SessionRow(s, asks.size, if (oneNode) null else model.conn.node(s.nodeId)?.name, model.conn.node(s.nodeId)?.tailnet, first = i == 0, asks = asks.firstOrNull()?.let(::askLine)) { openSession(s) }
                     }
                     items(orphans, key = { "p" + it.id }) { p ->
                         PendingCard(model, p, model.conn.node(p.nodeId)?.name.orEmpty(), Modifier.padding(vertical = 8.dp))
@@ -183,7 +181,7 @@ fun HomeScreen(
                     if (list.isEmpty()) continue
                     item(key = "t$name") { SectionTitle(name, count = list.size) }
                     itemsIndexed(list, key = { _, it -> "s" + it.nodeId + it.id }) { i, s ->
-                        SessionRow(s, model.pendingFor(s).size, if (oneNode) null else model.conn.node(s.nodeId)?.name, first = i == 0) { openSession(s) }
+                        SessionRow(s, model.pendingFor(s).size, if (oneNode) null else model.conn.node(s.nodeId)?.name, model.conn.node(s.nodeId)?.tailnet, first = i == 0) { openSession(s) }
                     }
                 }
                 if (live.isEmpty() && waiting.isEmpty() && model.conn.nodes.isNotEmpty()) {
@@ -194,20 +192,6 @@ fun HomeScreen(
                         Empty("No nodes yet", "Start saarthi node on a machine with this hub's address and a node token.")
                     }
                 }
-                // The machines themselves: whether each is up, and its health.
-                item(key = "machines") { SectionTitle("Machines") }
-                for (node in model.conn.nodes.sortedWith(compareByDescending<NodeInfo> { it.connected }.thenBy { it.name })) {
-                    if (!model.inScope(node.id, null) && model.scope.startsWith("node:")) continue
-                    val sessions = model.conn.sessions.filter { it.nodeId == node.id }
-                    item(key = "n" + node.id) {
-                        NodeHeader(
-                            node,
-                            sessions.size,
-                            sessions.count { s -> model.pendingFor(s).isNotEmpty() },
-                            select = { model.changeScope(if (model.scope == "node:${node.id}") "" else "node:${node.id}") },
-                        ) { openHealth(node) }
-                    }
-                }
             }
         }
     }
@@ -216,41 +200,6 @@ fun HomeScreen(
             newSession = false
             model.conn.spawn(nodeId, cwd, prompt, m, create, mode, profile, token) { id -> spawned(nodeId, id) }
         }
-    }
-}
-
-@Composable
-private fun NodeHeader(
-    node: NodeInfo,
-    count: Int,
-    waiting: Int,
-    select: () -> Unit,
-    onHealth: () -> Unit,
-) {
-    Row(
-        verticalAlignment = Alignment.CenterVertically,
-        modifier = Modifier.fillMaxWidth().clickable(onClick = select),
-    ) {
-        StatusDot(node.connected)
-        Spacer(Modifier.width(10.dp))
-        Column(Modifier.weight(1f)) {
-            Text(node.name, fontFamily = Mono, style = MaterialTheme.typography.bodyLarge)
-            Text(
-                listOfNotNull(
-                    if (node.connected) "online" else "offline · last seen ${relative(node.lastSeenMs)}",
-                    "v${node.version}",
-                    when (count) {
-                        0 -> null
-                        1 -> "1 session"
-                        else -> "$count sessions"
-                    },
-                    if (waiting > 0) "$waiting waiting" else null,
-                ).joinToString(" · "),
-                style = MonoMeta,
-                color = MaterialTheme.colorScheme.onSurfaceVariant,
-            )
-        }
-        IconButton(onClick = onHealth) { Icon(Icons.Outlined.ShowChart, "Health of ${node.name}") }
     }
 }
 
@@ -285,7 +234,7 @@ private fun askLine(p: PendingInfo): String =
  *  named it, its state as a word, `repo:branch · machine · age` in mono, and the last reply;
  *  rows are set apart by dashed hairlines, and one that needs the owner gets an amber wash. */
 @Composable
-private fun SessionRow(s: SessionInfo, waiting: Int, machine: String?, first: Boolean, asks: String? = null, onOpen: () -> Unit) {
+private fun SessionRow(s: SessionInfo, waiting: Int, machine: String?, tailnet: String?, first: Boolean, asks: String? = null, onOpen: () -> Unit) {
     val state = s.state(waiting)
     Row(
         Modifier
@@ -327,7 +276,9 @@ private fun SessionRow(s: SessionInfo, waiting: Int, machine: String?, first: Bo
                         append(":")
                         withStyle(SpanStyle(color = Flame.Nitya)) { append(s.gitBranch) }
                     } else append(s.parentPath())
-                    for (part in listOfNotNull(machine, relative(s.startedMs), s.profile.ifEmpty { null })) append(" · $part")
+                    // The machine, and the tailnet its link came over (ADR-0076).
+                    val where = listOfNotNull(machine, tailnet?.let(::netLabel)).joinToString(" ").ifEmpty { null }
+                    for (part in listOfNotNull(where, relative(s.startedMs), s.profile.ifEmpty { null })) append(" · $part")
                 },
                 style = MonoMeta,
                 color = Flame.Dim,

@@ -112,11 +112,16 @@ impl ControlService for Hub {
         request: Request<ListNodesRequest>,
     ) -> Result<Response<ListNodesResponse>, Status> {
         self.client(&request)?;
+        let tailnet = request
+            .extensions()
+            .get::<saarthi_tailnet::Remote>()
+            .map(|r| r.tailnet_name().to_string())
+            .unwrap_or_default();
         let mut nodes = Vec::new();
         for row in self.db.nodes().await.map_err(internal)? {
             nodes.push(self.node_view(row).await);
         }
-        Ok(Response::new(ListNodesResponse { nodes }))
+        Ok(Response::new(ListNodesResponse { nodes, tailnet }))
     }
 
     async fn list_sessions(

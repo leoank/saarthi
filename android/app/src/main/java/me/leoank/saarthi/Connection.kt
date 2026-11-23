@@ -57,6 +57,11 @@ class Connection(val app: Application, val scope: CoroutineScope) {
     private val notices = Channel<String>(Channel.BUFFERED)
     val messages = notices.receiveAsFlow()
 
+    /** The tailnet this phone reaches the hub over, by the hub's name for it, empty for
+     *  plain TCP (ADR-0076); null while not connected, or in the demo. */
+    var tailnet by mutableStateOf<String?>(null)
+        private set
+
     val nodes = mutableStateListOf<NodeInfo>()
     val sessions = mutableStateListOf<SessionInfo>()
     val pending = mutableStateListOf<PendingInfo>()
@@ -229,6 +234,7 @@ class Connection(val app: Application, val scope: CoroutineScope) {
         dropped.forEach { it() }
         hub?.close(); hub = null
         link = Link.Disconnected
+        tailnet = null
         nodes.clear(); sessions.clear(); pending.clear()
     }
 
@@ -310,6 +316,7 @@ class Connection(val app: Application, val scope: CoroutineScope) {
         nodes.replaceAll(n)
         sessions.replaceAll(s)
         pending.replaceAll(p)
+        tailnet = h.tailnet()
     }
 
     private fun apply(change: Change) {
