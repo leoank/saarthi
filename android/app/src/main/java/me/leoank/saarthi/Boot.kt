@@ -74,7 +74,7 @@ class BootLog {
         lines[at] = Line(kind, text, now())
     }
 
-    suspend fun boot(model: HubModel, app: Application) {
+    suspend fun boot(model: Connection, app: Application) {
         val pkg = app.packageManager.getPackageInfo(app.packageName, 0)
         @Suppress("DEPRECATION")
         val code = if (Build.VERSION.SDK_INT >= 28) pkg.longVersionCode else pkg.versionCode.toLong()
@@ -111,7 +111,7 @@ class BootLog {
     }
 
     /** After a failed start: the connection again, logged below what came before. */
-    suspend fun retry(model: HubModel) {
+    suspend fun retry(model: Connection) {
         state = State.Running
         add(Kind.Kernel, "retrying")
         connect(model)
@@ -139,7 +139,7 @@ class BootLog {
         else add(Kind.Info, "No UnifiedPush distributor; notifications off")
     }
 
-    private suspend fun connect(model: HubModel) {
+    private suspend fun connect(model: Connection) {
         val hub = model.active ?: return
         val host = hub.host
         if (hub.viaTailnet) {
@@ -147,7 +147,7 @@ class BootLog {
             // looked up there, not by the phone.
             val joining = add(Kind.Job, "A start job is running for tailnet identity ${hub.tailnetName}")
             val started = SystemClock.elapsedRealtime()
-            val joined = withContext(Dispatchers.IO) { runCatching { joinTailnet(hub.tailnetLogin(model.getApplication())) } }
+            val joined = withContext(Dispatchers.IO) { runCatching { joinTailnet(hub.tailnetLogin(model.app)) } }
             val took = SystemClock.elapsedRealtime() - started
             joined.fold(
                 { finish(joining, Kind.Ok, "Joined tailnet as ${hub.tailnetName} ($it, $took ms)") },

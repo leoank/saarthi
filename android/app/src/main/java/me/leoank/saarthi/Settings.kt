@@ -89,7 +89,7 @@ fun SettingsScreen(model: HubModel, snackbar: SnackbarHostState, back: (() -> Un
         ) {
             Heading("Hubs")
             Group {
-                for (h in model.hubs) {
+                for (h in model.conn.hubs) {
                     HubRow(model, h, edit = { editing = h })
                     Divider()
                 }
@@ -111,14 +111,14 @@ fun SettingsScreen(model: HubModel, snackbar: SnackbarHostState, back: (() -> Un
                         .fillMaxWidth()
                         .clickable {
                             val text = clipboard.getText()?.text.orEmpty()
-                            if (!model.pairFrom(text)) model.say("No pairing link on the clipboard: copy the one `saarthi ctl pair --link` prints")
+                            if (!model.conn.pairFrom(text)) model.conn.say("No pairing link on the clipboard: copy the one `saarthi ctl pair --link` prints")
                         }
                         .padding(horizontal = 16.dp, vertical = 14.dp),
                 ) {
                     Icon(Icons.Filled.ContentPaste, null, tint = MaterialTheme.colorScheme.primary)
                     Text("Paste a pairing link", style = MaterialTheme.typography.bodyLarge, modifier = Modifier.padding(start = 16.dp))
                 }
-                if (model.hubs.isEmpty()) {
+                if (model.conn.hubs.isEmpty()) {
                     Divider()
                     Row(
                         verticalAlignment = Alignment.CenterVertically,
@@ -160,7 +160,7 @@ fun SettingsScreen(model: HubModel, snackbar: SnackbarHostState, back: (() -> Un
                     verticalAlignment = Alignment.CenterVertically,
                     modifier = Modifier
                         .fillMaxWidth()
-                        .clickable { model.toggleWrap() }
+                        .clickable { model.agents.toggleWrap() }
                         .padding(start = 16.dp, end = 12.dp, top = 8.dp, bottom = 8.dp),
                 ) {
                     Column(Modifier.weight(1f)) {
@@ -171,14 +171,14 @@ fun SettingsScreen(model: HubModel, snackbar: SnackbarHostState, back: (() -> Un
                             color = MaterialTheme.colorScheme.onSurfaceVariant,
                         )
                     }
-                    Switch(checked = model.wrap, onCheckedChange = { model.toggleWrap() })
+                    Switch(checked = model.agents.wrap, onCheckedChange = { model.agents.toggleWrap() })
                 }
                 Divider()
                 Row(
                     verticalAlignment = Alignment.CenterVertically,
                     modifier = Modifier
                         .fillMaxWidth()
-                        .clickable { model.toggleOpenTurns() }
+                        .clickable { model.agents.toggleOpenTurns() }
                         .padding(start = 16.dp, end = 12.dp, top = 8.dp, bottom = 8.dp),
                 ) {
                     Column(Modifier.weight(1f)) {
@@ -189,7 +189,7 @@ fun SettingsScreen(model: HubModel, snackbar: SnackbarHostState, back: (() -> Un
                             color = MaterialTheme.colorScheme.onSurfaceVariant,
                         )
                     }
-                    Switch(checked = model.openTurns, onCheckedChange = { model.toggleOpenTurns() })
+                    Switch(checked = model.agents.openTurns, onCheckedChange = { model.agents.toggleOpenTurns() })
                 }
             }
 
@@ -262,40 +262,40 @@ fun SettingsScreen(model: HubModel, snackbar: SnackbarHostState, back: (() -> Un
             Spacer(Modifier.height(32.dp))
         }
     }
-    val paired = model.pairing
+    val paired = model.conn.pairing
     if (paired != null) {
         // A hub from a pairing link: shown in full, added only when saved.
         HubEditor(
             initial = paired,
-            first = model.hubs.isEmpty(),
-            dismiss = { model.pairing = null },
-            save = { model.saveHub(it); model.pairing = null },
+            first = model.conn.hubs.isEmpty(),
+            dismiss = { model.conn.pairing = null },
+            save = { model.conn.saveHub(it); model.conn.pairing = null },
             delete = null,
             isNew = true,
         )
     } else if (adding || editing != null) {
         HubEditor(
             initial = editing,
-            first = model.hubs.isEmpty(),
+            first = model.conn.hubs.isEmpty(),
             dismiss = { adding = false; editing = null },
-            save = { model.saveHub(it); adding = false; editing = null },
-            delete = editing?.let { h -> { model.removeHub(h.id); editing = null } },
-            forgetTailnet = editing?.let { h -> { model.forgetTailnet(h.id); editing = null } },
+            save = { model.conn.saveHub(it); adding = false; editing = null },
+            delete = editing?.let { h -> { model.conn.removeHub(h.id); editing = null } },
+            forgetTailnet = editing?.let { h -> { model.conn.forgetTailnet(h.id); editing = null } },
         )
     }
 }
 
 @Composable
 private fun HubRow(model: HubModel, h: HubProfile, edit: () -> Unit) {
-    val active = h.id == model.activeId
+    val active = h.id == model.conn.activeId
     Row(
         verticalAlignment = Alignment.CenterVertically,
         modifier = Modifier
             .fillMaxWidth()
-            .clickable(enabled = !active) { model.activate(h.id) }
+            .clickable(enabled = !active) { model.conn.activate(h.id) }
             .padding(start = 4.dp, end = 4.dp, top = 6.dp, bottom = 6.dp),
     ) {
-        RadioButton(selected = active, onClick = { if (!active) model.activate(h.id) })
+        RadioButton(selected = active, onClick = { if (!active) model.conn.activate(h.id) })
         Column(Modifier.weight(1f).padding(start = 4.dp)) {
             Text(h.title, style = MaterialTheme.typography.bodyLarge, maxLines = 1, overflow = TextOverflow.Ellipsis)
             Text(
@@ -306,11 +306,11 @@ private fun HubRow(model: HubModel, h: HubProfile, edit: () -> Unit) {
                 overflow = TextOverflow.Ellipsis,
             )
             if (active) {
-                val (text, bad) = when (model.link) {
+                val (text, bad) = when (model.conn.link) {
                     Link.Connected -> "Connected" to false
                     Link.Connecting -> "Connecting…" to false
                     Link.Reconnecting -> "Reconnecting…" to true
-                    Link.Disconnected -> (model.connectError ?: "Not connected") to true
+                    Link.Disconnected -> (model.conn.connectError ?: "Not connected") to true
                 }
                 Text(
                     text,

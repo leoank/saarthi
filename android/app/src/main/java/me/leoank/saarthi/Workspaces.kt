@@ -101,13 +101,13 @@ fun WorkspaceBar(current: Workspace, needsYou: Int, select: (Workspace) -> Unit)
  *  shell (ADR-0054) or saying why not. */
 @OptIn(ExperimentalMaterial3Api::class)
 @Composable
-fun TerminalsScreen(model: HubModel, openShell: (Shell) -> Unit, newShell: (NodeInfo) -> Unit) {
-    val nodes = model.nodes.sortedWith(compareByDescending<NodeInfo> { it.connected && it.terminal }.thenBy { it.name })
+fun TerminalsScreen(model: MachinesModel, openShell: (Shell) -> Unit, newShell: (NodeInfo) -> Unit) {
+    val nodes = model.conn.nodes.sortedWith(compareByDescending<NodeInfo> { it.connected && it.terminal }.thenBy { it.name })
     Scaffold(
         topBar = {
             TopAppBar(title = {
                 val n = nodes.count { it.connected && it.terminal }
-                PromptLine(model.hubName, "~/term", "❯_ ${model.shells.size} open · $n ${if (n == 1) "machine offers" else "machines offer"} a shell")
+                PromptLine(model.conn.hubName, "~/term", "❯_ ${model.shells.size} open · $n ${if (n == 1) "machine offers" else "machines offer"} a shell")
             })
         },
     ) { padding ->

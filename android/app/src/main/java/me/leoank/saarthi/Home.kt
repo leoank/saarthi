@@ -68,7 +68,7 @@ import uniffi.saarthi_core.SessionInfo
 @OptIn(ExperimentalMaterial3Api::class)
 @Composable
 fun HomeScreen(
-    model: HubModel,
+    model: AgentsModel,
     snackbar: SnackbarHostState,
     openSession: (SessionInfo) -> Unit,
     openHealth: (NodeInfo) -> Unit,
@@ -79,11 +79,11 @@ fun HomeScreen(
 ) {
     var menu by remember { mutableStateOf(false) }
     var newSession by remember { mutableStateOf(false) }
-    val spawnable = model.nodes.filter { it.connected && it.spawnRoots.isNotEmpty() }
+    val spawnable = model.conn.nodes.filter { it.connected && it.spawnRoots.isNotEmpty() }
     var refreshing by remember { mutableStateOf(false) }
     if (refreshing) {
         androidx.compose.runtime.LaunchedEffect(Unit) {
-            model.refresh()
+            model.conn.refresh()
             delay(600)
             refreshing = false
         }
@@ -92,19 +92,19 @@ fun HomeScreen(
         topBar = {
             TopAppBar(
                 title = {
-                    val up = model.nodes.count { it.connected }
-                    val ok = model.link == Link.Connected || model.link == Link.Connecting || !model.reconnecting && model.link == Link.Reconnecting
+                    val up = model.conn.nodes.count { it.connected }
+                    val ok = model.conn.link == Link.Connected || model.conn.link == Link.Connecting || !model.conn.reconnecting && model.conn.link == Link.Reconnecting
                     PromptLine(
-                        model.hubName,
+                        model.conn.hubName,
                         "~/agents",
-                        when (model.link) {
-                            Link.Connected -> "● $up/${model.nodes.size} machines up · ${model.sessions.size} sessions"
+                        when (model.conn.link) {
+                            Link.Connected -> "● $up/${model.conn.nodes.size} machines up · ${model.conn.sessions.size} sessions"
                             Link.Connecting -> "○ connecting…"
-                            Link.Reconnecting -> if (model.reconnecting) "○ reconnecting…" else "● hub · $up machines up"
+                            Link.Reconnecting -> if (model.conn.reconnecting) "○ reconnecting…" else "● hub · $up machines up"
                             Link.Disconnected -> "✕ not connected · settings ›"
                         },
                         statusColor = if (ok) Flame.Dim else Flame.Bad,
-                        onStatus = if (model.link == Link.Disconnected) openSettings else null,
+                        onStatus = if (model.conn.link == Link.Disconnected) openSettings else null,
                     )
                 },
                 actions = {
@@ -113,7 +113,7 @@ fun HomeScreen(
                     Box {
                         IconButton(onClick = { menu = true }) { Icon(Icons.Filled.MoreVert, "More") }
                         DropdownMenu(expanded = menu, onDismissRequest = { menu = false }) {
-                            if (model.claudeTokens.isNotEmpty()) {
+                            if (model.conn.claudeTokens.isNotEmpty()) {
                                 DropdownMenuItem(
                                     text = { Text("Claude accounts") },
                                     onClick = { menu = false; openTokens() },
@@ -142,14 +142,14 @@ fun HomeScreen(
         ) {
             // One list across machines, by what each session needs (phase PHS-20261117-f22kxe
             // item 4): what waits on the person, then what works, then what is ready.
-            val live = model.sessions.filter { model.inScope(it.nodeId, it) }
-            val waiting = model.pending.filter { p ->
-                model.inScope(p.nodeId, model.sessions.firstOrNull { it.id == p.sessionId && it.nodeId == p.nodeId })
+            val live = model.conn.sessions.filter { model.inScope(it.nodeId, it) }
+            val waiting = model.conn.pending.filter { p ->
+                model.inScope(p.nodeId, model.conn.sessions.firstOrNull { it.id == p.sessionId && it.nodeId == p.nodeId })
             }
             val asking = live.filter { model.pendingFor(it).isNotEmpty() }
             val working = live.filter { it.busy && it !in asking }.sortedByDescending { it.startedMs }
             val ready = live.filter { !it.busy && it !in asking }.sortedByDescending { it.startedMs }
-            val oneNode = model.scope.startsWith("node:") || model.nodes.size == 1
+            val oneNode = model.scope.startsWith("node:") || model.conn.nodes.size == 1
             LazyColumn(
                 // Room under the last row for the New session button, which floats over the
                 // list's end: its 56 dp, its 16 dp margin and a little air, so the last
@@ -173,32 +173,32 @@ fun HomeScreen(
                     val oldestFirst = asking.sortedBy { s -> model.pendingFor(s).minOfOrNull { it.createdMs } ?: Long.MAX_VALUE }
                     itemsIndexed(oldestFirst, key = { _, it -> "a" + it.nodeId + it.id }) { i, s ->
                         val asks = model.pendingFor(s)
-                        SessionRow(s, asks.size, if (oneNode) null else model.node(s.nodeId)?.name, first = i == 0, asks = asks.firstOrNull()?.let(::askLine)) { openSession(s) }
+                        SessionRow(s, asks.size, if (oneNode) null else model.conn.node(s.nodeId)?.name, first = i == 0, asks = asks.firstOrNull()?.let(::askLine)) { openSession(s) }
                     }
                     items(orphans, key = { "p" + it.id }) { p ->
-                        PendingCard(model, p, model.node(p.nodeId)?.name.orEmpty(), Modifier.padding(vertical = 8.dp))
+                        PendingCard(model, p, model.conn.node(p.nodeId)?.name.orEmpty(), Modifier.padding(vertical = 8.dp))
                     }
                 }
                 for ((name, list) in listOf("Working" to working, "Ready" to ready)) {
                     if (list.isEmpty()) continue
                     item(key = "t$name") { SectionTitle(name, count = list.size) }
                     itemsIndexed(list, key = { _, it -> "s" + it.nodeId + it.id }) { i, s ->
-                        SessionRow(s, model.pendingFor(s).size, if (oneNode) null else model.node(s.nodeId)?.name, first = i == 0) { openSession(s) }
+                        SessionRow(s, model.pendingFor(s).size, if (oneNode) null else model.conn.node(s.nodeId)?.name, first = i == 0) { openSession(s) }
                     }
                 }
-                if (live.isEmpty() && waiting.isEmpty() && model.nodes.isNotEmpty()) {
+                if (live.isEmpty() && waiting.isEmpty() && model.conn.nodes.isNotEmpty()) {
                     item(key = "quiet") { Caption("No live sessions here") }
                 }
-                if (model.nodes.isEmpty()) {
+                if (model.conn.nodes.isEmpty()) {
                     item(key = "none") {
                         Empty("No nodes yet", "Start saarthi node on a machine with this hub's address and a node token.")
                     }
                 }
                 // The machines themselves: whether each is up, and its health.
                 item(key = "machines") { SectionTitle("Machines") }
-                for (node in model.nodes.sortedWith(compareByDescending<NodeInfo> { it.connected }.thenBy { it.name })) {
+                for (node in model.conn.nodes.sortedWith(compareByDescending<NodeInfo> { it.connected }.thenBy { it.name })) {
                     if (!model.inScope(node.id, null) && model.scope.startsWith("node:")) continue
-                    val sessions = model.sessions.filter { it.nodeId == node.id }
+                    val sessions = model.conn.sessions.filter { it.nodeId == node.id }
                     item(key = "n" + node.id) {
                         NodeHeader(
                             node,
@@ -212,9 +212,9 @@ fun HomeScreen(
         }
     }
     if (newSession && spawnable.isNotEmpty()) {
-        NewSessionDialog(model, spawnable, model.claudeTokens, dismiss = { newSession = false }) { nodeId, cwd, prompt, m, create, mode, profile, token ->
+        NewSessionDialog(model, spawnable, model.conn.claudeTokens, dismiss = { newSession = false }) { nodeId, cwd, prompt, m, create, mode, profile, token ->
             newSession = false
-            model.spawn(nodeId, cwd, prompt, m, create, mode, profile, token) { id -> spawned(nodeId, id) }
+            model.conn.spawn(nodeId, cwd, prompt, m, create, mode, profile, token) { id -> spawned(nodeId, id) }
         }
     }
 }
@@ -256,14 +256,14 @@ private fun NodeHeader(
 
 /** What Home lists: all, a machine, or a repository with a live session. */
 @Composable
-private fun ScopeChips(model: HubModel) {
-    val repos = model.sessions.map { it.repo() }.filter { it.isNotBlank() }.distinct().sorted()
-    if (model.nodes.size < 2 && repos.size < 2) return
+private fun ScopeChips(model: AgentsModel) {
+    val repos = model.conn.sessions.map { it.repo() }.filter { it.isNotBlank() }.distinct().sorted()
+    if (model.conn.nodes.size < 2 && repos.size < 2) return
     LazyRow(horizontalArrangement = Arrangement.spacedBy(6.dp), modifier = Modifier.padding(bottom = 4.dp)) {
         item {
             Tag("all", model.scope.isEmpty(), onClick = { model.changeScope("") })
         }
-        items(model.nodes.sortedBy { it.name }, key = { "n" + it.id }) { n ->
+        items(model.conn.nodes.sortedBy { it.name }, key = { "n" + it.id }) { n ->
             Tag(
                 n.name,
                 model.scope == "node:${n.id}",

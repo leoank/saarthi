@@ -95,8 +95,8 @@ private val series = listOf(
 /** The node's health over a chosen span as a chart per metric, refreshed every minute. */
 @OptIn(ExperimentalMaterial3Api::class, ExperimentalLayoutApi::class)
 @Composable
-fun HealthScreen(model: HubModel, snackbar: SnackbarHostState, nodeId: String, back: () -> Unit) {
-    val node = model.node(nodeId)
+fun HealthScreen(model: MachinesModel, snackbar: SnackbarHostState, nodeId: String, back: () -> Unit) {
+    val node = model.conn.node(nodeId)
     var range by remember { mutableIntStateOf(0) }
     // Each metric's latest value, not the latest sample's: the usage poller's samples carry
     // only the usage windows, and keep-awake's own only its two flags.
@@ -193,7 +193,7 @@ fun HealthScreen(model: HubModel, snackbar: SnackbarHostState, nodeId: String, b
                     }
                 }
             }
-            if (node != null && model.claudeTokens.isNotEmpty()) {
+            if (node != null && model.conn.claudeTokens.isNotEmpty()) {
                 item(key = "token") {
                     Column(Modifier.fillMaxWidth()) {
                         Text("Default Claude account", style = MaterialTheme.typography.titleSmall)
@@ -205,13 +205,13 @@ fun HealthScreen(model: HubModel, snackbar: SnackbarHostState, nodeId: String, b
                         FlowRow(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
                             FilterChip(
                                 selected = node.defaultClaudeToken.isEmpty(),
-                                onClick = { model.setDefaultClaudeToken(nodeId, "") },
+                                onClick = { model.conn.setDefaultClaudeToken(nodeId, "") },
                                 label = { Text("Node's login") },
                             )
-                            for (t in model.claudeTokens) {
+                            for (t in model.conn.claudeTokens) {
                                 FilterChip(
                                     selected = node.defaultClaudeToken == t.name,
-                                    onClick = { model.setDefaultClaudeToken(nodeId, t.name) },
+                                    onClick = { model.conn.setDefaultClaudeToken(nodeId, t.name) },
                                     label = { Text(t.name) },
                                 )
                             }

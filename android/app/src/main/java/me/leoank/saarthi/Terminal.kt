@@ -84,7 +84,7 @@ class Shell(val id: Int, val nodeId: String, val nodeName: String) {
         private set
 
     /** Opens the shell at a size, once: the terminal first, so no output is lost. */
-    suspend fun open(model: HubModel, cols: Int, rows: Int, cellW: Int, cellH: Int) {
+    suspend fun open(model: MachinesModel, cols: Int, rows: Int, cellW: Int, cellH: Int) {
         if (vt != 0L) return
         val v = Vt.create(cols, rows, cellW, cellH)
         synchronized(this) { vt = v }
@@ -186,7 +186,7 @@ class Shell(val id: Int, val nodeId: String, val nodeName: String) {
  *  can edit, sits under it. */
 @OptIn(ExperimentalMaterial3Api::class)
 @Composable
-fun TerminalScreen(model: HubModel, shell: Shell, back: () -> Unit, close: () -> Unit) {
+fun TerminalScreen(model: MachinesModel, shell: Shell, back: () -> Unit, close: () -> Unit) {
     var held by remember { mutableStateOf(emptySet<String>()) }
     var editing by remember { mutableStateOf(false) }
     var keys by remember { mutableStateOf<KeyView?>(null) }
@@ -347,7 +347,7 @@ private const val KITTY_PLACEHOLDER = 0x10EEEE
  *  swipe moves through the scrollback, or sends the arrow keys on the alternate screen
  *  (`less`, `man`), a cell's height at a time. */
 @Composable
-private fun TerminalCanvas(model: HubModel, shell: Shell, tapped: () -> Unit) {
+private fun TerminalCanvas(model: MachinesModel, shell: Shell, tapped: () -> Unit) {
     val density = LocalDensity.current
     val context = LocalContext.current
     // JetBrains Mono's Nerd Font build, so the icons yazi and prompts draw are glyphs and

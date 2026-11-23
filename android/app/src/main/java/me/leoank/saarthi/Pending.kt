@@ -47,7 +47,7 @@ import uniffi.saarthi_core.Question
  *  [maxBody], so a long command or many options never push its buttons out of reach. */
 @Composable
 fun PendingCard(
-    model: HubModel,
+    model: AgentsModel,
     p: PendingInfo,
     where: String?,
     modifier: Modifier = Modifier,

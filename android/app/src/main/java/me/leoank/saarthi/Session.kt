@@ -123,6 +123,7 @@ import androidx.compose.material3.Text
 import androidx.compose.material3.TextButton
 import androidx.compose.material3.TopAppBar
 import androidx.compose.runtime.Composable
+import androidx.compose.runtime.DisposableEffect
 import androidx.compose.runtime.CompositionLocalProvider
 import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.derivedStateOf
@@ -166,7 +167,7 @@ import uniffi.saarthi_core.SessionInfo
 @OptIn(ExperimentalMaterial3Api::class)
 @Composable
 fun SessionScreen(
-    model: HubModel,
+    model: AgentsModel,
     snackbar: SnackbarHostState,
     nodeId: String,
     sessionId: String,
@@ -178,10 +179,16 @@ fun SessionScreen(
     /** Opens another session of the same node, by id: one a resume forked into. */
     openSession: (String) -> Unit = {},
 ) {
-    val live = model.sessions.firstOrNull { it.nodeId == nodeId && it.id == sessionId }
-    val s = live ?: model.openSession ?: return
+    // Opened by whoever came here (ADR-0076); it streams while this screen shows it.
+    val v = model.opened(nodeId, sessionId) ?: return
+    DisposableEffect(v) {
+        model.shown(v)
+        onDispose { model.hidden(v) }
+    }
+    val live = model.conn.session(nodeId, sessionId)
+    val s = live ?: v.session
     val ended = live == null
-    val node = model.node(nodeId)?.name ?: "node"
+    val node = model.conn.node(nodeId)?.name ?: "node"
     var menu by remember { mutableStateOf(false) }
     var confirmKill by remember { mutableStateOf(false) }
     var confirmDelete by remember { mutableStateOf(false) }
@@ -197,9 +204,9 @@ fun SessionScreen(
     // The session's unsent draft, kept by the model so it outlives this screen.
     var text by remember(nodeId, sessionId) { mutableStateOf(model.draft(nodeId, sessionId)) }
     LaunchedEffect(nodeId, sessionId, text) { model.setDraft(nodeId, sessionId, text) }
-    val tokensIn = model.usage.sumOf { it.inputTokens }
-    val tokensOut = model.usage.sumOf { it.outputTokens }
-    val cost = model.usage.sumOf { it.costUsd }
+    val tokensIn = v.usage.sumOf { it.inputTokens }
+    val tokensOut = v.usage.sumOf { it.outputTokens }
+    val cost = v.usage.sumOf { it.costUsd }
 
     CompositionLocalProvider(LocalWrap provides Wrap(model.wrap, model::toggleWrap)) {
         Scaffold(
@@ -283,7 +290,7 @@ fun SessionScreen(
                             IconButton(onClick = { menu = true }) { Icon(Icons.Filled.MoreVert, "More") }
                             DropdownMenu(expanded = menu, onDismissRequest = { menu = false }) {
                                 DropdownMenuItem(text = { Text("About this session") }, onClick = { menu = false; model.loadAbout(s); showUsage = true })
-                                if (model.node(nodeId)?.let { it.connected && CHANGES_SERVICE in it.services } == true) {
+                                if (model.conn.node(nodeId)?.let { it.connected && CHANGES_SERVICE in it.services } == true) {
                                     DropdownMenuItem(text = { Text("Changes") }, onClick = { menu = false; openChanges() })
                                 }
                                 DropdownMenuItem(text = { Text("Node health") }, onClick = { menu = false; openHealth() })
@@ -294,7 +301,7 @@ fun SessionScreen(
                                     onClick = {
                                         menu = false
                                         clipboard.setText(AnnotatedString(s.id))
-                                        model.say("Session id copied: ${s.id}")
+                                        model.conn.say("Session id copied: ${s.id}")
                                     },
                                 )
                                 if ((s.wrapped || s.spawned) && !ended) {
@@ -352,7 +359,7 @@ fun SessionScreen(
                             modelInUse = model.modelOf(s),
                             // A session started outside saarthi run: shown, not switched.
                             pickModel = if (s.wrapped || s.spawned) ({ pickModel = true }) else null,
-                            reconnecting = model.reconnecting,
+                            reconnecting = model.conn.reconnecting,
                             notSent = model.notSent["${s.nodeId}/${s.id}"],
                             photos = model.photosOf(s),
                             attachPhotos = { model.attach(s, it) },
@@ -392,9 +399,9 @@ fun SessionScreen(
             },
         ) { padding ->
             Column(Modifier.fillMaxSize().padding(padding)) {
-                if (model.reconnecting) {
+                if (model.conn.reconnecting) {
                     Surface(color = MaterialTheme.colorScheme.errorContainer, modifier = Modifier.fillMaxWidth()) {
-                        Caption("Reconnecting to ${model.hubName}…", color = MaterialTheme.colorScheme.onErrorContainer)
+                        Caption("Reconnecting to ${model.conn.hubName}…", color = MaterialTheme.colorScheme.onErrorContainer)
                     }
                 }
                 if (ended) {
@@ -407,7 +414,7 @@ fun SessionScreen(
                 }
                 // *Edit and resend* puts a prompt back in the bar, in place of what was there.
                 Conversation(
-                    model, s, Modifier.weight(1f), edit = { text = it },
+                    model, v, s, Modifier.weight(1f), edit = { text = it },
                     find = find, findAt = findAt, found = { n -> findCount = n; if ((findAt ?: 0) >= n) findAt = null },
                 )
             }
@@ -415,7 +422,7 @@ fun SessionScreen(
     }
 
     if (showUsage) {
-        AboutSheet(model, s, node, ended, dismiss = { showUsage = false }) { clipboard.setText(AnnotatedString(s.id)) }
+        AboutSheet(model, v, s, node, ended, dismiss = { showUsage = false }) { clipboard.setText(AnnotatedString(s.id)) }
     }
 
     if (pickModel) {
@@ -521,7 +528,8 @@ private fun folded(turn: Turn): List<Entry> {
 
 @Composable
 private fun Conversation(
-    model: HubModel,
+    model: AgentsModel,
+    v: OpenSession,
     s: SessionInfo,
     modifier: Modifier,
     edit: (String) -> Unit,
@@ -531,7 +539,7 @@ private fun Conversation(
 ) {
     val list = rememberLazyListState()
     val scope = rememberCoroutineScope()
-    val items = model.conversation
+    val items = v.conversation
     // Every row: the list is lazy, so only what is on screen is composed. A finished turn
     // folds under its header unless opened (phase PHS-20261117-f22kxe item 1); the running
     // one stays open.
@@ -550,9 +558,9 @@ private fun Conversation(
             (if (open) t.body else folded(t)).forEach { add(Line.Shown(it)) }
         }
     }
-    val sent = model.sending
+    val sent = v.sending
     val waiting = model.pendingFor(s)
-    val ended = model.sessions.none { it.nodeId == s.nodeId && it.id == s.id }
+    val ended = model.conn.sessions.none { it.nodeId == s.nodeId && it.id == s.id }
     val working = s.busy && !ended && waiting.isEmpty()
     // The person's last prompt: one still being sent, else the last in the transcript.
     val lastPrompt = if (sent.isNotEmpty()) rows.size + sent.size - 1 else rows.indexOfLast { it is Line.Shown && it.entry.item.role == Role.USER }
@@ -593,7 +601,7 @@ private fun Conversation(
     val current = matches.getOrNull(at)?.second?.item?.seq
     val latestRows by rememberUpdatedState(rows)
     // Again once every older page is in: pages coming in above move what was found.
-    LaunchedEffect(current, query, model.olderMore) {
+    LaunchedEffect(current, query, v.olderMore) {
         val (turn, entry) = matches.getOrNull(at) ?: return@LaunchedEffect
         if (turn.foldable && model.turnOpen(s, turn.start) != true) model.setTurnOpen(s, turn.start, true)
         stick = false
@@ -619,8 +627,8 @@ private fun Conversation(
     // Older pages: near the top, the next comes in; a search brings them all, so it finds
     // what was said before the session opened.
     val nearTop by remember { derivedStateOf { list.firstVisibleItemIndex <= 2 } }
-    LaunchedEffect(nearTop, model.olderMore, model.olderLoading, query.length >= 2, rows.isEmpty()) {
-        if ((nearTop || query.length >= 2) && rows.isNotEmpty() && model.olderMore && !model.olderLoading) model.loadOlder()
+    LaunchedEffect(nearTop, v.olderMore, v.olderLoading, query.length >= 2, rows.isEmpty()) {
+        if ((nearTop || query.length >= 2) && rows.isNotEmpty() && v.olderMore && !v.olderLoading) model.loadOlder(v)
     }
     // The person's prompts, for the minimap at the edge.
     val prompts = rows.mapIndexedNotNull { i, line -> if (line is Line.Shown && line.entry.item.role == Role.USER) i to line.entry.item.text else null }
@@ -663,7 +671,7 @@ private fun Conversation(
                                 .padding(horizontal = 6.dp, vertical = 2.dp)
                             else Modifier,
                         ) {
-                            ConversationRow(e, s.cwd, delivered = e.item.role == Role.USER && e.item.text in model.delivered, edit = edit)
+                            ConversationRow(e, s.cwd, delivered = e.item.role == Role.USER && e.item.text in v.delivered, edit = edit)
                         }
                     }
                 }
@@ -676,7 +684,7 @@ private fun Conversation(
         }
         }
         // An older page coming in: over the list, so its rows keep their places.
-        if (model.olderLoading) {
+        if (v.olderLoading) {
             CircularProgressIndicator(
                 Modifier.align(Alignment.TopCenter).padding(top = 48.dp).size(22.dp),
                 strokeWidth = 2.dp,
@@ -1964,7 +1972,7 @@ private fun ModelPicker(now: ModelInUse?, dismiss: () -> Unit, pick: (String, St
  *  it is and where, what it runs on, what it has used, and what the hub holds of it. */
 @OptIn(ExperimentalMaterial3Api::class)
 @Composable
-private fun AboutSheet(model: HubModel, s: SessionInfo, node: String, ended: Boolean, dismiss: () -> Unit, copyId: () -> Unit) {
+private fun AboutSheet(model: AgentsModel, v: OpenSession, s: SessionInfo, node: String, ended: Boolean, dismiss: () -> Unit, copyId: () -> Unit) {
     ModalBottomSheet(onDismissRequest = dismiss) {
         Column(
             Modifier
@@ -2021,7 +2029,7 @@ private fun AboutSheet(model: HubModel, s: SessionInfo, node: String, ended: Boo
                 row("Context", "${(it.usedTokens.toDouble() * 100 / it.maxTokens.toDouble()).roundToInt()}% · ${thousands(it.usedTokens)} of ${thousands(it.maxTokens)} tokens")
             }
             // A `<synthetic>` entry (Claude Code's own error notices) used nothing.
-            val usage = model.usage.filterNot { it.model.startsWith("<") }
+            val usage = v.usage.filterNot { it.model.startsWith("<") }
             if (usage.isEmpty()) row("Tokens", "none counted yet")
             for (u in usage) {
                 row(

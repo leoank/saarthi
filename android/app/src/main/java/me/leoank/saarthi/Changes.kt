@@ -32,11 +32,11 @@ import androidx.compose.ui.viewinterop.AndroidView
  *  from it in yajna's viewers. */
 @OptIn(ExperimentalMaterial3Api::class)
 @Composable
-fun ChangesScreen(model: HubModel, nodeId: String, sessionId: String, back: () -> Unit) {
+fun ChangesScreen(model: AgentsModel, nodeId: String, sessionId: String, back: () -> Unit) {
     val context = LocalContext.current
     var canGoBack by remember { mutableStateOf(false) }
     var loading by remember { mutableStateOf(true) }
-    val relay = remember(nodeId) { Relay(nodeId, CHANGES_SERVICE) { model.connection } }
+    val relay = remember(nodeId) { Relay(nodeId, CHANGES_SERVICE) { model.conn.connection } }
     val view = remember(nodeId, sessionId) {
         relay.webView(
             context,
@@ -51,8 +51,8 @@ fun ChangesScreen(model: HubModel, nodeId: String, sessionId: String, back: () -
         }
     }
     BackHandler(enabled = canGoBack) { view.goBack() }
-    val session = model.sessions.firstOrNull { it.nodeId == nodeId && it.id == sessionId }
-        ?: model.openSession?.takeIf { it.id == sessionId }
+    val session = model.conn.sessions.firstOrNull { it.nodeId == nodeId && it.id == sessionId }
+        ?: model.opened(nodeId, sessionId)?.session
     Scaffold(
         topBar = {
             TopAppBar(
@@ -60,7 +60,7 @@ fun ChangesScreen(model: HubModel, nodeId: String, sessionId: String, back: () -
                     Column {
                         Text("Changes")
                         Text(
-                            session?.title() ?: (model.node(nodeId)?.name ?: ""),
+                            session?.title() ?: (model.conn.node(nodeId)?.name ?: ""),
                             style = MaterialTheme.typography.bodySmall,
                             color = MaterialTheme.colorScheme.onSurfaceVariant,
                             maxLines = 1,

@@ -50,7 +50,7 @@ private val date: DateTimeFormatter = DateTimeFormatter.ofPattern("d MMM yyyy")
  *  after the hub first read the token unless set here by hand. */
 @OptIn(ExperimentalMaterial3Api::class)
 @Composable
-fun TokensScreen(model: HubModel, snackbar: SnackbarHostState, back: () -> Unit) {
+fun TokensScreen(model: Connection, snackbar: SnackbarHostState, back: () -> Unit) {
     LaunchedEffect(Unit) { model.loadClaudeTokens() }
     var editing by remember { mutableStateOf<ClaudeTokenInfo?>(null) }
     Scaffold(

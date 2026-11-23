@@ -86,27 +86,27 @@ import java.util.concurrent.ConcurrentHashMap
 @OptIn(ExperimentalMaterial3Api::class)
 @Composable
 fun NotebooksScreen(
-    model: HubModel,
+    model: YajnaModel,
     snackbar: SnackbarHostState,
     open: (NotebookInfo) -> Unit,
     spawned: (nodeId: String, sessionId: String) -> Unit,
 ) {
-    LaunchedEffect(model.link) { if (model.link == Link.Connected) model.loadNotebooks() }
-    val offering = model.nodes.filter { NOTEBOOK_SERVICE in it.services }.sortedBy { it.name }
+    LaunchedEffect(model.conn.link) { if (model.conn.link == Link.Connected) model.loadNotebooks() }
+    val offering = model.conn.nodes.filter { NOTEBOOK_SERVICE in it.services }.sortedBy { it.name }
     val labs = model.projectNotebooks()
     var newProject by remember { mutableStateOf(false) }
     if (newProject && labs.isNotEmpty()) {
         NewProjectDialog(model, labs, dismiss = { newProject = false }) { book, prompt, chosen, token ->
             newProject = false
-            model.spawn(book.nodeId, book.path, prompt, chosen, false, "", "", token) { id -> spawned(book.nodeId, id) }
+            model.conn.spawn(book.nodeId, book.path, prompt, chosen, false, "", "", token) { id -> spawned(book.nodeId, id) }
         }
     }
     Scaffold(
         topBar = {
             TopAppBar(
                 title = {
-                    val n = model.nodes.count { NOTEBOOK_SERVICE in it.services }
-                    PromptLine(model.hubName, "~/notes", if (n == 1) "▤ 1 machine with notebooks" else "▤ $n machines with notebooks")
+                    val n = model.conn.nodes.count { NOTEBOOK_SERVICE in it.services }
+                    PromptLine(model.conn.hubName, "~/notes", if (n == 1) "▤ 1 machine with notebooks" else "▤ $n machines with notebooks")
                 },
                 actions = {
                     IconButton(onClick = { model.loadNotebooks() }) { Icon(Icons.Filled.Refresh, "Refresh") }
@@ -167,7 +167,7 @@ private val projectKinds = listOf(
 @OptIn(ExperimentalMaterial3Api::class)
 @Composable
 private fun NewProjectDialog(
-    model: HubModel,
+    model: YajnaModel,
     labs: List<NotebookInfo>,
     dismiss: () -> Unit,
     start: (book: NotebookInfo, prompt: String, model: String, token: String?) -> Unit,
@@ -175,7 +175,7 @@ private fun NewProjectDialog(
     val key = { b: NotebookInfo -> b.nodeId + "/" + b.namespace }
     var bookKey by remember { mutableStateOf(key(labs.first())) }
     val book = labs.firstOrNull { key(it) == bookKey } ?: labs.first()
-    val node = model.node(book.nodeId)
+    val node = model.conn.node(book.nodeId)
     var kind by remember { mutableStateOf(projectKinds.first().second) }
     var brief by remember { mutableStateOf("") }
     var chosen by remember { mutableStateOf("") }
@@ -241,7 +241,7 @@ private fun NewProjectDialog(
                     Choice(
                         "Notebook",
                         book.namespace,
-                        labs.map { "${it.namespace} on ${model.node(it.nodeId)?.name ?: "?"}" to key(it) },
+                        labs.map { "${it.namespace} on ${model.conn.node(it.nodeId)?.name ?: "?"}" to key(it) },
                         bookKey,
                         details = labs.associate { key(it) to short(it.path) },
                     ) { bookKey = it }
@@ -259,10 +259,10 @@ private fun NewProjectDialog(
                 Heading("Options")
                 Group {
                     Choice("Model", models.first { it.second == chosen }.first, models, chosen) { chosen = it }
-                    if (model.claudeTokens.isNotEmpty() && node != null) {
+                    if (model.conn.claudeTokens.isNotEmpty() && node != null) {
                         Divider()
                         val default = "Node default (${node.defaultClaudeToken.ifEmpty { "own login" }})"
-                        val options = listOf(default to "\u0000") + model.claudeTokens.map { it.name to it.name } +
+                        val options = listOf(default to "\u0000") + model.conn.claudeTokens.map { it.name to it.name } +
                             if (node.defaultClaudeToken.isEmpty()) emptyList() else listOf("Node's own login" to "")
                         Choice(
                             "Claude account",
@@ -315,7 +315,7 @@ private fun NotebookCard(b: NotebookInfo, onOpen: () -> Unit) {
 @OptIn(ExperimentalMaterial3Api::class)
 @Composable
 fun NotebookScreen(
-    model: HubModel,
+    model: YajnaModel,
     snackbar: SnackbarHostState,
     nodeId: String,
     namespace: String,
@@ -325,7 +325,7 @@ fun NotebookScreen(
     val context = LocalContext.current
     var canGoBack by remember { mutableStateOf(false) }
     var loading by remember { mutableStateOf(true) }
-    val relay = remember(nodeId) { Relay(nodeId, NOTEBOOK_SERVICE) { model.connection } }
+    val relay = remember(nodeId) { Relay(nodeId, NOTEBOOK_SERVICE) { model.conn.connection } }
     val view = remember(nodeId, url) {
         relay.webView(
             context,
@@ -347,7 +347,7 @@ fun NotebookScreen(
                     Column {
                         Text(namespace)
                         Text(
-                            model.node(nodeId)?.name ?: "",
+                            model.conn.node(nodeId)?.name ?: "",
                             style = MaterialTheme.typography.bodySmall,
                             color = MaterialTheme.colorScheme.onSurfaceVariant,
                         )

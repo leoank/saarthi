@@ -65,7 +65,7 @@ private val dayFormat: DateTimeFormatter = DateTimeFormatter.ofPattern("EEEE d M
  *  filter chips (ADR-0036). A row opens the session; an ended one can be resumed there. */
 @OptIn(ExperimentalMaterial3Api::class)
 @Composable
-fun HistoryScreen(model: HubModel, snackbar: SnackbarHostState, back: () -> Unit, openSession: (SessionInfo, String?) -> Unit) {
+fun HistoryScreen(model: AgentsModel, snackbar: SnackbarHostState, back: () -> Unit, openSession: (SessionInfo, String?) -> Unit) {
     var nodeId by rememberSaveable { mutableStateOf("") }
     var query by rememberSaveable { mutableStateOf("") }
     var deleting by remember { mutableStateOf<HistoryItem?>(null) }
@@ -103,13 +103,13 @@ fun HistoryScreen(model: HubModel, snackbar: SnackbarHostState, back: () -> Unit
                 shape = RoundedCornerShape(6.dp),
                 modifier = Modifier.fillMaxWidth().padding(horizontal = 16.dp, vertical = 4.dp),
             )
-            if (model.nodes.size > 1) {
+            if (model.conn.nodes.size > 1) {
                 LazyRow(
                     horizontalArrangement = Arrangement.spacedBy(8.dp),
                     contentPadding = PaddingValues(horizontal = 16.dp),
                 ) {
                     item { FilterChip(selected = nodeId.isEmpty(), onClick = { nodeId = "" }, label = { Text("All") }) }
-                    items(model.nodes.sortedBy { it.name }, key = { it.id }) { n ->
+                    items(model.conn.nodes.sortedBy { it.name }, key = { it.id }) { n ->
                         FilterChip(selected = nodeId == n.id, onClick = { nodeId = n.id }, label = { Text(n.name) })
                     }
                 }
@@ -125,7 +125,7 @@ fun HistoryScreen(model: HubModel, snackbar: SnackbarHostState, back: () -> Unit
                         item { Empty("Nothing matches", "Search looks at what you typed and what Claude replied, and at session titles and folders.") }
                     }
                     items(model.searchHits, key = { "s" + it.session.nodeId + it.session.id }) { hit ->
-                        androidx.compose.runtime.CompositionLocalProvider(LocalFind provides query.trim()) { SearchRow(hit, model.node(hit.session.nodeId)?.name ?: "node") { openSession(hit.session, query.trim()) } }
+                        androidx.compose.runtime.CompositionLocalProvider(LocalFind provides query.trim()) { SearchRow(hit, model.conn.node(hit.session.nodeId)?.name ?: "node") { openSession(hit.session, query.trim()) } }
                     }
                 }
                 return@Column
@@ -160,7 +160,7 @@ fun HistoryScreen(model: HubModel, snackbar: SnackbarHostState, back: () -> Unit
                         Column(verticalArrangement = Arrangement.spacedBy(4.dp)) {
                             HistoryRow(
                                 h,
-                                model.node(h.session.nodeId)?.name ?: "node",
+                                model.conn.node(h.session.nodeId)?.name ?: "node",
                                 onDelete = if (h.session.endedMs != null) ({ deleting = h }) else null,
                             ) { openSession(h.session, null) }
                             for (c in descendants(h)) ContinuedRow(c) { openSession(c.session, null) }

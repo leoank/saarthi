@@ -99,6 +99,8 @@ fun App(
     pairedSeen: () -> Unit = {},
     model: HubModel = viewModel(),
 ) {
+    val conn = model.conn
+    val agents = model.agents
     // Each workspace keeps its own screen, so its tab returns to where it was (ADR-0068).
     var tab by remember { mutableStateOf(Workspace.Agents) }
     val screens = remember { androidx.compose.runtime.mutableStateMapOf<Workspace, Screen>() }
@@ -111,23 +113,14 @@ fun App(
         override fun getValue(thisRef: Any?, property: kotlin.reflect.KProperty<*>) = screens[tab] ?: root(tab)
         override fun setValue(thisRef: Any?, property: kotlin.reflect.KProperty<*>, value: Screen) { screens[tab] = value }
     }
-    // A tab coming back to a session reopens it: the model holds one open session.
     fun switchTo(w: Workspace) {
-        if (w == tab) {
-            // A second tap on the current tab goes to its root.
-            if (screen is Screen.Session) model.close()
-            screen = root(w)
-            return
-        }
-        tab = w
-        (screen as? Screen.Session)?.let { s ->
-            model.sessions.firstOrNull { it.nodeId == s.nodeId && it.id == s.sessionId }?.let { model.open(it) }
-        }
+        // A second tap on the current tab goes to its root.
+        if (w == tab) screen = root(w) else tab = w
     }
     val snackbar = remember { SnackbarHostState() }
-    LaunchedEffect(Unit) { model.messages.collect { snackbar.showSnackbar(it) } }
+    LaunchedEffect(Unit) { conn.messages.collect { snackbar.showSnackbar(it) } }
     LifecycleResumeEffect(Unit) {
-        model.resumed()
+        conn.resumed()
         onPauseOrDispose { }
     }
 
@@ -136,8 +129,8 @@ fun App(
     var booted by remember { mutableStateOf(false) }
     // A first run goes from the boot log to Settings; once its first hub connects, Home.
     var firstRun by remember { mutableStateOf(false) }
-    LaunchedEffect(firstRun, model.link, model.demo) {
-        if (firstRun && model.link == Link.Connected && model.demo == null) {
+    LaunchedEffect(firstRun, conn.link, conn.demo) {
+        if (firstRun && conn.link == Link.Connected && conn.demo == null) {
             tab = Workspace.Agents
             screen = Screen.Home
             firstRun = false
@@ -146,20 +139,20 @@ fun App(
     // A pairing link goes to Settings, where the hub it holds waits to be added.
     LaunchedEffect(paired) {
         val link = paired ?: return@LaunchedEffect
-        if (model.pairFrom(link)) {
+        if (conn.pairFrom(link)) {
             screen = Screen.Settings
             booted = true
-            firstRun = model.hubs.isEmpty()
-        } else model.say("That link is not a saarthi pairing link")
+            firstRun = conn.hubs.isEmpty()
+        } else conn.say("That link is not a saarthi pairing link")
         pairedSeen()
     }
     if (!booted) {
         BootScreen(
-            model.bootLog,
-            retry = { model.retryBoot() },
+            conn.bootLog,
+            retry = { conn.retryBoot() },
             settings = { screen = Screen.Settings; booted = true },
             finished = {
-                if (model.bootLog.state == BootLog.State.NoHub) {
+                if (conn.bootLog.state == BootLog.State.NoHub) {
                     screen = Screen.Settings
                     firstRun = true
                 }
@@ -171,8 +164,8 @@ fun App(
     // Once connected, and again with each hub switched to: register for notifications
     // with the phone's distributor.
     val activity = LocalActivity.current
-    val connected = model.link == Link.Connected && model.demo == null
-    LaunchedEffect(connected, model.activeId) {
+    val connected = conn.link == Link.Connected && conn.demo == null
+    LaunchedEffect(connected, conn.activeId) {
         if (connected) activity?.let {
             Push.start(it)
             // Notifications held from the hub itself, the push server the fallback (ADR-0075).
@@ -182,7 +175,7 @@ fun App(
 
     // A notification tap lands on its session once the lists are in; a usage alert, which
     // has none, on the node's health.
-    LaunchedEffect(requested, model.sessions.size) {
+    LaunchedEffect(requested, conn.sessions.size) {
         val (node, id) = requested ?: return@LaunchedEffect
         tab = Workspace.Agents
         if (id.isEmpty()) {
@@ -190,8 +183,8 @@ fun App(
             consumed()
             return@LaunchedEffect
         }
-        val s = model.sessions.firstOrNull { it.nodeId == node && it.id == id } ?: return@LaunchedEffect
-        model.open(s)
+        val s = conn.session(node, id) ?: return@LaunchedEffect
+        agents.open(s)
         screen = Screen.Session(node, id)
         consumed()
     }
@@ -200,10 +193,10 @@ fun App(
     var spawned by remember { mutableStateOf<Pair<String, String>?>(null) }
     // Where back from it goes: home, or the notebooks for a new project.
     var spawnedFrom by remember { mutableStateOf<Screen>(Screen.Home) }
-    LaunchedEffect(spawned, model.sessions.size) {
+    LaunchedEffect(spawned, conn.sessions.size) {
         val (node, id) = spawned ?: return@LaunchedEffect
-        val s = model.sessions.firstOrNull { it.nodeId == node && it.id == id } ?: return@LaunchedEffect
-        model.open(s)
+        val s = conn.session(node, id) ?: return@LaunchedEffect
+        agents.open(s)
         screen = Screen.Session(node, id, spawnedFrom)
         spawned = null
         spawnedFrom = Screen.Home
@@ -213,7 +206,7 @@ fun App(
     // Back leaves a screen for its workspace's root, a workspace's root for Agents, and
     // Agents for the phone; from Settings with no hub there is nowhere to go back to.
     val atRoot = screen == root(tab)
-    BackHandler(enabled = !(atRoot && tab == Workspace.Agents) && !(screen == Screen.Settings && model.hubs.isEmpty())) {
+    BackHandler(enabled = !(atRoot && tab == Workspace.Agents) && !(screen == Screen.Settings && conn.hubs.isEmpty())) {
         if (atRoot) {
             switchTo(Workspace.Agents)
             return@BackHandler
@@ -223,7 +216,7 @@ fun App(
             is Screen.Terminal -> s.from
             is Screen.Changes -> s.from
             is Screen.Notebook -> Screen.Notebooks
-            is Screen.Session -> { model.close(); s.from }
+            is Screen.Session -> s.from
             else -> root(tab)
         }
     }
@@ -237,9 +230,9 @@ fun App(
     ) {
     when (val s = screen) {
         Screen.Home -> HomeScreen(
-            model, snackbar,
+            agents, snackbar,
             openSession = {
-                model.open(it)
+                agents.open(it)
                 screen = Screen.Session(it.nodeId, it.id)
             },
             openHealth = { screen = Screen.Health(it.id, Screen.Home) },
@@ -249,47 +242,50 @@ fun App(
             openSettings = { screen = Screen.Settings },
         )
         Screen.Terminals -> TerminalsScreen(
-            model,
+            model.machines,
             openShell = { screen = Screen.Terminal(it.id, Screen.Terminals) },
-            newShell = { screen = Screen.Terminal(model.newShell(it).id, Screen.Terminals) },
+            newShell = { screen = Screen.Terminal(model.machines.newShell(it).id, Screen.Terminals) },
         )
         Screen.Notebooks -> NotebooksScreen(
-            model, snackbar,
+            model.yajna, snackbar,
             open = { screen = Screen.Notebook(it.nodeId, it.namespace, it.url) },
             spawned = { node, id -> spawnedFrom = Screen.Notebooks; spawned = node to id },
         )
         is Screen.Notebook -> NotebookScreen(
-            model, snackbar, s.nodeId, s.namespace, s.url,
+            model.yajna, snackbar, s.nodeId, s.namespace, s.url,
             back = { screen = Screen.Notebooks },
         )
         Screen.History -> HistoryScreen(
-            model, snackbar,
+            agents, snackbar,
             back = { screen = root(tab) },
             openSession = { it, find ->
-                model.open(it)
+                agents.open(it)
                 screen = Screen.Session(it.nodeId, it.id, Screen.History, find)
             },
         )
-        is Screen.Session -> SessionScreen(
-            model, snackbar, s.nodeId, s.sessionId, s.find,
-            back = { model.close(); screen = s.from },
+        is Screen.Session -> if (agents.opened(s.nodeId, s.sessionId) == null) {
+            // Dropped from memory while away (ADR-0076): opened again while it runs.
+            LaunchedEffect(s) { conn.session(s.nodeId, s.sessionId)?.let { agents.open(it) } ?: run { screen = s.from } }
+        } else SessionScreen(
+            agents, snackbar, s.nodeId, s.sessionId, s.find,
+            back = { screen = s.from },
             openHealth = { screen = Screen.Health(s.nodeId, s) },
             openChanges = { screen = Screen.Changes(s.nodeId, s.sessionId, s) },
             openSession = { id -> spawnedFrom = s.from; spawned = s.nodeId to id },
         )
-        is Screen.Health -> HealthScreen(model, snackbar, s.nodeId, back = { screen = s.from })
-        is Screen.Terminal -> model.shell(s.shellId)?.let { shell ->
-            TerminalScreen(model, shell, back = { screen = s.from }, close = { model.closeShell(shell); screen = s.from })
+        is Screen.Health -> HealthScreen(model.machines, snackbar, s.nodeId, back = { screen = s.from })
+        is Screen.Terminal -> model.machines.shell(s.shellId)?.let { shell ->
+            TerminalScreen(model.machines, shell, back = { screen = s.from }, close = { model.machines.closeShell(shell); screen = s.from })
         } ?: LaunchedEffect(s) { screen = s.from }
-        is Screen.Changes -> ChangesScreen(model, s.nodeId, s.sessionId, back = { screen = s.from })
-        Screen.Tokens -> TokensScreen(model, snackbar, back = { screen = root(tab) })
+        is Screen.Changes -> ChangesScreen(agents, s.nodeId, s.sessionId, back = { screen = s.from })
+        Screen.Tokens -> TokensScreen(conn, snackbar, back = { screen = root(tab) })
         Screen.Settings -> SettingsScreen(
             model, snackbar,
-            back = if (model.hubs.isEmpty() && model.demo == null) null else ({ screen = root(tab) }),
-            tryDemo = { model.startDemo(); tab = Workspace.Agents; screen = Screen.Home },
+            back = if (conn.hubs.isEmpty() && conn.demo == null) null else ({ screen = root(tab) }),
+            tryDemo = { conn.startDemo(); tab = Workspace.Agents; screen = Screen.Home },
         )
     }
     }
-    if (atRoot) WorkspaceBar(tab, model.pending.map { it.nodeId to it.sessionId }.distinct().size, ::switchTo)
+    if (atRoot) WorkspaceBar(tab, conn.pending.map { it.nodeId to it.sessionId }.distinct().size, ::switchTo)
     }
 }

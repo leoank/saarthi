@@ -83,7 +83,7 @@ internal fun short(path: String): String = path.replace(Regex("^/(Users|home)/[^
 @OptIn(ExperimentalMaterial3Api::class)
 @Composable
 fun NewSessionDialog(
-    model: HubModel,
+    model: AgentsModel,
     nodes: List<NodeInfo>,
     tokens: List<ClaudeTokenInfo>,
     dismiss: () -> Unit,
