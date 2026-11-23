@@ -258,6 +258,14 @@ link came over, shown on each machine and on each session's line. The app's stat
 connection to the hub shared by a model per workspace (ADR-0077); a session opened on the
 phone keeps its own conversation and stream, so more than one can be open at once.
 
+The bar with the workspaces is on every screen, stepping aside only while the keyboard is
+up, and ends in a gear that opens Settings, on the tab of the workspace in front with
+*general* (hubs, notifications, versions) beside it (ADR-0076). Everything open, sessions,
+notebook pages, shells, a machine's health, a session's changes, gathers in a switcher, most
+recent first, opened by a drag up on the bar; a sideways swipe along the bar steps to the
+previous or next one without opening it. The amber count on *agents* opens what waits on
+the owner as a sheet, answered there from any workspace.
+
 ### Agent adapter
 
 Claude Code is the only implementation, but the daemon talks to it through a trait with

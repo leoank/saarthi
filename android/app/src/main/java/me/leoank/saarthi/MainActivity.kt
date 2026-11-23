@@ -12,6 +12,7 @@ import androidx.compose.foundation.layout.WindowInsets
 import androidx.compose.foundation.layout.consumeWindowInsets
 import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.foundation.layout.navigationBars
+import androidx.compose.foundation.layout.isImeVisible
 import androidx.compose.material3.SnackbarHostState
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.LaunchedEffect
@@ -86,11 +87,22 @@ sealed interface Screen {
     /** An open shell (ADR-0054), by its id in the model. */
     data class Terminal(val shellId: Int, val from: Screen) : Screen
     data class Changes(val nodeId: String, val sessionId: String, val from: Screen) : Screen
-    data object Settings : Screen
     data object Yajna : Screen
     data class Notebook(val nodeId: String, val namespace: String, val url: String) : Screen
 }
 
+/** Where a screen is, for the switcher: one key per thing open, whatever screen it was
+ *  reached from. */
+private fun Screen.key(): String = when (this) {
+    is Screen.Session -> "s/$nodeId/$sessionId"
+    is Screen.Notebook -> "n/$nodeId/$namespace/$url"
+    is Screen.Terminal -> "t/$shellId"
+    is Screen.Health -> "h/$nodeId"
+    is Screen.Changes -> "c/$nodeId/$sessionId"
+    else -> toString()
+}
+
+@OptIn(androidx.compose.foundation.layout.ExperimentalLayoutApi::class)
 @Composable
 fun App(
     requested: Pair<String, String>?,
@@ -109,18 +121,69 @@ fun App(
         Workspace.Yajna -> Screen.Yajna
         Workspace.Machines -> Screen.Machines
     }
+    fun screenOf(w: Workspace): Screen = screens[w] ?: root(w)
     var screen by object : kotlin.properties.ReadWriteProperty<Any?, Screen> {
-        override fun getValue(thisRef: Any?, property: kotlin.reflect.KProperty<*>) = screens[tab] ?: root(tab)
+        override fun getValue(thisRef: Any?, property: kotlin.reflect.KProperty<*>) = screenOf(tab)
         override fun setValue(thisRef: Any?, property: kotlin.reflect.KProperty<*>, value: Screen) { screens[tab] = value }
+    }
+    // Settings over whatever is showing, on the tab of the workspace in front (ADR-0076).
+    var settings by remember { mutableStateOf(false) }
+    var settingsFrom by remember { mutableStateOf<Workspace?>(null) }
+    fun openSettings(from: Workspace? = tab) {
+        settingsFrom = from
+        settings = true
+    }
+    // What is open across the workspaces, most recent first, and where a sideways swipe
+    // along the bar has stepped to (ADR-0076).
+    val places = remember { androidx.compose.runtime.mutableStateListOf<Place>() }
+    var stepping by remember { mutableStateOf(false) }
+    var switcher by remember { mutableStateOf(false) }
+    var needs by remember { mutableStateOf(false) }
+
+    /** Goes to [p] in its workspace; a session is opened again if it was let go. */
+    fun go(p: Place, step: Boolean = false) {
+        (p.screen as? Screen.Session)?.let { s ->
+            if (agents.opened(s.nodeId, s.sessionId) == null) conn.session(s.nodeId, s.sessionId)?.let { agents.open(it) }
+        }
+        stepping = step
+        settings = false
+        tab = p.w
+        screens[p.w] = p.screen
+    }
+    fun step(by: Int) {
+        val list = places.filter { model.label(it) != null }
+        if (list.isEmpty()) return
+        val at = list.indexOfFirst { it.w == tab && it.screen.key() == screen.key() }
+        val to = if (at < 0) (if (by > 0) 0 else return) else (at + by).coerceIn(0, list.size - 1)
+        if (to != at) go(list[to], step = true)
+    }
+    fun drop(p: Place) {
+        places.removeAll { it.screen.key() == p.screen.key() }
+        when (val s = p.screen) {
+            is Screen.Terminal -> model.machines.shell(s.shellId)?.let { model.machines.closeShell(it) }
+            is Screen.Session -> agents.opened(s.nodeId, s.sessionId)?.let { agents.close(it) }
+            else -> {}
+        }
+        if (screenOf(p.w).key() == p.screen.key()) screens[p.w] = root(p.w)
     }
     // A machine's health is in Machines (ADR-0076), from wherever it is asked for.
     fun showHealth(nodeId: String) {
+        settings = false
         tab = Workspace.Machines
         screen = Screen.Health(nodeId, Screen.Machines)
     }
     fun switchTo(w: Workspace) {
         // A second tap on the current tab goes to its root.
-        if (w == tab) screen = root(w) else tab = w
+        if (w == tab && !settings) screen = root(w) else tab = w
+        settings = false
+    }
+    // Each thing opened goes to the front of the switcher, unless a swipe stepped to it.
+    LaunchedEffect(tab, screenOf(tab)) {
+        val s = screenOf(tab)
+        if (!s.isPlace()) return@LaunchedEffect
+        if (stepping) { stepping = false; return@LaunchedEffect }
+        places.removeAll { it.screen.key() == s.key() }
+        places.add(0, Place(tab, s))
     }
     val snackbar = remember { SnackbarHostState() }
     LaunchedEffect(Unit) { conn.messages.collect { snackbar.showSnackbar(it) } }
@@ -138,6 +201,7 @@ fun App(
         if (firstRun && conn.link == Link.Connected && conn.demo == null) {
             tab = Workspace.Agents
             screen = Screen.Home
+            settings = false
             firstRun = false
         }
     }
@@ -145,7 +209,7 @@ fun App(
     LaunchedEffect(paired) {
         val link = paired ?: return@LaunchedEffect
         if (conn.pairFrom(link)) {
-            screen = Screen.Settings
+            openSettings(null)
             booted = true
             firstRun = conn.hubs.isEmpty()
         } else conn.say("That link is not a saarthi pairing link")
@@ -155,10 +219,10 @@ fun App(
         BootScreen(
             conn.bootLog,
             retry = { conn.retryBoot() },
-            settings = { screen = Screen.Settings; booted = true },
+            settings = { openSettings(null); booted = true },
             finished = {
                 if (conn.bootLog.state == BootLog.State.NoHub) {
-                    screen = Screen.Settings
+                    openSettings(null)
                     firstRun = true
                 }
                 booted = true
@@ -187,10 +251,8 @@ fun App(
             consumed()
             return@LaunchedEffect
         }
-        val s = conn.session(node, id) ?: return@LaunchedEffect
-        agents.open(s)
-        tab = Workspace.Agents
-        screen = Screen.Session(node, id)
+        conn.session(node, id) ?: return@LaunchedEffect
+        go(Place(Workspace.Agents, Screen.Session(node, id)))
         consumed()
     }
 
@@ -202,16 +264,23 @@ fun App(
         val (node, id) = spawned ?: return@LaunchedEffect
         val s = conn.session(node, id) ?: return@LaunchedEffect
         agents.open(s)
-        screen = Screen.Session(node, id, spawnedFrom)
+        val from = spawnedFrom
+        // A notebook's new project opens in Agents, back going to the notebooks.
+        go(Place(Workspace.Agents, Screen.Session(node, id, if (from == Screen.Yajna) Screen.Home else from)))
         spawned = null
         spawnedFrom = Screen.Home
     }
 
-    // From Settings with no hub there is nowhere to go back to: back leaves the app.
-    // Back leaves a screen for its workspace's root, a workspace's root for Agents, and
-    // Agents for the phone; from Settings with no hub there is nowhere to go back to.
+    // Back closes Settings, then leaves a screen for where it came from, a workspace's root
+    // for Agents, and Agents for the phone; from Settings with no hub there is nowhere to go
+    // back to.
     val atRoot = screen == root(tab)
-    BackHandler(enabled = !(atRoot && tab == Workspace.Agents) && !(screen == Screen.Settings && conn.hubs.isEmpty())) {
+    val noHub = conn.hubs.isEmpty() && conn.demo == null
+    BackHandler(enabled = if (settings) !noHub else !(atRoot && tab == Workspace.Agents)) {
+        if (settings) {
+            settings = false
+            return@BackHandler
+        }
         if (atRoot) {
             switchTo(Workspace.Agents)
             return@BackHandler
@@ -225,72 +294,101 @@ fun App(
             else -> root(tab)
         }
     }
-    // The bar shows on a workspace's root; inside a session, a notebook, a terminal and
-    // the rest the screen has the whole height.
+
+    /** One workspace's screen, [w]'s own back stack moving as it is used. */
+    @Composable
+    fun Pane(w: Workspace) {
+        fun set(x: Screen) { screens[w] = x }
+        when (val s = screenOf(w)) {
+            Screen.Home -> HomeScreen(
+                agents, snackbar,
+                openSession = {
+                    agents.open(it)
+                    set(Screen.Session(it.nodeId, it.id))
+                },
+                spawned = { node, id -> spawned = node to id },
+                openHistory = { set(Screen.History) },
+                openTokens = { set(Screen.Tokens) },
+                openSettings = { openSettings(null) },
+            )
+            Screen.Machines -> MachinesScreen(
+                model.machines,
+                openShell = { set(Screen.Terminal(it.id, Screen.Machines)) },
+                newShell = { set(Screen.Terminal(model.machines.newShell(it).id, Screen.Machines)) },
+                openHealth = { set(Screen.Health(it.id, Screen.Machines)) },
+            )
+            Screen.Yajna -> NotebooksScreen(
+                model.yajna, snackbar,
+                open = { set(Screen.Notebook(it.nodeId, it.namespace, it.url)) },
+                spawned = { node, id -> spawnedFrom = Screen.Yajna; spawned = node to id },
+            )
+            is Screen.Notebook -> NotebookScreen(
+                model.yajna, snackbar, s.nodeId, s.namespace, s.url,
+                back = { set(Screen.Yajna) },
+            )
+            Screen.History -> HistoryScreen(
+                agents, snackbar,
+                back = { set(root(w)) },
+                openSession = { it, find ->
+                    agents.open(it)
+                    set(Screen.Session(it.nodeId, it.id, Screen.History, find))
+                },
+            )
+            is Screen.Session -> if (agents.opened(s.nodeId, s.sessionId) == null) {
+                // Dropped from memory while away (ADR-0076): opened again while it runs.
+                LaunchedEffect(s) { conn.session(s.nodeId, s.sessionId)?.let { agents.open(it) } ?: run { set(s.from) } }
+            } else SessionScreen(
+                agents, snackbar, s.nodeId, s.sessionId, s.find,
+                back = { set(s.from) },
+                openHealth = { showHealth(s.nodeId) },
+                openChanges = { set(Screen.Changes(s.nodeId, s.sessionId, s)) },
+                openSession = { id -> spawnedFrom = s.from; spawned = s.nodeId to id },
+            )
+            is Screen.Health -> HealthScreen(model.machines, snackbar, s.nodeId, back = { set(s.from) })
+            is Screen.Terminal -> model.machines.shell(s.shellId)?.let { shell ->
+                TerminalScreen(model.machines, shell, back = { set(s.from) }, close = { model.machines.closeShell(shell); set(s.from) })
+            } ?: LaunchedEffect(s) { set(s.from) }
+            is Screen.Changes -> ChangesScreen(agents, s.nodeId, s.sessionId, back = { set(s.from) })
+            Screen.Tokens -> TokensScreen(conn, snackbar, back = { set(root(w)) })
+        }
+    }
+
+    // The bar is on every screen (ADR-0076), stepping aside only while the keyboard is up.
+    val keyboard = androidx.compose.foundation.layout.WindowInsets.isImeVisible
+    val bar = !keyboard
     androidx.compose.foundation.layout.Column(androidx.compose.ui.Modifier.fillMaxSize()) {
-    androidx.compose.foundation.layout.Box(
-        androidx.compose.ui.Modifier
-            .weight(1f)
-            .then(if (atRoot) androidx.compose.ui.Modifier.consumeWindowInsets(androidx.compose.foundation.layout.WindowInsets.navigationBars) else androidx.compose.ui.Modifier),
-    ) {
-    when (val s = screen) {
-        Screen.Home -> HomeScreen(
-            agents, snackbar,
-            openSession = {
-                agents.open(it)
-                screen = Screen.Session(it.nodeId, it.id)
-            },
-            spawned = { node, id -> spawned = node to id },
-            openHistory = { screen = Screen.History },
-            openTokens = { screen = Screen.Tokens },
-            openSettings = { screen = Screen.Settings },
-        )
-        Screen.Machines -> MachinesScreen(
-            model.machines,
-            openShell = { screen = Screen.Terminal(it.id, Screen.Machines) },
-            newShell = { screen = Screen.Terminal(model.machines.newShell(it).id, Screen.Machines) },
-            openHealth = { screen = Screen.Health(it.id, Screen.Machines) },
-        )
-        Screen.Yajna -> NotebooksScreen(
-            model.yajna, snackbar,
-            open = { screen = Screen.Notebook(it.nodeId, it.namespace, it.url) },
-            spawned = { node, id -> spawnedFrom = Screen.Yajna; spawned = node to id },
-        )
-        is Screen.Notebook -> NotebookScreen(
-            model.yajna, snackbar, s.nodeId, s.namespace, s.url,
-            back = { screen = Screen.Yajna },
-        )
-        Screen.History -> HistoryScreen(
-            agents, snackbar,
-            back = { screen = root(tab) },
-            openSession = { it, find ->
-                agents.open(it)
-                screen = Screen.Session(it.nodeId, it.id, Screen.History, find)
-            },
-        )
-        is Screen.Session -> if (agents.opened(s.nodeId, s.sessionId) == null) {
-            // Dropped from memory while away (ADR-0076): opened again while it runs.
-            LaunchedEffect(s) { conn.session(s.nodeId, s.sessionId)?.let { agents.open(it) } ?: run { screen = s.from } }
-        } else SessionScreen(
-            agents, snackbar, s.nodeId, s.sessionId, s.find,
-            back = { screen = s.from },
-            openHealth = { showHealth(s.nodeId) },
-            openChanges = { screen = Screen.Changes(s.nodeId, s.sessionId, s) },
-            openSession = { id -> spawnedFrom = s.from; spawned = s.nodeId to id },
-        )
-        is Screen.Health -> HealthScreen(model.machines, snackbar, s.nodeId, back = { screen = s.from })
-        is Screen.Terminal -> model.machines.shell(s.shellId)?.let { shell ->
-            TerminalScreen(model.machines, shell, back = { screen = s.from }, close = { model.machines.closeShell(shell); screen = s.from })
-        } ?: LaunchedEffect(s) { screen = s.from }
-        is Screen.Changes -> ChangesScreen(agents, s.nodeId, s.sessionId, back = { screen = s.from })
-        Screen.Tokens -> TokensScreen(conn, snackbar, back = { screen = root(tab) })
-        Screen.Settings -> SettingsScreen(
-            model, snackbar,
-            back = if (conn.hubs.isEmpty() && conn.demo == null) null else ({ screen = root(tab) }),
-            tryDemo = { conn.startDemo(); tab = Workspace.Agents; screen = Screen.Home },
+        androidx.compose.foundation.layout.Box(
+            androidx.compose.ui.Modifier
+                .weight(1f)
+                .then(if (bar) androidx.compose.ui.Modifier.consumeWindowInsets(androidx.compose.foundation.layout.WindowInsets.navigationBars) else androidx.compose.ui.Modifier),
+        ) {
+            if (settings) SettingsScreen(
+                model, snackbar,
+                back = if (noHub) null else ({ settings = false }),
+                tryDemo = { conn.startDemo(); tab = Workspace.Agents; screen = Screen.Home; settings = false },
+                start = settingsFrom,
+            ) else Pane(tab)
+        }
+        if (bar) WorkspaceBar(
+            tab,
+            conn.pending.map { it.nodeId to it.sessionId }.distinct().size,
+            ::switchTo,
+            settings = { if (settings) settings = false else openSettings() },
+            settingsOn = settings,
+            answer = { needs = true },
+            switcher = { switcher = true },
+            step = ::step,
         )
     }
-    }
-    if (atRoot) WorkspaceBar(tab, conn.pending.map { it.nodeId to it.sessionId }.distinct().size, ::switchTo)
-    }
+    if (switcher) SwitcherSheet(
+        model, places, places.firstOrNull { it.w == tab && it.screen.key() == screen.key() },
+        go = { switcher = false; go(it) },
+        close = { drop(it) },
+        dismiss = { switcher = false },
+    )
+    if (needs) NeedsYouSheet(
+        model,
+        open = { node, id -> needs = false; go(Place(Workspace.Agents, Screen.Session(node, id))) },
+        dismiss = { needs = false },
+    )
 }

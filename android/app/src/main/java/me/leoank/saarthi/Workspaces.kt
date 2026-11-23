@@ -2,6 +2,11 @@ package me.leoank.saarthi
 
 import androidx.compose.foundation.background
 import androidx.compose.foundation.clickable
+import androidx.compose.foundation.combinedClickable
+import androidx.compose.foundation.gestures.detectDragGestures
+import androidx.compose.foundation.layout.size
+import androidx.compose.material.icons.outlined.Settings
+import androidx.compose.ui.input.pointer.pointerInput
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.Column
@@ -49,17 +54,55 @@ enum class Workspace(val label: String, val glyph: String, val hue: Color) {
     Machines("machines", "❯_", Flame.Machines),
 }
 
-/** The workspace bar, a tmux status line (ADR-0069): each workspace's glyph and name in
- *  mono, the current one on the page's background under a glowing line in its hue, and
- *  what needs the owner counted on Agents. */
+/** The workspace bar, a tmux status line (ADR-0069), on every screen (ADR-0076): each
+ *  workspace's glyph and name in mono, the current one on the page's background under a
+ *  glowing line in its hue, what needs the owner counted on Agents (a tap on the count
+ *  answers it in a sheet), and the gear for Settings at its end. A drag up on the bar opens
+ *  the switcher; a sideways swipe steps to the previous (left) or next (right) open thing.
+ *  [panes] marks the workspace each pane holds when the screen is split (`L`, `R`). */
 @Composable
-fun WorkspaceBar(current: Workspace, needsYou: Int, select: (Workspace) -> Unit) {
+fun WorkspaceBar(
+    current: Workspace,
+    needsYou: Int,
+    select: (Workspace) -> Unit,
+    settings: () -> Unit,
+    settingsOn: Boolean = false,
+    answer: () -> Unit = {},
+    switcher: () -> Unit = {},
+    step: (Int) -> Unit = {},
+    hold: (Workspace) -> Unit = {},
+    panes: Map<Workspace, String> = emptyMap(),
+) {
+    val density = androidx.compose.ui.platform.LocalDensity.current
+    val far = with(density) { 48.dp.toPx() }
+    val up = with(density) { 28.dp.toPx() }
     Column(Modifier.fillMaxWidth().background(Flame.S0)) {
         Box(Modifier.fillMaxWidth().height(1.dp).background(Flame.Line))
-        Row(Modifier.fillMaxWidth().height(46.dp)) {
+        Row(
+            Modifier
+                .fillMaxWidth()
+                .height(46.dp)
+                .pointerInput(Unit) {
+                    var dx = 0f
+                    var dy = 0f
+                    detectDragGestures(
+                        onDragStart = { dx = 0f; dy = 0f },
+                        onDragEnd = {
+                            when {
+                                -dy > up && -dy > kotlin.math.abs(dx) -> switcher()
+                                kotlin.math.abs(dx) > far -> step(if (dx < 0) 1 else -1)
+                            }
+                        },
+                    ) { change, drag ->
+                        change.consume()
+                        dx += drag.x
+                        dy += drag.y
+                    }
+                },
+        ) {
             Workspace.entries.forEachIndexed { i, w ->
                 if (i > 0) Box(Modifier.width(1.dp).fillMaxHeight().padding(vertical = 12.dp).background(Flame.Line))
-                val on = w == current
+                val on = w == current && !settingsOn
                 Box(
                     contentAlignment = Alignment.Center,
                     modifier = Modifier
@@ -67,7 +110,7 @@ fun WorkspaceBar(current: Workspace, needsYou: Int, select: (Workspace) -> Unit)
                         .fillMaxHeight()
                         .background(if (on) Flame.Bg else Color.Transparent)
                         .semantics { selected = on }
-                        .clickable(role = Role.Tab) { select(w) },
+                        .combinedClickable(role = Role.Tab, onLongClick = { hold(w) }) { select(w) },
                 ) {
                     if (on) {
                         // The line, and its glow falling into the tab.
@@ -85,11 +128,41 @@ fun WorkspaceBar(current: Workspace, needsYou: Int, select: (Workspace) -> Unit)
                         Spacer(Modifier.width(6.dp))
                         Text(w.label, fontFamily = Mono, fontSize = 12.5.sp, color = if (on) Flame.Text else Flame.Dim)
                         if (w == Workspace.Agents && needsYou > 0) {
-                            Spacer(Modifier.width(5.dp))
-                            Text("$needsYou", fontFamily = Mono, fontSize = 12.5.sp, fontWeight = FontWeight.Bold, color = Flame.Hot)
+                            Text(
+                                "$needsYou",
+                                fontFamily = Mono,
+                                fontSize = 12.5.sp,
+                                fontWeight = FontWeight.Bold,
+                                color = Flame.Hot,
+                                modifier = Modifier
+                                    .clickable(onClickLabel = "Answer what needs you", onClick = answer)
+                                    .padding(horizontal = 6.dp, vertical = 8.dp),
+                            )
+                        }
+                        panes[w]?.let { side ->
+                            Spacer(Modifier.width(4.dp))
+                            Text(
+                                side,
+                                fontFamily = Mono,
+                                fontSize = 9.sp,
+                                fontWeight = FontWeight.Bold,
+                                color = Flame.Bg,
+                                modifier = Modifier.background(w.hue, MaterialTheme.shapes.extraSmall).padding(horizontal = 3.dp),
+                            )
                         }
                     }
                 }
+            }
+            Box(Modifier.width(1.dp).fillMaxHeight().background(Flame.Line))
+            Box(
+                contentAlignment = Alignment.Center,
+                modifier = Modifier
+                    .width(52.dp)
+                    .fillMaxHeight()
+                    .background(if (settingsOn) Flame.Bg else Color.Transparent)
+                    .clickable(onClickLabel = "Settings", onClick = settings),
+            ) {
+                Icon(Icons.Outlined.Settings, "Settings", tint = if (settingsOn) Flame.Text else Flame.Dim, modifier = Modifier.size(20.dp))
             }
         }
         Spacer(Modifier.fillMaxWidth().windowInsetsBottomHeight(WindowInsets.navigationBars))

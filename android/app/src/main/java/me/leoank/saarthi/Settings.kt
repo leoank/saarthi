@@ -50,6 +50,9 @@ import androidx.compose.runtime.remember
 import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
+import androidx.compose.ui.draw.clip
+import androidx.compose.ui.graphics.Color
+import androidx.compose.ui.unit.sp
 import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.text.input.KeyboardType
 import androidx.compose.ui.text.input.PasswordVisualTransformation
@@ -60,11 +63,15 @@ import androidx.compose.ui.window.Dialog
 import androidx.compose.ui.window.DialogProperties
 import uniffi.saarthi_core.coreVersion
 
-/** The app's settings, a page of groups: the hubs it knows and which one it connects to,
- *  how text shows, and what is running. New kinds of settings get a group here. */
+/** The app's settings, one for every workspace (ADR-0076), reached from the gear at the
+ *  bar's end: *general* (the hubs it knows and which one it connects to, notifications,
+ *  what is running), then a tab per workspace for its own. It opens on [start]'s tab, the
+ *  workspace in front, or on *general* with none. */
 @OptIn(ExperimentalMaterial3Api::class)
 @Composable
-fun SettingsScreen(model: HubModel, snackbar: SnackbarHostState, back: (() -> Unit)?, tryDemo: () -> Unit = {}) {
+fun SettingsScreen(model: HubModel, snackbar: SnackbarHostState, back: (() -> Unit)?, tryDemo: () -> Unit = {}, start: Workspace? = null) {
+    var tab by remember(start) { mutableStateOf(start) }
+    var keys by remember { mutableStateOf(false) }
     var editing by remember { mutableStateOf<HubProfile?>(null) }
     // A first start shows its three ways in (add, pair, demo) rather than opening the form.
     var adding by remember { mutableStateOf(false) }
@@ -87,6 +94,24 @@ fun SettingsScreen(model: HubModel, snackbar: SnackbarHostState, back: (() -> Un
                 .verticalScroll(rememberScrollState())
                 .padding(horizontal = 16.dp),
         ) {
+            Row(Modifier.fillMaxWidth().padding(bottom = 4.dp), horizontalArrangement = Arrangement.spacedBy(4.dp)) {
+                for (t in listOf<Workspace?>(null) + Workspace.entries) {
+                    val on = t == tab
+                    Text(
+                        t?.label ?: "general",
+                        fontFamily = Mono,
+                        fontSize = 12.5.sp,
+                        color = if (on) t?.hue ?: Flame.Text else Flame.Dim,
+                        modifier = Modifier
+                            .clip(MaterialTheme.shapes.small)
+                            .background(if (on) Flame.S2 else Color.Transparent)
+                            .clickable { tab = t }
+                            .padding(horizontal = 10.dp, vertical = 6.dp),
+                    )
+                }
+            }
+            when (tab) {
+            null -> {
             Heading("Hubs")
             Group {
                 for (h in model.conn.hubs) {
@@ -154,6 +179,8 @@ fun SettingsScreen(model: HubModel, snackbar: SnackbarHostState, back: (() -> Un
                 modifier = Modifier.padding(start = 4.dp, end = 4.dp, top = 8.dp),
             )
 
+            }
+            Workspace.Agents -> {
             Heading("Display")
             Group {
                 Row(
@@ -192,7 +219,33 @@ fun SettingsScreen(model: HubModel, snackbar: SnackbarHostState, back: (() -> Un
                     Switch(checked = model.agents.openTurns, onCheckedChange = { model.agents.toggleOpenTurns() })
                 }
             }
-
+            }
+            Workspace.Yajna -> Caption("Nothing to set for yajna yet: its notebooks keep their own settings.")
+            Workspace.Machines -> {
+            Heading("Terminal")
+            Group {
+                Row(
+                    verticalAlignment = Alignment.CenterVertically,
+                    modifier = Modifier
+                        .fillMaxWidth()
+                        .clickable { keys = true }
+                        .padding(start = 16.dp, end = 12.dp, top = 12.dp, bottom = 12.dp),
+                ) {
+                    Column(Modifier.weight(1f)) {
+                        Text("Keys above the keyboard", style = MaterialTheme.typography.bodyLarge)
+                        Text(
+                            model.machines.keyBar.joinToString(" "),
+                            style = MonoMeta,
+                            color = MaterialTheme.colorScheme.onSurfaceVariant,
+                            maxLines = 1,
+                            overflow = TextOverflow.Ellipsis,
+                        )
+                    }
+                }
+            }
+            }
+            }
+            if (tab == null) {
             Heading("Notifications")
             val context = LocalContext.current
             var link by remember { mutableStateOf(LinkService.enabled(context)) }
@@ -259,9 +312,11 @@ fun SettingsScreen(model: HubModel, snackbar: SnackbarHostState, back: (() -> Un
                 Divider()
                 Fact("Phone", "${Build.MANUFACTURER} ${Build.MODEL}, Android ${Build.VERSION.RELEASE}")
             }
+            }
             Spacer(Modifier.height(32.dp))
         }
     }
+    if (keys) KeyBarEditor(model.machines.keyBar, model.machines::changeKeyBar) { keys = false }
     val paired = model.conn.pairing
     if (paired != null) {
         // A hub from a pairing link: shown in full, added only when saved.
