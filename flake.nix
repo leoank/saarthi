@@ -209,6 +209,8 @@
             buildInputs = [ pkgs.sqlite ];
             PROTOC = "${pkgs.protobuf}/bin/protoc";
             LIBTAILSCALE_LIB_DIR = "${libtailscale}/lib";
+            # The shell holder's screen (ADR-0078), linked into the node.
+            LIBGHOSTTY_VT = "${libghostty-vt}";
             cargoBuildFlags = [ "--bin" bin ];
             doCheck = false;
             meta.mainProgram = bin;
@@ -248,6 +250,8 @@
             ];
             PROTOC = "${pkgs.protobuf}/bin/protoc";
             LIBTAILSCALE_LIB_DIR = "${libtailscale}/lib";
+            # The shell holder's screen (ADR-0078), linked into the node.
+            LIBGHOSTTY_VT = "${libghostty-vt}";
             RUST_SRC_PATH = "${pkgs.rustPlatform.rustLibSrc}";
           };
 
@@ -327,6 +331,7 @@
             buildInputs = [ pkgs.sqlite ];
             PROTOC = "${pkgs.protobuf}/bin/protoc";
             LIBTAILSCALE_LIB_DIR = "${libtailscale}/lib";
+            LIBGHOSTTY_VT = "${libghostty-vt}";
           };
         };
     };

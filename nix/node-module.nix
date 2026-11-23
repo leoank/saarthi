@@ -22,6 +22,8 @@ self:
 }:
 let
   cfg = config.services.saarthi-node;
+  # saarthi from the home profile, for the shell holder (ADR-0078).
+  holder = "${config.home.profileDirectory}/bin/${cfg.package.meta.mainProgram or "saarthi"}";
   toml = pkgs.formats.toml { };
   profilesFile = toml.generate "saarthi-profiles.toml" { profiles = cfg.profiles; };
   servicesFile = toml.generate "saarthi-services.toml" {
@@ -178,8 +180,9 @@ in
       default = false;
       description = ''
         Offer a terminal to the owner's clients (ADR-0054): the app opens the user's login
-        shell on this machine, in their home directory, through the hub. A shell is the
-        whole account, so it is off unless asked for.
+        shell on this machine, in their home directory, through the hub, and a shell holder
+        runs as a service of its own to keep each shell until it exits or is killed
+        (ADR-0078). A shell is the whole account, so it is off unless asked for.
       '';
     };
 
@@ -347,6 +350,39 @@ in
             StandardErrorPath = "${cfg.logDir}/saarthi-node.err.log";
             StandardOutPath = "${cfg.logDir}/saarthi-node.out.log";
           };
+        };
+      })
+
+      # The shell holder (ADR-0078): a service of its own, so the shells it keeps outlive the
+      # node's restarts. It runs saarthi from the home profile, not the store, so an upgrade
+      # leaves its unit unchanged and home-manager does not restart it, which would end
+      # every shell; it takes the new build when it next starts.
+      (lib.mkIf (cfg.terminal && pkgs.stdenv.hostPlatform.isDarwin) {
+        launchd.agents.saarthi-shells = {
+          enable = true;
+          config = {
+            ProgramArguments = [
+              holder
+              "shells"
+              "serve"
+            ];
+            KeepAlive = true;
+            RunAtLoad = true;
+            StandardErrorPath = "${cfg.logDir}/saarthi-shells.err.log";
+            StandardOutPath = "${cfg.logDir}/saarthi-shells.out.log";
+          };
+        };
+      })
+
+      (lib.mkIf (cfg.terminal && pkgs.stdenv.hostPlatform.isLinux) {
+        systemd.user.services.saarthi-shells = {
+          Unit.Description = "saarthi shell holder";
+          Service = {
+            ExecStart = "${holder} shells serve";
+            Restart = "on-failure";
+            RestartSec = 5;
+          };
+          Install.WantedBy = [ "default.target" ];
         };
       })
 

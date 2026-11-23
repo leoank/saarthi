@@ -101,7 +101,7 @@ pub async fn stream(hub: &Hub, node_id: &str, mut inbound: Streaming<TerminalOut
                     }
                 },
             };
-            if m.output.is_empty() && m.ended.is_empty() {
+            if m.output.is_empty() && m.ended.is_empty() && m.shell_id.is_empty() {
                 continue;
             }
             let ended = !m.ended.is_empty();

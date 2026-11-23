@@ -51,6 +51,7 @@ async fn a_large_backlog_is_resent_on_one_link() {
         name: "test-node".into(),
         buffer_cap: 100_000,
         terminal: None,
+        shells: Default::default(),
     };
     tokio::spawn(link::run(cfg, rx, parts));
     for i in 0..EVENTS {

@@ -51,6 +51,22 @@ enum Command {
     /// A dashboard of the hub in the terminal: sessions by node, what waits for you, the
     /// Claude accounts; allow, deny, answer, prompt, interrupt, end and start sessions.
     Tui(TuiArgs),
+    /// The shell holder (ADR-0078).
+    #[command(subcommand)]
+    Shells(Shells),
+}
+
+#[derive(Subcommand)]
+enum Shells {
+    /// Keep the shells clients open on this machine, apart from the node, so they outlive
+    /// its restarts: each until it exits or is killed. The node starts one when none answers;
+    /// the node module runs it as a service of its own.
+    Serve {
+        /// Where to listen. Defaults to `$XDG_RUNTIME_DIR/saarthi/shells.sock`, else
+        /// `~/.local/state/saarthi/shells.sock`.
+        #[arg(long)]
+        socket: Option<PathBuf>,
+    },
 }
 
 #[derive(Args)]
@@ -216,10 +232,15 @@ struct Serve {
     #[arg(long)]
     services: Option<PathBuf>,
     /// Let clients open a shell on this machine (ADR-0054): the owner's login shell in their
-    /// home directory, as long as the client keeps it open. Off by default: a shell is this
-    /// account's everything, to anyone with a client token.
+    /// home directory, kept by the shell holder until it exits or is killed (ADR-0078). Off by
+    /// default: a shell is this account's everything, to anyone with a client token.
     #[arg(long)]
     terminal: bool,
+    /// The shell holder's socket (`saarthi shells serve`), started when none answers.
+    /// Defaults to `$XDG_RUNTIME_DIR/saarthi/shells.sock`, else
+    /// `~/.local/state/saarthi/shells.sock`.
+    #[arg(long)]
+    shells_socket: Option<PathBuf>,
     /// The unix socket sandboxed sessions post their hooks to, since loopback TCP is closed
     /// inside. Defaults to `~/.local/state/saarthi/hook.sock`; bound only when a profile is
     /// sandboxed. Keep it short: a socket path has at most 104 bytes on macOS.
@@ -242,6 +263,9 @@ async fn main() -> Result<()> {
             Ok(())
         }
         Command::Node(Node::Serve(args)) => serve(*args).await,
+        Command::Shells(Shells::Serve { socket }) => {
+            saarthi_node::shells::serve(&socket.unwrap_or_else(saarthi_node::shells::default_socket)).await
+        }
         Command::Run(args) => {
             let opts = saarthi_node::run::Options {
                 command: args.command,
@@ -440,6 +464,7 @@ async fn serve(args: Serve) -> Result<()> {
                 name,
                 buffer_cap: args.buffer_events,
                 terminal: args.terminal.then(String::new),
+                shells: args.shells_socket.clone().unwrap_or_else(saarthi_node::shells::default_socket),
             };
             hold = Some(hooks::Hold {
                 pending: pending.clone(),

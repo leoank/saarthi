@@ -4,6 +4,7 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
             "proto/saarthi/event/v1/event.proto",
             "proto/saarthi/node/v1/node.proto",
             "proto/saarthi/control/v1/control.proto",
+            "proto/saarthi/shells/v1/shells.proto",
         ],
         &["proto"],
     )?;

@@ -35,7 +35,8 @@ Useful flags (all of them are in the [command line reference](../reference/cli.m
 | `--claude <path>` | The `claude` that started sessions run. Default `claude`, found on your login shell's PATH. |
 | `--profiles <file>` | Launch profiles a started session may run under, such as a sandbox. A file that does not parse is left out, with an error in the log, and sessions run on the host. See [Sandboxed sessions](#sandboxed-sessions). |
 | `--services <file>` | Local HTTP services on unix sockets, such as yajna's notebook server, that your clients reach through the hub. A file that does not parse is left out, with an error in the log. See [Local services](#local-services). |
-| `--terminal` | Let your clients open a shell on this machine: your login shell, in your home directory, through the hub. Off by default; a shell is your whole account. See [The terminal](../using/terminal.md). |
+| `--terminal` | Let your clients open a shell on this machine: your login shell, in your home directory, through the hub, kept by the shell holder until it exits or is killed. Off by default; a shell is your whole account. See [The terminal](../using/terminal.md). |
+| `--shells-socket` | Where the shell holder listens (`saarthi shells serve`); the node starts one there when none answers. Default `$XDG_RUNTIME_DIR/saarthi/shells.sock`, else `~/.local/state/saarthi/shells.sock`. With the home-manager module the holder runs as a service of its own, `saarthi-shells`, so your shells outlive the node's restarts. |
 | `--changes-socket <path>` | Where the node serves its sessions' changes, the local service `changes` (see [What it changed](../using/sessions.md#what-it-changed)). Default `~/.local/state/saarthi/changes.sock`. |
 | `--hook-socket <path>` | Where sandboxed sessions send their hooks. Default `~/.local/state/saarthi/hook.sock`. |
 | `--ignore-cwd <glob>` | Do not track sessions whose working directory matches, for example throwaway test sessions. Repeatable. |

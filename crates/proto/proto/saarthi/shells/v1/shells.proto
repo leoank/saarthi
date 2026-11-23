@@ -1,0 +1,85 @@
+syntax = "proto3";
+
+package saarthi.shells.v1;
+
+// The shell holder on a machine (ADR-0078): a per-user process, apart from the node, that
+// owns every shell a client opened and keeps it, with its screen, until it exits or is
+// killed. The node is its client over a unix socket. A holder may run an older build than
+// the node, which upgrades without restarting it: fields are only ever added.
+service Shells {
+  // The shells it holds.
+  rpc List(ListRequest) returns (ListResponse);
+  // Attaches to a shell, or starts one: `Open` first, then keys and resizes. Down comes
+  // `Attached`, the screen as it is, then the live output; several clients may be attached
+  // to one shell at once. Closing the stream detaches; the shell goes on.
+  rpc Attach(stream AttachIn) returns (stream AttachOut);
+  // Ends a shell: its process is killed and every client attached is told.
+  rpc Kill(KillRequest) returns (KillResponse);
+}
+
+message ListRequest {}
+
+message ListResponse {
+  repeated Shell shells = 1;
+}
+
+message Shell {
+  string id = 1;
+  int64 started_ms = 2;
+  // Clients attached now.
+  uint32 clients = 3;
+  uint32 cols = 4;
+  uint32 rows = 5;
+  // The window title the shell or its program last set (OSC 0 or 2); empty if none.
+  string title = 6;
+}
+
+message AttachIn {
+  oneof body {
+    Open open = 1;
+    bytes input = 2;
+    Resize resize = 3;
+  }
+}
+
+// The first message: which shell, or a new one, and the client's window.
+message Open {
+  // The shell to attach to; empty to start a new one.
+  string id = 1;
+  // What to start for a new shell: empty for the owner's login shell, else that program.
+  string program = 2;
+  Resize size = 3;
+}
+
+message Resize {
+  uint32 cols = 1;
+  uint32 rows = 2;
+  // The window in pixels, which programs drawing images read from the PTY; 0 if unknown.
+  uint32 width_px = 3;
+  uint32 height_px = 4;
+}
+
+message AttachOut {
+  oneof body {
+    // First: the shell attached to, and whether it was started for this client.
+    Attached attached = 1;
+    // The screen as it is (once, right after `Attached`), then the shell's output.
+    bytes output = 2;
+    // The shell ended or could not start, and why; nothing follows.
+    string ended = 3;
+  }
+}
+
+message Attached {
+  string id = 1;
+  bool started = 2;
+}
+
+message KillRequest {
+  string id = 1;
+}
+
+message KillResponse {
+  // False when no such shell was held.
+  bool killed = 1;
+}

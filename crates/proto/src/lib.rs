@@ -18,3 +18,10 @@ pub mod control {
         tonic::include_proto!("saarthi.control.v1");
     }
 }
+
+/// Between the node and the shell holder on its machine (ADR-0078).
+pub mod shells {
+    pub mod v1 {
+        tonic::include_proto!("saarthi.shells.v1");
+    }
+}

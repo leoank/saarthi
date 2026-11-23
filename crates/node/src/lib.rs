@@ -15,6 +15,7 @@ pub mod queue;
 pub mod registry;
 pub mod run;
 pub mod services;
+pub mod shells;
 pub mod sessions;
 pub mod sink;
 pub mod spawner;

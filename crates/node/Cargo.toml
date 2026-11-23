@@ -47,5 +47,9 @@ core-foundation = "0.10.1"
 io-kit-sys = "0.5.0"
 mxc-sdk = "1.0.0"
 
+[build-dependencies]
+# The shell holder's screen, a little C over libghostty-vt (ADR-0078).
+cc = "1.8.0"
+
 [dev-dependencies]
 tempfile = "3.27.0"

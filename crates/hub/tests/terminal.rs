@@ -1,6 +1,7 @@
 //! A shell on a node through the hub (ADR-0054), end to end on loopback: the node offers a
 //! terminal and says so; a client opens one at a size, a command's output comes back, a
-//! resize reaches the shell, and the shell exiting ends the stream with the reason.
+//! resize reaches the shell, and the shell exiting ends the stream with the reason. A client
+//! hanging up leaves the shell running in the holder (ADR-0078).
 
 mod common;
 
@@ -69,10 +70,10 @@ async fn a_client_runs_a_shell_on_a_node() {
 }
 
 #[tokio::test(flavor = "multi_thread")]
-async fn a_client_hanging_up_ends_the_shell() {
+async fn a_client_hanging_up_leaves_the_shell_running() {
     let dir = tempfile::tempdir().unwrap();
     let (hub, addr) = HubProc::start(&dir.path().join("hub.db"), "127.0.0.1:0");
-    let _node = start_node(&addr, "t-node", &dir.path().join(".claude"), Duration::from_secs(30)).await;
+    let node = start_node(&addr, "t-node", &dir.path().join(".claude"), Duration::from_secs(30)).await;
     let mut c = ControlServiceClient::connect(format!("http://{addr}")).await.unwrap();
     let node_id = loop {
         let nodes = c.list_nodes(req(ListNodesRequest {})).await.unwrap().into_inner().nodes;
@@ -88,14 +89,22 @@ async fn a_client_hanging_up_ends_the_shell() {
     let line = format!("echo started; sleep 2; touch {}\n", marker.display());
     up.send(TerminalUp { node_id: String::new(), r#in: Some(TerminalIn { input: line.into_bytes(), ..Default::default() }) }).await.unwrap();
     let mut seen = String::new();
+    let mut shell = String::new();
     while !seen.contains("started\r\n") {
         let m = down.message().await.unwrap().expect("output");
         seen.push_str(&String::from_utf8_lossy(&m.output));
+        if !m.shell_id.is_empty() {
+            shell = m.shell_id;
+        }
     }
-    // The client hangs up while the shell sleeps: the shell goes, the file never comes.
+    assert!(!shell.is_empty(), "the node names the shell it attached to");
+    // The client hangs up while the shell sleeps: the shell goes on, and the file comes.
     drop(up);
     drop(down);
     tokio::time::sleep(Duration::from_secs(4)).await;
-    assert!(!marker.exists(), "the shell outlived its client");
+    assert!(marker.exists(), "the shell went with its client");
+    let mut holder = saarthi_node::shells::connect(&node.shells).await.unwrap();
+    let held = holder.list(saarthi_proto::shells::v1::ListRequest {}).await.unwrap().into_inner().shells;
+    assert_eq!((held.len(), held[0].id.as_str(), held[0].clients), (1, shell.as_str(), 0));
     hub.stop();
 }

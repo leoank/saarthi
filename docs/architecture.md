@@ -667,9 +667,14 @@ reports how full its context is after each turn (ADR-0061). A node also serves w
 its own, by linking yajna's `yajna-serve` (ADR-0067): `/s/<session id>/` is that crate's
 `dir_router`, its files viewer, changes view and read-only git API, over the git worktree
 the session's directory is in, the directory taken from the session or, for one the node
-has not seen, from its transcript. A node started with `--terminal` opens a login shell under a PTY for a
-client's terminal stream (ADR-0054); the hub joins the client's `Terminal` stream to the
-`TerminalStream` the node dials back. The app keeps the screen in libghostty-vt behind a
+has not seen, from its transcript. A node started with `--terminal` attaches a client's terminal stream to a
+shell held on its machine (ADR-0054, ADR-0078); the hub joins the client's `Terminal` stream to the
+`TerminalStream` the node dials back. The shells are kept by `saarthi shells serve`, a
+per-user holder apart from the node (a service of its own under the node module, else
+started by the node), reached over a unix socket: each a login shell under a PTY with its
+screen in libghostty-vt and 10,000 lines of scrollback, until it exits or is killed. A
+client attaching gets the screen as VT from libghostty-vt's formatter, then the live output;
+several may be attached at once; hanging up only detaches. The app keeps the screen in libghostty-vt behind a
 JNI shim, statically linked, and draws its cells on a canvas each frame it changed
 ([[EXP-20261114-raqjf0]]); the soft keyboard types into a view whose input connection
 keeps no text, so each key and commit goes to the shell as it comes. Push to talk and spoken replies work in every

@@ -101,6 +101,7 @@ async fn the_core_lists_watches_answers_and_streams() {
         name: "mac".into(),
         buffer_cap: 1000,
         terminal: None,
+        shells: Default::default(),
     };
     let spawner = saarthi_node::spawner::Spawner::new(
         "claude".into(),

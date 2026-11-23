@@ -109,12 +109,14 @@ message HubMessage {
   }
 }
 
-// A client's terminal on the node (ADR-0054): the node starts the owner's login shell under
-// a PTY of this size and dials `TerminalStream` back with `id`.
+// A client's terminal on the node (ADR-0054): the node attaches it to a shell its holder
+// keeps, a new one or `shell_id` (ADR-0078), and dials `TerminalStream` back with `id`.
 message OpenTerminal {
   string id = 1;
   uint32 cols = 2;
   uint32 rows = 3;
+  // The shell to attach to, as the holder names it (ADR-0078); empty for a new one.
+  string shell_id = 4;
 }
 
 // Down a terminal: keystrokes for the shell, and a new window size when it changes.
@@ -131,6 +133,7 @@ message TerminalOut {
   string id = 1;                // the first message only
   bytes output = 2;
   string ended = 3;             // the shell exited or could not start, and why
+  string shell_id = 4;          // once attached: the shell, to attach to it again (ADR-0078)
 }
 
 // A client's request to one of the node's services (ADR-0052, ADR-0057): the node starts on

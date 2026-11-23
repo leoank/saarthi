@@ -1,26 +1,25 @@
-//! A shell for a client (ADR-0054): on `OpenTerminal` the node starts the owner's login
-//! shell under a PTY in their home directory and dials `TerminalStream` back to the hub,
-//! naming the terminal. What the client types goes into the shell, a resize resizes the
-//! PTY, and the shell's output goes up. The stream ending ends the shell; the shell ending
-//! says why and ends the stream. Only with `--terminal`: a shell is the owner's whole
-//! account on this machine.
+//! A shell for a client (ADR-0054, ADR-0078): on `OpenTerminal` the node dials
+//! `TerminalStream` back to the hub, naming the terminal, and attaches it to a shell the
+//! holder on this machine keeps, a new one or the one the client names. The holder sends the
+//! shell's screen as it is, then its output; what the client types goes in, a resize resizes
+//! it. The client hanging up detaches: the shell goes on, for the client to attach to again.
+//! The shell ending says why. Only with `--terminal`: a shell is the owner's whole account on
+//! this machine.
 
-use std::io::{Read, Write};
+use std::path::PathBuf;
 use std::sync::Arc;
 
-use portable_pty::{CommandBuilder, PtySize, native_pty_system};
 use saarthi_proto::node::v1::{OpenTerminal, TerminalIn, TerminalOut};
+use saarthi_proto::shells::v1::{AttachIn, Open, Resize, attach_in, attach_out};
 use tokio::sync::mpsc;
 use tokio_stream::wrappers::ReceiverStream;
 
 use crate::claude_api::HubApi;
 
-/// Output is sent up in pieces of at most this.
-const PIECE: usize = 64 * 1024;
-
 /// Serves one `OpenTerminal`. `shell` is `--terminal`: None for no terminal, which the
 /// stream back says; empty for the owner's login shell; else that program (tests use one).
-pub async fn open(api: Arc<HubApi>, open: OpenTerminal, shell: Option<String>) {
+/// `holder` is the shell holder's socket.
+pub async fn open(api: Arc<HubApi>, open: OpenTerminal, shell: Option<String>, holder: PathBuf) {
     let (up, up_rx) = mpsc::channel::<TerminalOut>(64);
     let _ = up.send(TerminalOut { id: open.id.clone(), ..Default::default() }).await;
     let mut down = match api.terminal_stream(ReceiverStream::new(up_rx)).await {
@@ -30,100 +29,67 @@ pub async fn open(api: Arc<HubApi>, open: OpenTerminal, shell: Option<String>) {
             return;
         }
     };
-    let Some(shell) = shell else {
+    let Some(program) = shell else {
         return end(up, down, "this node offers no terminal: it runs without --terminal".into()).await;
     };
-    let size = PtySize { rows: open.rows.max(1) as u16, cols: open.cols.max(1) as u16, pixel_width: 0, pixel_height: 0 };
-    let pty = match native_pty_system().openpty(size) {
-        Ok(p) => p,
-        Err(e) => return end(up, down, format!("could not open a PTY: {e}")).await,
-    };
-    // The owner's shell as a login shell, in their home directory; where the node runs when
-    // that is not a directory (unset, or a build sandbox's `/homeless-shelter`).
-    let mut cmd = if shell.is_empty() { CommandBuilder::new_default_prog() } else { CommandBuilder::new(&shell) };
-    // portable-pty would otherwise start it in `$HOME` itself, and fail there.
-    match std::env::var_os("HOME").filter(|h| std::path::Path::new(h).is_dir()) {
-        Some(home) => cmd.cwd(home),
-        None => cmd.cwd(std::env::current_dir().unwrap_or_else(|_| "/".into())),
-    }
-    cmd.env("TERM", "xterm-256color");
-    cmd.env("COLORTERM", "truecolor");
-    // Nothing of the node's own Claude sessions leaks into the shell.
-    for (name, _) in std::env::vars_os() {
-        let name = name.to_string_lossy();
-        if name.starts_with("CLAUDE") || name == "AI_AGENT" {
-            cmd.env_remove(name.as_ref());
-        }
-    }
-    let mut child = match pty.slave.spawn_command(cmd) {
+    let mut client = match crate::shells::reach(&holder).await {
         Ok(c) => c,
-        Err(e) => return end(up, down, format!("could not start the shell: {e}")).await,
+        Err(e) => return end(up, down, format!("the shell holder is not running: {e}")).await,
     };
-    drop(pty.slave);
-    let mut killer = child.clone_killer();
-    let (Ok(mut reader), Ok(mut writer)) = (pty.master.try_clone_reader(), pty.master.take_writer()) else {
-        let _ = killer.kill();
-        return end(up, down, "could not read the PTY".into()).await;
+    let (to_holder, holder_rx) = mpsc::channel::<AttachIn>(64);
+    let size = Resize { cols: open.cols, rows: open.rows, ..Default::default() };
+    let first = Open { id: open.shell_id.clone(), program, size: Some(size) };
+    let _ = to_holder.send(AttachIn { body: Some(attach_in::Body::Open(first)) }).await;
+    let mut from_holder = match client.attach(ReceiverStream::new(holder_rx)).await {
+        Ok(r) => r.into_inner(),
+        Err(e) if e.code() == tonic::Code::NotFound => return end(up, down, e.message().to_string()).await,
+        Err(e) => return end(up, down, format!("the shell holder refused: {}", e.message())).await,
     };
-    tracing::info!(id = %open.id, cols = open.cols, rows = open.rows, "a terminal started");
 
-    // The shell's output, up as it comes; then, once it exits, why.
-    let output = up.clone();
-    let read = tokio::task::spawn_blocking(move || {
-        let mut buf = vec![0u8; PIECE];
-        loop {
-            match reader.read(&mut buf) {
-                Ok(0) | Err(_) => return,
-                Ok(n) => {
-                    if output.blocking_send(TerminalOut { output: buf[..n].to_vec(), ..Default::default() }).is_err() {
-                        return;
-                    }
-                }
-            }
-        }
-    });
-    let exit = tokio::task::spawn_blocking(move || child.wait());
-
-    // What the client sends, into the shell, until the stream ends or the shell does.
-    let master = pty.master;
-    tokio::pin!(exit);
-    let status = loop {
+    loop {
         tokio::select! {
             m = down.message() => match m {
-                Ok(Some(m)) => {
-                    if m.cols > 0 && m.rows > 0 {
-                        // With the pixels, which programs that draw images read (yazi).
-                        let px = |v: u32| u16::try_from(v).unwrap_or(0);
-                        let _ = master.resize(PtySize {
-                            rows: m.rows as u16,
-                            cols: m.cols as u16,
-                            pixel_width: px(m.width_px),
-                            pixel_height: px(m.height_px),
-                        });
+                Ok(Some(TerminalIn { input, cols, rows, width_px, height_px })) => {
+                    if cols > 0 && rows > 0 {
+                        let resize = Resize { cols, rows, width_px, height_px };
+                        let _ = to_holder.send(AttachIn { body: Some(attach_in::Body::Resize(resize)) }).await;
                     }
-                    if !m.input.is_empty() && writer.write_all(&m.input).and_then(|()| writer.flush()).is_err() {
-                        break None;
+                    if !input.is_empty() {
+                        let _ = to_holder.send(AttachIn { body: Some(attach_in::Body::Input(input)) }).await;
                     }
                 }
-                // The client went away: the shell goes with it.
+                // The client went away: detached, the shell goes on.
                 Ok(None) | Err(_) => {
-                    let _ = killer.kill();
-                    tracing::info!(id = %open.id, "a terminal closed by its client");
+                    tracing::info!(id = %open.id, "a terminal detached by its client");
                     return;
                 }
             },
-            s = &mut exit => break s.ok().and_then(Result::ok),
+            m = from_holder.message() => match m {
+                Ok(Some(m)) => match m.body {
+                    Some(attach_out::Body::Attached(a)) => {
+                        tracing::info!(id = %open.id, shell = %a.id, started = a.started, "a terminal attached");
+                        let _ = up.send(TerminalOut { shell_id: a.id, ..Default::default() }).await;
+                    }
+                    Some(attach_out::Body::Output(bytes)) => {
+                        if up.send(TerminalOut { output: bytes, ..Default::default() }).await.is_err() {
+                            return;
+                        }
+                    }
+                    Some(attach_out::Body::Ended(why)) => {
+                        tracing::info!(id = %open.id, %why, "a terminal's shell ended");
+                        return end(up, down, why).await;
+                    }
+                    None => {}
+                },
+                // The holder let go of this client (it fell behind, or the holder went):
+                // the stream closes without a reason, and the client attaches again.
+                Ok(None) | Err(_) => {
+                    tracing::info!(id = %open.id, "the shell holder let a terminal go");
+                    return;
+                }
+            },
         }
-    };
-    // Whatever the shell wrote before it exited goes up before the reason does.
-    let _ = read.await;
-    let why = match status {
-        Some(s) if s.success() => "the shell exited".to_string(),
-        Some(s) => format!("the shell exited with {}", s.exit_code()),
-        None => "the shell's input closed".to_string(),
-    };
-    tracing::info!(id = %open.id, %why, "a terminal ended");
-    end(up, down, why).await;
+    }
 }
 
 /// Says why the terminal ended. Dropping the call at once would cancel it before the reason

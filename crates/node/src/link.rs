@@ -40,6 +40,8 @@ pub struct Config {
     /// Whether clients may open a shell on this node (`--terminal`, ADR-0054), and which:
     /// None for no terminal, an empty string for the owner's login shell, else that program.
     pub terminal: Option<String>,
+    /// The shell holder's socket, which keeps the shells clients open (ADR-0078).
+    pub shells: std::path::PathBuf,
 }
 
 /// What the hub's commands act on.
@@ -296,7 +298,7 @@ async fn stream(
                 }
                 // A client's shell, on a stream of its own (ADR-0054).
                 Some(hub_message::Body::OpenTerminal(open)) => {
-                    tokio::spawn(crate::terminal::open(api.clone(), open, cfg.terminal.clone()));
+                    tokio::spawn(crate::terminal::open(api.clone(), open, cfg.terminal.clone(), cfg.shells.clone()));
                 }
                 Some(hub_message::Body::Registered(_)) => bail!("registered twice on one stream"),
                 None => bail!("the hub closed the link"),

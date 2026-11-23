@@ -216,7 +216,7 @@ impl Live {
             id.clone(),
             PendingTerminal { node_id: node_id.to_string(), input, to_client },
         );
-        let open = OpenTerminal { id: id.clone(), cols, rows };
+        let open = OpenTerminal { id: id.clone(), cols, rows, ..Default::default() };
         if tx
             .send(Ok(HubMessage { body: Some(hub_message::Body::OpenTerminal(open)) }))
             .await

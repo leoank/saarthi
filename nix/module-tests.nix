@@ -142,6 +142,10 @@ let
           type = lib.types.listOf lib.types.package;
           default = [ ];
         };
+        home.profileDirectory = lib.mkOption {
+          type = lib.types.str;
+          default = "/home/u/.nix-profile";
+        };
         programs.claude-code.settings = anything;
         launchd.agents = anything;
         systemd.user.services = anything;
@@ -282,6 +286,35 @@ let
     linux = "x86_64-linux";
   };
 
+  # The shell holder runs as a service of its own with a terminal (ADR-0078), from the home
+  # profile, and not at all without one.
+  nodeShells = lib.mapAttrs' (
+    tag: system:
+    let
+      on = (node system { terminal = true; }).config;
+      off = (node system { }).config;
+      darwin = tag == "darwin";
+      cmd =
+        if darwin then
+          lib.concatStringsSep " " on.launchd.agents.saarthi-shells.config.ProgramArguments
+        else
+          on.systemd.user.services.saarthi-shells.Service.ExecStart;
+    in
+    lib.nameValuePair "test-node-${tag}-shells" {
+      expr = {
+        inherit cmd;
+        off = if darwin then off.launchd.agents ? saarthi-shells else off.systemd.user.services ? saarthi-shells;
+      };
+      expected = {
+        cmd = "/home/u/.nix-profile/bin/saarthi shells serve";
+        off = false;
+      };
+    }
+  ) {
+    darwin = "aarch64-darwin";
+    linux = "x86_64-linux";
+  };
+
   nodeHooks =
     let
       h = (node "x86_64-linux" { }).config.programs.claude-code.settings.hooks;
@@ -322,7 +355,7 @@ let
       };
     };
 
-  failures = lib.runTests (hubTests // nodeTests // nodeHooks);
+  failures = lib.runTests (hubTests // nodeTests // nodeShells // nodeHooks);
 in
 if failures == [ ] then
   pkgs.runCommand "saarthi-modules" { } "touch $out"

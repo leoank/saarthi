@@ -158,6 +158,9 @@ pub struct NodeProc {
     pub pending: Arc<Pending>,
     pub hooks: std::net::SocketAddr,
     pub task: JoinHandle<()>,
+    /// The shell holder's socket (ADR-0078), in a directory that lives as long as the node.
+    pub shells: std::path::PathBuf,
+    _shells_dir: tempfile::TempDir,
 }
 
 pub async fn start_node(
@@ -212,12 +215,18 @@ async fn start_node_full(
             Vec::new(),
         ));
     let pending = Pending::new(outbox.clone());
+    // A shell holder of its own, in this process (ADR-0078).
+    let shells_dir = tempfile::tempdir().unwrap();
+    let shells = shells_dir.path().join("shells.sock");
+    let socket = shells.clone();
+    tokio::spawn(async move { saarthi_node::shells::serve(&socket).await });
     let cfg = link::Config {
         hub: format!("http://{hub_addr}"),
         token: token.to_string(),
         name: "test-node".to_string(),
         buffer_cap: 10_000,
         terminal: Some("/bin/sh".into()),
+        shells: shells.clone(),
     };
     let wrappers =
         saarthi_node::wrapper::Wrappers::new(sessions.clone(), pending.clone(), outbox.clone());
@@ -250,6 +259,8 @@ async fn start_node_full(
         pending,
         hooks,
         task,
+        shells,
+        _shells_dir: shells_dir,
     }
 }
 
