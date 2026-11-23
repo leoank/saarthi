@@ -20,6 +20,10 @@ import androidx.compose.foundation.background
 import androidx.compose.foundation.clickable
 import androidx.compose.foundation.interaction.MutableInteractionSource
 import androidx.compose.foundation.layout.Box
+import androidx.compose.material.icons.filled.MoreVert
+import androidx.compose.material3.DropdownMenu
+import androidx.compose.material3.DropdownMenuItem
+import kotlinx.coroutines.delay
 import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.Row
 import androidx.compose.foundation.layout.fillMaxSize
@@ -63,11 +67,13 @@ import androidx.compose.ui.viewinterop.AndroidView
 import uniffi.saarthi_core.TerminalHandle
 import uniffi.saarthi_core.TerminalListener
 
-/** An open shell (ADR-0054), kept in the model while the app runs (ADR-0068): its
- *  libghostty-vt state and its stream, which outlive the screen showing it. Output arrives
- *  on the core's thread and close comes from the main one; the lock keeps the terminal from
- *  being fed after it is freed. */
-class Shell(val id: Int, val nodeId: String, val nodeName: String) {
+/** A shell open on this phone (ADR-0054), kept in the model while the app runs (ADR-0068):
+ *  its libghostty-vt state and its stream, which outlive the screen showing it. The shell
+ *  itself is kept by its machine's holder (ADR-0078) as [shellId]: a dropped stream attaches
+ *  again, into a fresh terminal that the holder's screen fills, and what is typed meanwhile
+ *  waits. Output arrives on the core's thread and close comes from the main one; the lock
+ *  keeps the terminal from being fed after it is freed. */
+class Shell(val id: Int, val nodeId: String, val nodeName: String, shellId: String = "") {
     val startedMs = System.currentTimeMillis()
     /** The libghostty-vt terminal; 0 until the screen first knows its size. */
     @Volatile var vt = 0L
@@ -81,22 +87,55 @@ class Shell(val id: Int, val nodeId: String, val nodeName: String) {
     /** Why the shell ended, once it has; it stays listed until closed. */
     var ended by mutableStateOf<String?>(null)
     /** The shell its machine's holder keeps it as (ADR-0078), once attached. */
-    var shellId by mutableStateOf("")
+    var shellId by mutableStateOf(shellId)
+    /** Why the stream dropped while the shell goes on, until it is attached again. */
+    var dropped by mutableStateOf<String?>(null)
+    /** Attempts to attach again since the last that held, for the backoff. */
+    var attempts = 0
+        private set
+    /** What was typed while detached, sent once attached again; at most [AWAY_MOST]. */
+    private val away = java.io.ByteArrayOutputStream()
     /** Bumped by *Open again*, which starts a new shell in its place. */
     var generation by mutableIntStateOf(0)
         private set
 
-    /** Opens the shell at a size, once: the terminal first, so no output is lost. */
+    /** Opens the shell at a size, the terminal first, so no output is lost. Attaching again
+     *  after a drop, the old screen stays up until the new attach lands, then gives way to the
+     *  fresh terminal the holder's screen fills. */
     suspend fun open(model: MachinesModel, cols: Int, rows: Int, cellW: Int, cellH: Int) {
-        if (vt != 0L) return
+        if (vt != 0L && handle != null) return
+        attaching = true
+        try {
+            attach(model, cols, rows, cellW, cellH)
+        } finally {
+            attaching = false
+        }
+    }
+
+    /** An attempt to attach under way: another waits for it. */
+    @Volatile private var attaching = false
+
+    private suspend fun attach(model: MachinesModel, cols: Int, rows: Int, cellW: Int, cellH: Int) {
         val v = Vt.create(cols, rows, cellW, cellH)
-        synchronized(this) { vt = v }
+        var shown = false
+        fun show() = synchronized(this) {
+            if (shown) return@synchronized
+            shown = true
+            val old = vt
+            vt = v
+            if (old != 0L) Vt.free(old)
+        }
+        if (vt == 0L) show()
         this.cols = cols
         this.rows = rows
         // The pixels are the terminal's: a cell's whole pixels times the cells.
-        val h = model.openTerminal(nodeId, "", cols, rows, cols * cellW, rows * cellH, object : TerminalListener {
+        val h = model.openTerminal(nodeId, shellId, cols, rows, cols * cellW, rows * cellH, object : TerminalListener {
             override fun onAttached(shellId: String) {
+                show()
                 this@Shell.shellId = shellId
+                dropped = null
+                attempts = 0
+                flushAway()
             }
 
             override fun onOutput(bytes: ByteArray) {
@@ -112,14 +151,27 @@ class Shell(val id: Int, val nodeId: String, val nodeName: String) {
             }
 
             override fun onDropped(reason: String) {
-                ended = reason
+                // A shell from a node without a holder went with its stream.
+                if (shellId.isEmpty()) ended = reason else dropped = reason
             }
         })
+        if (h == null) {
+            synchronized(this) { if (!shown) Vt.free(v) }
+            return
+        }
         synchronized(this) {
             handle = h
             // Replies owed before the stream was ours.
             reply()
         }
+        if (dropped == null) flushAway()
+    }
+
+    /** What was typed while away goes in, once attached and the stream is ours. */
+    private fun flushAway() {
+        val h = handle ?: return
+        val held = synchronized(away) { away.toByteArray().also { away.reset() } }
+        if (held.isNotEmpty()) h.input(held)
     }
 
     /** What the terminal owes the program goes back at once, shown or not; it waits in the
@@ -140,10 +192,22 @@ class Shell(val id: Int, val nodeId: String, val nodeName: String) {
         handle?.resize(cols.toUInt(), rows.toUInt(), (cols * cellW).toUInt(), (rows * cellH).toUInt())
     }
 
-    /** Typing returns the view to the bottom, as a terminal does. */
+    /** Typing returns the view to the bottom, as a terminal does. While detached it waits. */
     fun input(bytes: ByteArray) {
         if (scrolled) scroll(0)
-        handle?.input(bytes)
+        val h = handle
+        if (h != null && dropped == null) return h.input(bytes)
+        synchronized(away) { if (away.size() + bytes.size <= AWAY_MOST) away.write(bytes) }
+    }
+
+    /** Attaches again after a drop: the old terminal goes, and a fresh one is filled by the
+     *  holder's screen when the canvas opens it at its size. */
+    fun reattach() {
+        if (attaching) return
+        attempts++
+        handle?.hangUp()
+        handle = null
+        generation++
     }
 
     /** Whether the view is up in the scrollback. */
@@ -177,18 +241,28 @@ class Shell(val id: Int, val nodeId: String, val nodeName: String) {
 
     /** A new shell in place of an ended one. */
     fun reopen() {
-        close()
+        detach()
         ended = null
+        dropped = null
+        shellId = ""
         generation++
     }
 
-    fun close() {
+    /** Lets go of the stream and the terminal; the shell goes on in its holder. */
+    fun close() = detach()
+
+    private fun detach() {
         handle?.hangUp()
         handle = null
         synchronized(this) {
             if (vt != 0L) Vt.free(vt)
             vt = 0L
         }
+    }
+
+    companion object {
+        /** Typing held while detached, at most (as koh holds 64 KiB). */
+        const val AWAY_MOST = 64 * 1024
     }
 }
 
@@ -200,6 +274,7 @@ class Shell(val id: Int, val nodeId: String, val nodeName: String) {
 fun TerminalScreen(model: MachinesModel, shell: Shell, back: () -> Unit, close: () -> Unit) {
     var held by remember { mutableStateOf(emptySet<String>()) }
     var editing by remember { mutableStateOf(false) }
+    var menu by remember { mutableStateOf(false) }
     var keys by remember { mutableStateOf<KeyView?>(null) }
     fun send(bytes: ByteArray) = shell.input(bytes)
     fun send(s: String) = send(s.toByteArray())
@@ -219,11 +294,34 @@ fun TerminalScreen(model: MachinesModel, shell: Shell, back: () -> Unit, close: 
             TopAppBar(
                 title = { Text(shell.nodeName) },
                 navigationIcon = { IconButton(onClick = back) { Icon(Icons.AutoMirrored.Filled.ArrowBack, "Back") } },
-                actions = { IconButton(onClick = close) { Icon(Icons.Filled.Close, "Close this shell") } },
+                actions = {
+                    // Leaving keeps the shell running in its machine's holder (ADR-0078).
+                    IconButton(onClick = close) { Icon(Icons.Filled.Close, "Leave this shell; it goes on") }
+                    Box {
+                        IconButton(onClick = { menu = true }) { Icon(Icons.Filled.MoreVert, "More") }
+                        DropdownMenu(expanded = menu, onDismissRequest = { menu = false }) {
+                            DropdownMenuItem(
+                                text = { Text("End this shell") },
+                                enabled = shell.shellId.isNotEmpty() && shell.ended == null,
+                                onClick = { menu = false; model.killShell(shell.nodeId, shell.shellId); close() },
+                            )
+                        }
+                    }
+                },
             )
         },
     ) { padding ->
         Column(Modifier.fillMaxSize().padding(padding).navigationBarsPadding().imePadding()) {
+            shell.dropped?.takeIf { shell.ended == null }?.let { why ->
+                Surface(color = MaterialTheme.colorScheme.surfaceVariant, modifier = Modifier.fillMaxWidth()) {
+                    Text(
+                        "Reconnecting · the shell goes on · $why",
+                        style = MaterialTheme.typography.bodySmall,
+                        color = Flame.Dim,
+                        modifier = Modifier.padding(horizontal = 16.dp, vertical = 8.dp),
+                    )
+                }
+            }
             shell.ended?.let { why ->
                 Surface(color = MaterialTheme.colorScheme.surfaceVariant, modifier = Modifier.fillMaxWidth()) {
                     Row(Modifier.padding(horizontal = 16.dp, vertical = 4.dp)) {
@@ -391,6 +489,15 @@ private fun TerminalCanvas(model: MachinesModel, shell: Shell, tapped: () -> Uni
 
     // Opened the first time the canvas has its size (and again after Open again); resized
     // whenever the size changes.
+    // A dropped stream attaches again while the shell is on screen: at once the first time
+    // and when the hub link comes back, then waiting longer each time, up to half a minute.
+    // Each attempt bumps the generation, so a failed one, saying the same, is tried again.
+    LaunchedEffect(shell.dropped, shell.generation, model.conn.link) {
+        if (shell.dropped == null || model.conn.link != Link.Connected) return@LaunchedEffect
+        val n = shell.attempts
+        delay(if (n == 0) 0L else minOf(1_000L shl minOf(n - 1, 5), 30_000L))
+        shell.reattach()
+    }
     LaunchedEffect(cols > 0, shell.generation) {
         if (cols > 0) shell.open(model, cols, rows, cellW.toInt(), cellH.toInt())
     }

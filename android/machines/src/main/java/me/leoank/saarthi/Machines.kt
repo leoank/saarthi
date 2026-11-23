@@ -44,6 +44,15 @@ import androidx.compose.ui.semantics.semantics
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
+import androidx.compose.runtime.LaunchedEffect
+import androidx.compose.runtime.remember
+import androidx.compose.runtime.mutableStateOf
+import androidx.compose.runtime.getValue
+import androidx.compose.runtime.setValue
+import androidx.compose.material3.AlertDialog
+import androidx.compose.material3.TextButton
+import androidx.compose.ui.text.style.TextOverflow
+import uniffi.saarthi_core.ShellInfo
 import uniffi.saarthi_core.NodeInfo
 
 /** The Machines workspace's root (ADR-0076): the open shells, kept while the app runs
@@ -55,6 +64,10 @@ import uniffi.saarthi_core.NodeInfo
 fun MachinesScreen(model: MachinesModel, openShell: (Shell) -> Unit, newShell: (NodeInfo) -> Unit, openHealth: (NodeInfo) -> Unit) {
     val conn = model.conn
     val nodes = conn.nodes.sortedWith(compareByDescending<NodeInfo> { it.connected }.thenBy { it.name })
+    // The shells each machine keeps (ADR-0078), listed again as the link and the machines
+    // change, and as shells open and close here.
+    LaunchedEffect(conn.link, nodes.count { it.connected }, model.shells.size) { model.loadHeld() }
+    var ending by remember { mutableStateOf<Pair<NodeInfo, ShellInfo>?>(null) }
     Scaffold(
         topBar = {
             TopAppBar(title = {
@@ -124,11 +137,61 @@ fun MachinesScreen(model: MachinesModel, openShell: (Shell) -> Unit, newShell: (
                         modifier = Modifier.padding(start = 18.dp, top = 3.dp),
                     )
                     Row(Modifier.padding(start = 18.dp, top = 8.dp), horizontalArrangement = Arrangement.spacedBy(8.dp)) {
-                        if (n.connected && n.terminal) MiniAction("❯_ shell", Flame.Machines) { newShell(n) }
+                        if (n.connected && n.terminal) MiniAction("❯_ new shell", Flame.Machines) { newShell(n) }
                         MiniAction("∿ health") { openHealth(n) }
+                    }
+                    // Its shells, kept until they exit or are ended: a tap attaches, here too.
+                    for (info in model.held[n.id].orEmpty()) {
+                        Row(
+                            verticalAlignment = Alignment.CenterVertically,
+                            modifier = Modifier
+                                .padding(start = 18.dp, top = 6.dp)
+                                .fillMaxWidth()
+                                .clickable { openShell(model.attach(n, info)) },
+                        ) {
+                            Text("❯_", fontFamily = Mono, fontSize = 12.sp, color = Flame.Machines)
+                            Spacer(Modifier.width(8.dp))
+                            Column(Modifier.weight(1f)) {
+                                Text(
+                                    info.title.ifEmpty { "shell ${info.id.take(6)}" },
+                                    fontFamily = Mono,
+                                    fontSize = 13.sp,
+                                    maxLines = 1,
+                                    overflow = TextOverflow.Ellipsis,
+                                )
+                                Text(
+                                    listOf(
+                                        "started ${relative(info.startedMs)}",
+                                        when (val c = info.clients.toInt()) {
+                                            0 -> "detached"
+                                            1 -> "1 attached"
+                                            else -> "$c attached"
+                                        },
+                                    ).joinToString(" · "),
+                                    style = MonoMeta,
+                                    color = Flame.Dim,
+                                )
+                            }
+                            IconButton(onClick = { ending = n to info }) { Icon(Icons.Filled.Close, "End this shell", tint = Flame.Dim) }
+                        }
                     }
                 }
             }
         }
+    }
+    ending?.let { (n, info) ->
+        AlertDialog(
+            onDismissRequest = { ending = null },
+            title = { Text("End this shell?") },
+            text = { Text("${info.title.ifEmpty { "The shell" }} on ${n.name} is killed, with whatever runs in it, for every client attached.") },
+            confirmButton = {
+                TextButton(onClick = {
+                    ending = null
+                    model.shells.filter { it.nodeId == n.id && it.shellId == info.id }.forEach(model::closeShell)
+                    model.killShell(n.id, info.id)
+                }) { Text("End it") }
+            },
+            dismissButton = { TextButton(onClick = { ending = null }) { Text("Keep it") } },
+        )
     }
 }
