@@ -90,6 +90,8 @@ spawns, with the owner's answers of 2026-11-07.
 | [ADR-0073](ADR-0073-push-to-talk-after-all.md) | Push to talk after all | accepted |
 | [ADR-0074](ADR-0074-tap-or-hold-and-a-continuous-session.md) | Tap or hold, and a continuous session | accepted |
 | [ADR-0075](ADR-0075-notifications-held-from-the-hub.md) | Notifications held from the hub | accepted |
+| [ADR-0076](ADR-0076-workspaces-that-stay-live.md) | Workspaces that stay live | accepted |
+| [ADR-0077](ADR-0077-the-app-in-modules.md) | The app in modules | accepted |
 
 Each record:
 
