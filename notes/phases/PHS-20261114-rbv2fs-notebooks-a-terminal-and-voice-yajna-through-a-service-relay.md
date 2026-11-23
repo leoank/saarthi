@@ -33,6 +33,10 @@ done ones. The project page's *Progress* lists this phase on one line.
 - [ ] 9. Reviews: a native list and threads, and "address this" to the branch's session (ADR-0053)
 - [ ] 10. Bench: timers and offline ticks on the phone ([[EXP-20261114-raqkym]]; needs yajna's run sheets, its phase 2b)
 - [ ] 11. Bench: a run sheet's steps, ticks and timers, and voice commands (ADR-0053)
+- [x] 12. Shells that persist: does libghostty-vt's VT formatter restore a shell's screen, scrollback and alternate screen in a fresh terminal, on the machine's own platform ([[EXP-20261123-j9wyqh]])? Yes, with the primary screen kept by the holder when a program enters the alternate one ([[ADR-0078]]).
+- [ ] 13. The shell holder: `saarthi shells`, a per-user process apart from the node (its own launchd agent or systemd user unit in the node's module, started by the node when run by hand), owning each shell's PTY and screen with 10,000 lines of scrollback; attach with the screen restored, several clients at once, list and kill; the node its client over a unix socket ([[ADR-0078]]). Node and module.
+- [ ] 14. Shells across the hub: the `Terminal` stream attaches by shell id or starts one, and the hub lists and kills a node's shells ([[ADR-0078]]). Proto, hub, core.
+- [ ] 15. The app's shells: Machines lists the shells each machine holds; a shell reattaches by itself after a drop, with backoff and at once on a new network, holding what is typed meanwhile ([[ADR-0078]]). App.
 
 ## Notes
 iOS is out of scope (ADR-0053). Items 1 to 4 can start now; 5 and 7 are independent

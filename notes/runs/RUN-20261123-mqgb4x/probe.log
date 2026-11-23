@@ -1,0 +1,7 @@
+scrollback rows kept: 9613 of 12,000 lines written
+scrollback and prompt        text same (298742 vs 298742 bytes)  cursor same (26,23 vs 26,23)  vt 314019 bytes in 2.88 ms
+alternate screen             text same (297 vs 297 bytes)  cursor same (11,9 vs 11,9)  vt 320578 bytes in 0.03 ms
+restored primary, behind the alternate screen: 298742 bytes
+after leaving it             text same (298742 vs 298742 bytes)  cursor same (26,23 vs 26,23)
+===RESULT=== {"failures": 0}
+x86_64-linux build: /nix/store/mj2j4rqzmlm2fy57hvk4dghqd9w6qf43-libghostty-vt-1.4.0

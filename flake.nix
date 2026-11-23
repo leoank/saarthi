@@ -153,6 +153,32 @@
             installPhase = "true";
           };
 
+          # The same library for the machine itself, for the node's shell holder, which keeps
+          # each shell's screen and writes it out to a client that attaches (ADR-0078).
+          libghostty-vt = pkgs.stdenv.mkDerivation {
+            pname = "libghostty-vt";
+            inherit (pkgs.ghostty) version src;
+            # On macOS the build joins its archives with Apple's libtool, from cctools.
+            nativeBuildInputs = [ pkgs.zig_0_17 ] ++ lib.optionals pkgs.stdenv.hostPlatform.isDarwin [ pkgs.cctools ];
+            dontConfigure = true;
+            dontSetZigDefaultFlags = true;
+            buildPhase = ''
+              runHook preBuild
+              export ZIG_GLOBAL_CACHE_DIR=$TMPDIR/zig-global
+              zig build \
+                --system ${pkgs.ghostty.deps} \
+                --cache-dir $TMPDIR/zig-cache \
+                --prefix $out \
+                -Demit-lib-vt=true \
+                -Dapp-runtime=none \
+                -Demit-xcframework=false \
+                -Dversion-string=${pkgs.ghostty.version} \
+                -Doptimize=ReleaseFast
+              runHook postBuild
+            '';
+            installPhase = "true";
+          };
+
           # The workspace source, shared by the checks and the binary packages:
           # spikes/, docs/ and android/ stay out of it, but for the app's demo
           # recording, which the core's tests read.
@@ -193,7 +219,7 @@
 
           # The deployable binaries, the defaults of the hub and node modules.
           packages = rec {
-            inherit libtailscale libtailscale-android libghostty-vt-android;
+            inherit libtailscale libtailscale-android libghostty-vt-android libghostty-vt;
             saarthi-hub = mkBin "saarthi-hub" "saarthi-hub";
             saarthi = mkBin "saarthi" "saarthi";
             # The user guide for GitHub Pages: mdBook, with the command-line reference and

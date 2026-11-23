@@ -92,6 +92,7 @@ spawns, with the owner's answers of 2026-11-07.
 | [ADR-0075](ADR-0075-notifications-held-from-the-hub.md) | Notifications held from the hub | accepted |
 | [ADR-0076](ADR-0076-workspaces-that-stay-live.md) | Workspaces that stay live | accepted |
 | [ADR-0077](ADR-0077-the-app-in-modules.md) | The app in modules | accepted |
+| [ADR-0078](ADR-0078-shells-that-persist.md) | Shells that persist | accepted |
 
 Each record:
 
