@@ -2618,7 +2618,7 @@ checksum = "9774ba4a74de5f7b1c1451ed6cd5285a32eddb5cccb8cc655a4e50009e06477f"
 
 [[package]]
 name = "saarthi-core"
-version = "0.22.0"
+version = "0.23.0"
 dependencies = [
  "axum",
  "jiff",
@@ -2637,7 +2637,7 @@ dependencies = [
 
 [[package]]
 name = "saarthi-hub"
-version = "0.22.0"
+version = "0.23.0"
 dependencies = [
  "anyhow",
  "axum",
@@ -2660,7 +2660,7 @@ dependencies = [
 
 [[package]]
 name = "saarthi-node"
-version = "0.22.0"
+version = "0.23.0"
 dependencies = [
  "anyhow",
  "axum",
@@ -2702,7 +2702,7 @@ dependencies = [
 
 [[package]]
 name = "saarthi-proto"
-version = "0.22.0"
+version = "0.23.0"
 dependencies = [
  "prost",
  "tokio",
@@ -2714,7 +2714,7 @@ dependencies = [
 
 [[package]]
 name = "saarthi-tailnet"
-version = "0.22.0"
+version = "0.23.0"
 dependencies = [
  "anyhow",
  "hyper-util",
@@ -3775,7 +3775,7 @@ dependencies = [
 
 [[package]]
 name = "uniffi-bindgen"
-version = "0.22.0"
+version = "0.23.0"
 dependencies = [
  "uniffi",
 ]
