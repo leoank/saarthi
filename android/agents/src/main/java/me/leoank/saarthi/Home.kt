@@ -22,16 +22,12 @@ import androidx.compose.material.icons.filled.Add
 import androidx.compose.material.icons.filled.ChevronRight
 import androidx.compose.material.icons.filled.ExpandMore
 import androidx.compose.material.icons.filled.History
-import androidx.compose.material.icons.filled.MoreVert
-import androidx.compose.material.icons.filled.Refresh
 import androidx.compose.material.icons.filled.RocketLaunch
 import androidx.compose.material.icons.filled.Terminal
 import androidx.compose.material3.Badge
 import androidx.compose.material3.Card
 import androidx.compose.material3.CardDefaults
 import androidx.compose.material3.CircularProgressIndicator
-import androidx.compose.material3.DropdownMenu
-import androidx.compose.material3.DropdownMenuItem
 import androidx.compose.material3.ExperimentalMaterial3Api
 import androidx.compose.material3.Icon
 import androidx.compose.material3.IconButton
@@ -71,16 +67,14 @@ fun HomeScreen(
     openSession: (SessionInfo) -> Unit,
     spawned: (nodeId: String, sessionId: String) -> Unit,
     openHistory: () -> Unit,
-    openTokens: () -> Unit,
     openSettings: () -> Unit,
 ) {
-    var menu by remember { mutableStateOf(false) }
     var newSession by remember { mutableStateOf(false) }
     val spawnable = model.conn.nodes.filter { it.connected && it.spawnRoots.isNotEmpty() }
     var refreshing by remember { mutableStateOf(false) }
     if (refreshing) {
         androidx.compose.runtime.LaunchedEffect(Unit) {
-            model.conn.refresh()
+            model.conn.pull()
             delay(600)
             refreshing = false
         }
@@ -106,23 +100,9 @@ fun HomeScreen(
                     )
                 },
                 actions = {
+                    // Settings and the Claude accounts are behind the gear; a pull down on the
+                    // list reloads it, or reconnects.
                     IconButton(onClick = openHistory) { Icon(Icons.Filled.History, "History") }
-                    IconButton(onClick = { refreshing = true }) { Icon(Icons.Filled.Refresh, "Refresh") }
-                    Box {
-                        IconButton(onClick = { menu = true }) { Icon(Icons.Filled.MoreVert, "More") }
-                        DropdownMenu(expanded = menu, onDismissRequest = { menu = false }) {
-                            if (model.conn.claudeTokens.isNotEmpty()) {
-                                DropdownMenuItem(
-                                    text = { Text("Claude accounts") },
-                                    onClick = { menu = false; openTokens() },
-                                )
-                            }
-                            DropdownMenuItem(
-                                text = { Text("Settings") },
-                                onClick = { menu = false; openSettings() },
-                            )
-                        }
-                    }
                 },
             )
         },

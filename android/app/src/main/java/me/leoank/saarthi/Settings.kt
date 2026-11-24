@@ -69,7 +69,14 @@ import uniffi.saarthi_core.coreVersion
  *  workspace in front, or on *general* with none. */
 @OptIn(ExperimentalMaterial3Api::class)
 @Composable
-fun SettingsScreen(model: HubModel, snackbar: SnackbarHostState, back: (() -> Unit)?, tryDemo: () -> Unit = {}, start: Workspace? = null) {
+fun SettingsScreen(
+    model: HubModel,
+    snackbar: SnackbarHostState,
+    back: (() -> Unit)?,
+    tryDemo: () -> Unit = {},
+    start: Workspace? = null,
+    openAccounts: () -> Unit = {},
+) {
     var tab by remember(start) { mutableStateOf(start) }
     var keys by remember { mutableStateOf(false) }
     var editing by remember { mutableStateOf<HubProfile?>(null) }
@@ -181,6 +188,29 @@ fun SettingsScreen(model: HubModel, snackbar: SnackbarHostState, back: (() -> Un
 
             }
             Workspace.Agents -> {
+            // The named Claude tokens the hub holds (ADR-0039): expiry, usage, which machines
+            // use each by default.
+            if (model.conn.claudeTokens.isNotEmpty()) {
+                Heading("Claude accounts")
+                Group {
+                    Row(
+                        verticalAlignment = Alignment.CenterVertically,
+                        modifier = Modifier
+                            .fillMaxWidth()
+                            .clickable(onClick = openAccounts)
+                            .padding(start = 16.dp, end = 12.dp, top = 12.dp, bottom = 12.dp),
+                    ) {
+                        Column(Modifier.weight(1f)) {
+                            Text("Claude accounts", style = MaterialTheme.typography.bodyLarge)
+                            Text(
+                                model.conn.claudeTokens.joinToString(" · ") { it.name } + " · their usage, expiry and machines",
+                                style = MaterialTheme.typography.bodySmall,
+                                color = MaterialTheme.colorScheme.onSurfaceVariant,
+                            )
+                        }
+                    }
+                }
+            }
             Heading("Display")
             Group {
                 Row(

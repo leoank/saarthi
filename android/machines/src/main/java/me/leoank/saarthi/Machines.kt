@@ -50,6 +50,8 @@ import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.setValue
 import androidx.compose.material3.AlertDialog
+import androidx.compose.material3.DropdownMenu
+import androidx.compose.material3.DropdownMenuItem
 import androidx.compose.material3.TextButton
 import androidx.compose.ui.text.style.TextOverflow
 import uniffi.saarthi_core.ShellInfo
@@ -139,6 +141,29 @@ fun MachinesScreen(model: MachinesModel, openShell: (Shell) -> Unit, newShell: (
                     Row(Modifier.padding(start = 18.dp, top = 8.dp), horizontalArrangement = Arrangement.spacedBy(8.dp)) {
                         if (n.connected && n.terminal) MiniAction("❯_ new shell", Flame.Machines) { newShell(n) }
                         MiniAction("∿ health") { openHealth(n) }
+                        // The Claude account sessions started here run under when none is
+                        // picked (ADR-0039), when the hub holds named tokens.
+                        if (n.connected && conn.claudeTokens.isNotEmpty()) {
+                            Box {
+                                var picking by remember { mutableStateOf(false) }
+                                MiniAction("⚿ ${n.defaultClaudeToken.ifEmpty { "own login" }}") { picking = true }
+                                DropdownMenu(expanded = picking, onDismissRequest = { picking = false }) {
+                                    Text(
+                                        "Default Claude account",
+                                        style = MonoMeta,
+                                        color = Flame.Dim,
+                                        modifier = Modifier.padding(horizontal = 16.dp, vertical = 6.dp),
+                                    )
+                                    val choices = listOf("" to "${n.name}'s own login") + conn.claudeTokens.map { it.name to it.name }
+                                    for ((name, label) in choices) {
+                                        DropdownMenuItem(
+                                            text = { Text(label, color = if (name == n.defaultClaudeToken) Flame.Blue else Flame.Text) },
+                                            onClick = { picking = false; conn.setDefaultClaudeToken(n.id, name) },
+                                        )
+                                    }
+                                }
+                            }
+                        }
                     }
                     // Its shells, kept until they exit or are ended: a tap attaches, here too.
                     for (info in model.held[n.id].orEmpty()) {

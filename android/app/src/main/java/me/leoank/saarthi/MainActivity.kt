@@ -367,7 +367,6 @@ fun App(
                 },
                 spawned = { node, id -> spawned = node to id },
                 openHistory = { set(Screen.History) },
-                openTokens = { set(Screen.Tokens) },
                 openSettings = { openSettings(null) },
             )
             Screen.Machines -> MachinesScreen(
@@ -426,6 +425,7 @@ fun App(
                 back = if (noHub) null else ({ settings = false }),
                 tryDemo = { conn.startDemo(); tab = Workspace.Agents; screen = Screen.Home; settings = false },
                 start = settingsFrom,
+                openAccounts = { settings = false; tab = Workspace.Agents; screen = Screen.Tokens },
             ) else if (wide && full) androidx.compose.foundation.layout.Column(androidx.compose.ui.Modifier.fillMaxSize()) {
                 PaneHeader(slots[focus].w, focused = true, swap = null, whole = { full = false })
                 androidx.compose.foundation.layout.Box(androidx.compose.ui.Modifier.weight(1f).consumeWindowInsets(androidx.compose.foundation.layout.WindowInsets.statusBars)) { Pane(focus) }

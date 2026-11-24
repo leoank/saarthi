@@ -299,6 +299,14 @@ class Connection(val app: Application, val scope: CoroutineScope) {
 
     fun refresh() = withHub { reload(it) }
 
+    /** A pull down on a list, as in a mail app: the lists again while connected, else a
+     *  connection now instead of waiting out a backoff. */
+    fun pull() = when (link) {
+        Link.Connected -> refresh()
+        Link.Disconnected -> connect()
+        else -> resumed()
+    }
+
     private suspend fun reload(h: Hub) {
         val n = h.nodes()
         val s = h.sessions(false)
