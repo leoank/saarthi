@@ -401,7 +401,9 @@ Anthropic's answer back. Revoking a node's peer token cuts it off at once. The h
 the path of every such turn: a restart costs a retried request, an outage beyond about two
 minutes ends the turns of the moment. Without the token Claude Code cannot load remote
 settings or read the account's default permission mode, so these sessions start in auto
-unless one is picked. Any node may use any token for now; a list of nodes per token comes
+unless one is picked. Nor can the hub read them for it ([[EXP-20261124-1pg2cq]]), so each
+token has a default model, set from the app, which the hub sends with a spawn or resume
+that names none and `saarthi run` gives as `ANTHROPIC_MODEL` (ADR-0079). Any node may use any token for now; a list of nodes per token comes
 later. Clients see names and dates, never a value. A launch profile's `token_file`
 (ADR-0038) is the one token a node holds: for a sandbox under no hub token, its proxy adds
 it there (ADR-0050).
@@ -546,8 +548,8 @@ so far, in `crates/hub/migrations/`: `nodes`, `sessions`, `events`, `health`, `p
 and `claude_tokens`; the rest come with tailnets and profiles at the hub.
 
 - `nodes`: id, name, tailnets, last seen, capabilities, allowed spawn roots, profiles.
-- `claude_tokens`: name, fingerprint, first seen, expiry set by hand, reminded, and the
-  latest usage windows seen under it (ADR-0042); never the token (ADR-0039). Each node's
+- `claude_tokens`: name, fingerprint, first seen, expiry set by hand, reminded, the
+  latest usage windows seen under it (ADR-0042), and its default model (ADR-0079); never the token (ADR-0039). Each node's
   default token is a column of `nodes`.
 - `profiles`: name, node, backend, policy JSON.
 - `sessions`: id, node, token name, profile, harness, cwd, started, ended, how it was
