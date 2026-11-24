@@ -323,23 +323,16 @@ fun NotebookScreen(
     back: () -> Unit,
 ) {
     val context = LocalContext.current
-    var canGoBack by remember { mutableStateOf(false) }
-    var loading by remember { mutableStateOf(true) }
-    val relay = remember(nodeId) { Relay(nodeId, NOTEBOOK_SERVICE) { model.conn.connection } }
-    val view = remember(nodeId, url) {
-        relay.webView(
-            context,
-            onHistory = { canGoBack = it },
-            onLoading = { loading = it },
-        ).apply { loadUrl(relay.origin + url) }
+    // Kept by the model, so coming back to it finds the page as it was (ADR-0076).
+    val page = remember(nodeId, url) { model.page(context, nodeId, url) }
+    val view = page.view
+    val relay = page.relay
+    DisposableEffect(page) {
+        page.show(context)
+        onDispose { page.hide() }
     }
-    DisposableEffect(view) {
-        onDispose {
-            relay.close()
-            view.destroy()
-        }
-    }
-    BackHandler(enabled = canGoBack) { view.goBack() }
+    val loading = page.loading
+    BackHandler(enabled = page.canGoBack) { view.goBack() }
     Scaffold(
         topBar = {
             TopAppBar(
