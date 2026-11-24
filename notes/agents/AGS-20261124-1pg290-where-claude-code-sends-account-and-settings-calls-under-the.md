@@ -6,10 +6,10 @@ title: Where Claude Code sends account and settings calls under the node proxy, 
 model: claude-opus-5-5
 harness: claude-code
 started: 2026-11-24T01:33+00:00
-finished: null
+finished: 2026-11-24T01:39+00:00
 created_entities: [EXP-20261124-1pg2cq, RUN-20261124-1qtntf, RUN-20261124-1sae23]
 edited_entities: []
-outcome: pending          # done | failed | aborted | pending
+outcome: done             # done | failed | aborted | pending
 created: 2026-11-24
 author: agent:claude
 ---
