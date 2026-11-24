@@ -190,7 +190,7 @@
           # (ADR-0067); bump it with that pin in crates/node/Cargo.toml.
           cargoLock = {
             lockFile = ./Cargo.lock;
-            outputHashes."yajna-serve-0.1.0" = "sha256-X4eM/F9OrJ5h9os5EBR7AI22rP310siW6J87eR9qGEA=";
+            outputHashes."yajna-serve-0.1.0" = "sha256-N+y4pU5gJdcY/Qh2ABTqyVVmBzvuEWTm+YheO+r2MiI=";
           };
           # One release binary of the workspace. `bin` is the binary name; the
           # node's `saarthi` and the hub's `saarthi-hub` are each built on their own so
