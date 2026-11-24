@@ -84,11 +84,26 @@ impl Hub {
         }
     }
 
+    /// The model a spawn or resume runs on: the one picked, else the default of the token it
+    /// runs under (ADR-0079), else none, for Claude Code's own default.
+    async fn model(&self, picked: String, token: &str) -> Result<String, Status> {
+        if !picked.is_empty() || token.is_empty() {
+            return Ok(picked);
+        }
+        self.db.claude_token_model(token).await.map_err(internal)
+    }
+
     async fn token_list(&self) -> Result<Response<ListClaudeTokensResponse>, Status> {
         let names: Vec<&str> = self.claude_tokens.names().collect();
         let tokens = self.db.claude_tokens(&names).await.map_err(internal)?;
         Ok(Response::new(ListClaudeTokensResponse { tokens }))
     }
+}
+
+/// A model as `--model` takes it, the node's check (`/model`): an alias or an id, empty for
+/// none.
+fn valid_model(m: &str) -> bool {
+    m.len() <= 64 && m.chars().all(|c| c.is_ascii_alphanumeric() || "-_.[]".contains(c))
 }
 
 fn internal(e: anyhow::Error) -> Status {
@@ -516,12 +531,13 @@ impl ControlService for Hub {
             }
         };
         let claude_token = self.claude_token(&name, why)?;
+        let model = self.model(r.model, &name).await?;
         // The hub names the session, so the client can open it as soon as this returns.
         let session_id = uuid::Uuid::new_v4().to_string();
         let action = command::Action::Spawn(Spawn {
             cwd: r.cwd,
             prompt: r.prompt,
-            model: r.model,
+            model,
             create: r.create,
             permission_mode: r.permission_mode,
             profile: r.profile,
@@ -563,11 +579,12 @@ impl ControlService for Hub {
             None => (session.claude_token, "the session's last; pick another"),
         };
         let claude_token = self.claude_token(&name, why)?;
+        let model = self.model(r.model, &name).await?;
         let last_line_id = self.db.last_line_id(&r.node_id, &r.session_id).await.map_err(internal)?;
         let action = command::Action::Resume(Resume {
             cwd: session.cwd,
             prompt: r.prompt,
-            model: r.model,
+            model,
             claude_token,
             profile: session.profile,
             last_line_id,
@@ -674,6 +691,34 @@ impl ControlService for Hub {
             .await
             .map_err(internal)?;
         tracing::info!(%client, token = %r.name, expires_ms = r.expires_ms, "Claude token expiry set");
+        self.token_list().await
+    }
+
+    async fn set_claude_token_model(
+        &self,
+        request: Request<SetClaudeTokenModelRequest>,
+    ) -> Result<Response<ListClaudeTokensResponse>, Status> {
+        let client = self.client(&request)?;
+        let r = request.into_inner();
+        if !valid_model(&r.model) {
+            return Err(Status::invalid_argument(format!(
+                "not a model Claude Code takes: {:?}",
+                r.model
+            )));
+        }
+        if self.claude_tokens.get(&r.name).is_none()
+            || !self
+                .db
+                .set_claude_token_model(&r.name, &r.model)
+                .await
+                .map_err(internal)?
+        {
+            return Err(Status::not_found(format!(
+                "the hub holds no Claude token named {}",
+                r.name
+            )));
+        }
+        tracing::info!(%client, token = %r.name, model = %r.model, "Claude token default model set");
         self.token_list().await
     }
 

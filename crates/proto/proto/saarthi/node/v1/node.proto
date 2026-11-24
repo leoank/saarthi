@@ -71,6 +71,9 @@ message ClaudeTokenRequest {
 
 message ClaudeTokenReply {
   ClaudeToken claude_token = 1;  // unset: the node's own login
+  // The account's default model (ADR-0079), which `saarthi run` gives the program as
+  // `ANTHROPIC_MODEL`; empty for Claude Code's own default.
+  string model = 2;
 }
 
 message NodeMessage {

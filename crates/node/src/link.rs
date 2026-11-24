@@ -171,13 +171,14 @@ pub(crate) async fn dial(hub: &str) -> Result<Channel> {
 }
 
 /// Asks the hub for the Claude token a session started at this machine's terminal runs
-/// under (ADR-0046): `name`, or the node's default without one. None is the node's own
-/// login. The error is the hub's or the network's, for the person at the terminal.
+/// under (ADR-0046): `name`, or the node's default without one, with the account's default
+/// model (ADR-0079). No token is the node's own login. The error is the hub's or the
+/// network's, for the person at the terminal.
 pub async fn claude_token(
     hub: &str,
     token: &str,
     name: Option<String>,
-) -> Result<Option<saarthi_proto::node::v1::ClaudeToken>, String> {
+) -> Result<saarthi_proto::node::v1::ClaudeTokenReply, String> {
     let channel = dial(hub).await.map_err(|e| format!("{e:#}"))?;
     let mut client = NodeServiceClient::new(channel);
     let mut request = Request::new(saarthi_proto::node::v1::ClaudeTokenRequest { name });
@@ -186,7 +187,7 @@ pub async fn claude_token(
         .map_err(|_| "the node token is not valid in a header".to_string())?;
     request.metadata_mut().insert("authorization", bearer);
     match client.claude_token(request).await {
-        Ok(reply) => Ok(reply.into_inner().claude_token),
+        Ok(reply) => Ok(reply.into_inner()),
         Err(status) => Err(status.message().to_string()),
     }
 }

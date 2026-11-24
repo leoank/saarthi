@@ -92,6 +92,12 @@ done ones. The project page's *Progress* lists this phase on one line.
     `--own-login`; the node asks the hub, and the session is recorded under the account
     (ADR-0046). End-to-end and wrapper tests; checked live against a scratch hub
     (2026-11-12; [[AGS-20261112-2bwr8j]])
+  - [x] 3.8 A default model per account: a session under a hub token cannot read its
+    organization's default model ([[EXP-20261124-1pg2cq]]), so each token has one, set
+    from the app's Claude accounts or `ctl token-model`; the hub sends it with a spawn or
+    resume that names no model, and `saarthi run` gives it as `ANTHROPIC_MODEL`
+    ([[EXP-20261124-gfp268]]) (ADR-0079). Hub and wrapper tests; set from the app against
+    a scratch hub (2026-11-24; [[AGS-20261124-gf6jge]])
   - [ ] 3.5 The egress proxy that adds the token, so a sandbox holds a dummy (phase 3
     with the sandbox's network policy; [[EXP-20261110-g5mh89]] decides its transport)
 - [x] 4. `saarthi tui`, a terminal dashboard on the control service: nodes with their

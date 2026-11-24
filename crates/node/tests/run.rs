@@ -189,8 +189,9 @@ async fn a_wrapper_says_hello_again_to_a_restarted_daemon() {
 
 /// `saarthi run` asks the daemon for the node's default Claude account before it starts the
 /// program (ADR-0046), runs the program with a dummy token and the daemon's socket in its
-/// environment (ADR-0051), and names the account and the socket in its hello; a named
-/// account the daemon cannot give stops it before it starts.
+/// environment (ADR-0051), with the account's default model as `ANTHROPIC_MODEL` unless the
+/// environment names one (ADR-0079), and names the account and the socket in its hello; a
+/// named account the daemon cannot give stops it before it starts.
 #[test]
 fn the_wrapper_runs_its_program_under_the_account_the_daemon_gives() {
     let dir = tempfile::tempdir().unwrap();
@@ -199,39 +200,50 @@ fn the_wrapper_runs_its_program_under_the_account_the_daemon_gives() {
     let daemon = std::os::unix::net::UnixListener::bind(&socket).unwrap();
     let got = dir.path().join("got");
     let script = format!(
-        "printf '%s %s %s' \"$CLAUDE_CODE_OAUTH_TOKEN\" \"$ANTHROPIC_UNIX_SOCKET\" \"$ANTHROPIC_BASE_URL\" > {}; exec sleep 60",
+        "printf '%s %s %s %s' \"$CLAUDE_CODE_OAUTH_TOKEN\" \"$ANTHROPIC_UNIX_SOCKET\" \"$ANTHROPIC_BASE_URL\" \"${{ANTHROPIC_MODEL:-none}}\" > {}; exec sleep 60",
         got.display()
     );
-    let mut wrapper = Command::new(env!("CARGO_BIN_EXE_saarthi"))
-        .args(["run", "--command", "sh", "--wrapper-socket"])
-        .arg(&socket)
-        .args(["--", "-c", &script])
-        .stdin(Stdio::piped())
-        .stdout(Stdio::null())
-        .stderr(Stdio::null())
-        .spawn()
-        .unwrap();
+    // Once with the environment naming no model, once with it naming one of its own.
+    for (exported, seen) in [(None, "opus"), (Some("sonnet"), "sonnet")] {
+        let _ = std::fs::remove_file(&got);
+        let mut command = Command::new(env!("CARGO_BIN_EXE_saarthi"));
+        match exported {
+            Some(m) => command.env("ANTHROPIC_MODEL", m),
+            None => command.env_remove("ANTHROPIC_MODEL"),
+        };
+        let mut wrapper = command
+            .args(["run", "--command", "sh", "--wrapper-socket"])
+            .arg(&socket)
+            .args(["--", "-c", &script])
+            .stdin(Stdio::piped())
+            .stdout(Stdio::null())
+            .stderr(Stdio::null())
+            .spawn()
+            .unwrap();
 
-    let (asked, _) = daemon.accept().unwrap();
-    let mut line = String::new();
-    std::io::BufReader::new(&asked).read_line(&mut line).unwrap();
-    assert_eq!(line.trim(), r#"{"type":"claude_token","name":null}"#);
-    (&asked)
-        .write_all(b"{\"name\":\"work\",\"socket\":\"/run/api.sock\"}\n")
-        .unwrap();
-    drop(asked);
+        let (asked, _) = daemon.accept().unwrap();
+        let mut line = String::new();
+        std::io::BufReader::new(&asked).read_line(&mut line).unwrap();
+        assert_eq!(line.trim(), r#"{"type":"claude_token","name":null}"#);
+        (&asked)
+            .write_all(b"{\"name\":\"work\",\"socket\":\"/run/api.sock\",\"model\":\"opus\"}\n")
+            .unwrap();
+        drop(asked);
 
-    let (hello, _) = daemon.accept().unwrap();
-    let mut line = String::new();
-    std::io::BufReader::new(&hello).read_line(&mut line).unwrap();
-    assert!(line.contains(r#""claude_token":"work","api_socket":"/run/api.sock""#), "{line}");
-    let start = Instant::now();
-    while std::fs::read_to_string(&got).unwrap_or_default() != "saarthi-proxied /run/api.sock http://api.anthropic.com" {
-        assert!(start.elapsed() < Duration::from_secs(10), "the program never saw the token");
-        std::thread::sleep(Duration::from_millis(20));
+        let (hello, _) = daemon.accept().unwrap();
+        let mut line = String::new();
+        std::io::BufReader::new(&hello).read_line(&mut line).unwrap();
+        assert!(line.contains(r#""claude_token":"work","api_socket":"/run/api.sock""#), "{line}");
+        let want = format!("saarthi-proxied /run/api.sock http://api.anthropic.com {seen}");
+        let start = Instant::now();
+        while std::fs::read_to_string(&got).unwrap_or_default() != want {
+            assert!(start.elapsed() < Duration::from_secs(10), "the program never saw {want:?}");
+            std::thread::sleep(Duration::from_millis(20));
+        }
+        let _ = wrapper.kill();
+        let _ = wrapper.wait();
+        drop(hello);
     }
-    let _ = wrapper.kill();
-    let _ = wrapper.wait();
 
     // A named account the daemon refuses: the wrapper exits without starting the program.
     let refused = std::thread::spawn(move || {

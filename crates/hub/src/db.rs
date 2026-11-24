@@ -556,9 +556,30 @@ impl Db {
                 five_hour_resets_s: r.get("five_hour_resets_s"),
                 seven_day_pct: r.get("seven_day_pct"),
                 seven_day_resets_s: r.get("seven_day_resets_s"),
+                default_model: r.get("default_model"),
             });
         }
         Ok(out)
+    }
+
+    /// Sets a token's default model (ADR-0079), empty to clear; false when the hub has no
+    /// such token.
+    pub async fn set_claude_token_model(&self, name: &str, model: &str) -> Result<bool> {
+        let done = sqlx::query("UPDATE claude_tokens SET default_model = ?2 WHERE name = ?1")
+            .bind(name)
+            .bind(model)
+            .execute(&self.pool)
+            .await?;
+        Ok(done.rows_affected() == 1)
+    }
+
+    /// A token's default model; empty when it has none or the hub has no record of it.
+    pub async fn claude_token_model(&self, name: &str) -> Result<String> {
+        let model: Option<String> = sqlx::query_scalar("SELECT default_model FROM claude_tokens WHERE name = ?1")
+            .bind(name)
+            .fetch_optional(&self.pool)
+            .await?;
+        Ok(model.unwrap_or_default())
     }
 
     /// Sets (or with None clears) a token's expiry by hand, and lets its reminder go out

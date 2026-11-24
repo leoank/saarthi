@@ -54,12 +54,22 @@ pub enum Account {
 /// How long the daemon gets to fetch a token from the hub.
 const TOKEN_WAIT: Duration = Duration::from_secs(15);
 
-/// The name of the hub's token for `account` and the socket to send the program's API
-/// requests to (ADR-0051), asked of the daemon, which asks the hub. Ok(None) is the
+/// One of the hub's accounts, as a wrapped program runs under it.
+#[derive(Clone, Debug, PartialEq)]
+pub struct HubAccount {
+    /// The token's name.
+    pub name: String,
+    /// The socket to send the program's API requests to (ADR-0051).
+    pub api: String,
+    /// The account's default model (ADR-0079); empty for Claude Code's own default.
+    pub model: String,
+}
+
+/// The hub's account for `account`, asked of the daemon, which asks the hub. Ok(None) is the
 /// machine's own login. A named token that cannot be had is an error; the default falls
 /// back to the own login, saying why when something failed rather than there being no
 /// default.
-pub fn account_token(socket: &std::path::Path, account: &Account) -> Result<Option<(String, String)>> {
+pub fn account_token(socket: &std::path::Path, account: &Account) -> Result<Option<HubAccount>> {
     let name = match account {
         Account::OwnLogin => return Ok(None),
         Account::NodeDefault => None,
@@ -75,7 +85,7 @@ pub fn account_token(socket: &std::path::Path, account: &Account) -> Result<Opti
         serde_json::from_str(&line).context("the node daemon's answer")
     })();
     let failed = match asked {
-        Ok(TokenReply { name, socket: Some(api), error: None }) => return Ok(Some((name, api))),
+        Ok(TokenReply { name, socket: Some(api), error: None, model }) => return Ok(Some(HubAccount { name, api, model })),
         Ok(TokenReply { error: None, .. }) if name.is_none() => return Ok(None),
         Ok(TokenReply { error: Some(e), .. }) => e,
         Ok(_) => "the hub sent no token".to_string(),
@@ -125,11 +135,21 @@ pub fn run(opts: Options) -> Result<i32> {
     // here a dummy, and the program's API requests go to the daemon's socket and on to the
     // hub, which adds the token (ADR-0051).
     let (token_name, api_socket) = match &account {
-        Some((name, api)) => {
+        Some(HubAccount { name, api, model }) => {
             for (k, v) in crate::claude_api::env(std::path::Path::new(api)) {
                 cmd.env(k, v);
             }
-            eprintln!("saarthi run: Claude account {name}\r");
+            // The account's model, which Claude Code cannot read under the dummy (ADR-0079,
+            // EXP-20261124-gfp268): beneath `--model` and `/model`, and not over a model
+            // this environment already names.
+            let model = (!model.is_empty() && std::env::var_os("ANTHROPIC_MODEL").is_none()).then_some(model);
+            if let Some(model) = model {
+                cmd.env("ANTHROPIC_MODEL", model);
+            }
+            match model {
+                Some(model) => eprintln!("saarthi run: Claude account {name}, model {model}\r"),
+                None => eprintln!("saarthi run: Claude account {name}\r"),
+            }
             if let Some(home) = std::env::var_os("HOME") {
                 skip_first_run(&PathBuf::from(home).join(".claude.json"));
             }

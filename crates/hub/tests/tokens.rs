@@ -3,7 +3,8 @@
 //! under the node's own login until the node has a default, then under the default, or
 //! under a token picked or the own login picked; an unknown token is refused before the
 //! node is asked; a resume keeps the token the session last ran under; the account windows
-//! a session's stream reports land on its token; expiry is set by hand and cleared. Usage
+//! a session's stream reports land on its token; expiry is set by hand and cleared; an
+//! account's default model is what a spawn or resume under it that picks none runs on. Usage
 //! probes (ADR-0043) keep every account's windows fresh without listing a session, and only
 //! a node that runs headless sessions takes them. No token's value leaves the hub
 //! (ADR-0051): a session under one holds a dummy, in auto mode, and its API requests reach
@@ -281,6 +282,52 @@ async fn sessions_run_under_named_tokens_chosen_or_by_default_and_report_their_u
     under_hub_token(&nth_start(&log, 5).await, "tok-personal").await;
     assert_eq!(session(&mut c, &id, false).await.claude_token, "personal");
 
+    // A default model per account (ADR-0079): a spawn or resume under it that picks no
+    // model runs on it; one that picks a model, or runs under another account or the own
+    // login, does not.
+    let bad = c
+        .set_claude_token_model(req(SetClaudeTokenModelRequest { name: "work".into(), model: "opus; rm".into() }))
+        .await
+        .unwrap_err();
+    assert_eq!(bad.code(), tonic::Code::InvalidArgument);
+    let missing = c
+        .set_claude_token_model(req(SetClaudeTokenModelRequest { name: "nope".into(), model: "opus".into() }))
+        .await
+        .unwrap_err();
+    assert_eq!(missing.code(), tonic::Code::NotFound);
+    let set = c
+        .set_claude_token_model(req(SetClaudeTokenModelRequest { name: "work".into(), model: "opus".into() }))
+        .await
+        .unwrap()
+        .into_inner()
+        .tokens;
+    assert_eq!((set[0].default_model.as_str(), set[1].default_model.as_str()), ("", "opus"));
+    let model = |start: &Start| start.args.split_once("--model ").map(|(_, m)| m.split(' ').next().unwrap().to_string());
+    let r = c.spawn(req(spawn(None))).await.unwrap().into_inner();
+    assert!(r.ok, "{}", r.error);
+    assert_eq!(model(&nth_start(&log, 6).await).as_deref(), Some("opus"));
+    let r = c.spawn(req(SpawnRequest { model: "haiku".into(), ..spawn(None) })).await.unwrap().into_inner();
+    assert!(r.ok, "{}", r.error);
+    assert_eq!(model(&nth_start(&log, 7).await).as_deref(), Some("haiku"));
+    let r = c.spawn(req(spawn(Some("personal")))).await.unwrap().into_inner();
+    assert!(r.ok, "{}", r.error);
+    assert_eq!(model(&nth_start(&log, 8).await), None);
+    let r = c.spawn(req(spawn(Some("")))).await.unwrap().into_inner();
+    assert!(r.ok, "{}", r.error);
+    assert_eq!(model(&nth_start(&log, 9).await), None);
+    assert!(c.kill(req(kill(&id))).await.unwrap().into_inner().ok);
+    session(&mut c, &id, true).await;
+    let r = c.resume(req(resume(Some("work")))).await.unwrap().into_inner();
+    assert!(r.ok, "{}", r.error);
+    assert_eq!(model(&nth_start(&log, 10).await).as_deref(), Some("opus"));
+    let cleared = c
+        .set_claude_token_model(req(SetClaudeTokenModelRequest { name: "work".into(), model: String::new() }))
+        .await
+        .unwrap()
+        .into_inner()
+        .tokens;
+    assert_eq!(cleared[1].default_model, "");
+
     // Expiry by hand, then cleared.
     let at = 1_900_000_000_000;
     let set = c
@@ -464,12 +511,22 @@ async fn a_terminal_session_runs_under_the_node_default_or_a_named_account() {
     .await
     .unwrap();
     let dir_of = |s: &str| std::path::Path::new(s).parent().unwrap().to_path_buf();
-    let (name, default_api) = ask(Account::NodeDefault).await.unwrap().unwrap();
-    assert_eq!(name, "work");
+    let work = ask(Account::NodeDefault).await.unwrap().unwrap();
+    assert_eq!((work.name.as_str(), work.model.as_str()), ("work", ""));
+    let default_api = work.api;
     assert_eq!(dir_of(&default_api), saarthi_node::claude_api::host_socket_dir());
-    let (name, api) = ask(Account::Named("personal".into())).await.unwrap().unwrap();
-    assert_eq!(name, "personal");
+    let personal = ask(Account::Named("personal".into())).await.unwrap().unwrap();
+    assert_eq!(personal.name, "personal");
+    let api = personal.api;
     assert_ne!(api, default_api);
+
+    // The account's default model comes with it (ADR-0079), for `saarthi run` to give as
+    // ANTHROPIC_MODEL.
+    c.set_claude_token_model(req(SetClaudeTokenModelRequest { name: "work".into(), model: "opus".into() }))
+        .await
+        .unwrap();
+    assert_eq!(ask(Account::NodeDefault).await.unwrap().unwrap().model, "opus");
+    assert_eq!(ask(Account::Named("personal".into())).await.unwrap().unwrap().model, "");
 
     // The wrapper's hello names the socket: the daemon serves it, through the hub, while the
     // wrapper is connected.

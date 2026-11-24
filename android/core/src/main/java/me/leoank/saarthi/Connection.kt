@@ -354,6 +354,12 @@ class Connection(val app: Application, val scope: CoroutineScope) {
         claudeTokens.replaceAll(it.setClaudeTokenExpiry(name, expiresMs))
     }
 
+    /** The model a session under a token starts on when none is picked (ADR-0079); empty
+     *  for Claude Code's own default. */
+    fun setClaudeTokenModel(name: String, model: String) = withHub {
+        claudeTokens.replaceAll(it.setClaudeTokenModel(name, model))
+    }
+
     /** The token a node's spawned sessions run under when none is picked; empty for its own
      *  login. The node's change comes back through the watch. */
     fun setDefaultClaudeToken(nodeId: String, name: String) = withHub {

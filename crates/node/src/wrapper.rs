@@ -58,7 +58,7 @@ pub enum ToWrapper {
 /// The daemon's answer to [`FromWrapper::ClaudeToken`]: the name of one of the hub's tokens
 /// and the socket to start the program with (ADR-0051), or neither for the node's own
 /// login; `error` when the hub could not be asked or refused. The token itself never
-/// leaves the hub.
+/// leaves the hub. `model` is the account's default model (ADR-0079), empty for none.
 #[derive(Debug, Serialize, Deserialize, PartialEq, Default)]
 pub struct TokenReply {
     #[serde(default)]
@@ -67,6 +67,8 @@ pub struct TokenReply {
     pub socket: Option<String>,
     #[serde(default)]
     pub error: Option<String>,
+    #[serde(default, skip_serializing_if = "String::is_empty")]
+    pub model: String,
 }
 
 /// Where the daemon listens for wrappers unless told otherwise: under [`user_dir`].
@@ -148,18 +150,19 @@ impl Wrappers {
             };
         };
         match crate::link::claude_token(hub, token, name).await {
-            Ok(Some(t)) => match crate::claude_api::host_socket() {
+            Ok(saarthi_proto::node::v1::ClaudeTokenReply { claude_token: Some(t), model }) => match crate::claude_api::host_socket() {
                 Ok(socket) => TokenReply {
                     name: t.name,
                     socket: Some(socket.to_string_lossy().into_owned()),
                     error: None,
+                    model,
                 },
                 Err(e) => TokenReply {
                     error: Some(format!("the Claude API socket's directory: {e}")),
                     ..Default::default()
                 },
             },
-            Ok(None) => TokenReply::default(),
+            Ok(_) => TokenReply::default(),
             Err(e) => TokenReply {
                 error: Some(e),
                 ..Default::default()

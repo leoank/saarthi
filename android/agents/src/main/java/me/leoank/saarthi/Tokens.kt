@@ -47,7 +47,8 @@ private val date: DateTimeFormatter = DateTimeFormatter.ofPattern("d MMM yyyy")
 /** The Claude accounts the hub holds as named `claude setup-token` tokens (ADR-0039): each
  *  one's expiry, which nodes start sessions under it by default, and the account's 5-hour
  *  and 7-day usage as a session under it last reported (ADR-0042). The expiry is a year
- *  after the hub first read the token unless set here by hand. */
+ *  after the hub first read the token unless set here by hand. Each account's default model
+ *  is what a session under it starts on when none is picked (ADR-0079). */
 @OptIn(ExperimentalMaterial3Api::class)
 @Composable
 fun TokensScreen(model: Connection, snackbar: SnackbarHostState, back: () -> Unit) {
@@ -72,7 +73,13 @@ fun TokensScreen(model: Connection, snackbar: SnackbarHostState, back: () -> Uni
             }
             items(model.claudeTokens, key = { it.name }) { t ->
                 val defaultOn = model.nodes.filter { it.defaultClaudeToken == t.name }.map { it.name }
-                TokenCard(t, defaultOn, edit = { editing = t }, clear = { model.setClaudeTokenExpiry(t.name, 0) })
+                TokenCard(
+                    t,
+                    defaultOn,
+                    edit = { editing = t },
+                    clear = { model.setClaudeTokenExpiry(t.name, 0) },
+                    pickModel = { model.setClaudeTokenModel(t.name, it) },
+                )
             }
         }
     }
@@ -97,7 +104,13 @@ fun TokensScreen(model: Connection, snackbar: SnackbarHostState, back: () -> Uni
 }
 
 @Composable
-private fun TokenCard(t: ClaudeTokenInfo, defaultOn: List<String>, edit: () -> Unit, clear: () -> Unit) {
+private fun TokenCard(
+    t: ClaudeTokenInfo,
+    defaultOn: List<String>,
+    edit: () -> Unit,
+    clear: () -> Unit,
+    pickModel: (String) -> Unit,
+) {
     val now = System.currentTimeMillis()
     val days = (t.expiresMs - now) / 86_400_000
     val due = days < DUE_DAYS
@@ -105,7 +118,7 @@ private fun TokenCard(t: ClaudeTokenInfo, defaultOn: List<String>, edit: () -> U
         Modifier.fillMaxWidth(),
         colors = CardDefaults.cardColors(containerColor = MaterialTheme.colorScheme.surfaceContainer),
     ) {
-        Column(Modifier.padding(start = 16.dp, end = 8.dp, top = 12.dp, bottom = 4.dp)) {
+        Column(Modifier.padding(start = 16.dp, end = 8.dp, top = 12.dp)) {
             Text(t.name, style = MaterialTheme.typography.titleMedium, color = MaterialTheme.colorScheme.onSurface)
             val left = when {
                 t.expiresMs <= now -> "expired"
@@ -142,10 +155,20 @@ private fun TokenCard(t: ClaudeTokenInfo, defaultOn: List<String>, edit: () -> U
                     color = MaterialTheme.colorScheme.onSurfaceVariant,
                 )
             }
-            Row(Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.End) {
-                if (t.expirySet) TextButton(onClick = clear) { Text("Use a year from added") }
-                TextButton(onClick = edit) { Text("Set expiry") }
-            }
+        }
+        // What a session under it starts on when none is picked (ADR-0079): Claude Code
+        // cannot read the organization's default under a hub token.
+        val options = listOf("Claude's default" to "") + models.drop(1)
+        Choice(
+            "Default model",
+            options.firstOrNull { it.second == t.defaultModel }?.first ?: t.defaultModel,
+            options,
+            t.defaultModel,
+            pick = pickModel,
+        )
+        Row(Modifier.fillMaxWidth().padding(end = 8.dp, bottom = 4.dp), horizontalArrangement = Arrangement.End) {
+            if (t.expirySet) TextButton(onClick = clear) { Text("Use a year from added") }
+            TextButton(onClick = edit) { Text("Set expiry") }
         }
     }
 }

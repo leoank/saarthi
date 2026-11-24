@@ -196,6 +196,9 @@ pub struct ClaudeTokenInfo {
     pub five_hour_resets_s: Option<i64>,
     pub seven_day_pct: Option<f64>,
     pub seven_day_resets_s: Option<i64>,
+    /// What a session under it starts on when none is picked (ADR-0079); empty for Claude
+    /// Code's own default.
+    pub default_model: String,
 }
 
 #[derive(Debug, Clone, PartialEq, uniffi::Record)]
@@ -869,6 +872,14 @@ impl Hub {
         Ok(r.into_inner().tokens.into_iter().map(claude_token).collect())
     }
 
+    /// Sets a token's default model (ADR-0079), empty to clear; returns the tokens as they
+    /// are now.
+    pub async fn set_claude_token_model(&self, name: String, model: String) -> Result<Vec<ClaudeTokenInfo>, CoreError> {
+        let req = SetClaudeTokenModelRequest { name, model };
+        let r = self.client.clone().set_claude_token_model(self.req(req)).await?;
+        Ok(r.into_inner().tokens.into_iter().map(claude_token).collect())
+    }
+
     /// Sets the token a node's spawned sessions run under when none is picked; empty for
     /// the node's own login.
     pub async fn set_default_claude_token(&self, node_id: String, name: String) -> Result<(), CoreError> {
@@ -1372,6 +1383,7 @@ fn claude_token(t: ClaudeToken) -> ClaudeTokenInfo {
         five_hour_resets_s: t.five_hour_resets_s,
         seven_day_pct: t.seven_day_pct,
         seven_day_resets_s: t.seven_day_resets_s,
+        default_model: t.default_model,
     }
 }
 

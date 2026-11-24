@@ -49,6 +49,9 @@ service ControlService {
   rpc SetClaudeTokenExpiry(SetClaudeTokenExpiryRequest) returns (ListClaudeTokensResponse);
   // Sets or clears the token a node's spawned sessions run under when none is picked.
   rpc SetDefaultClaudeToken(SetDefaultClaudeTokenRequest) returns (SetDefaultClaudeTokenResponse);
+  // Sets a Claude token's default model (ADR-0079): what a session under it starts on when
+  // none is picked. Answers the tokens as they now are.
+  rpc SetClaudeTokenModel(SetClaudeTokenModelRequest) returns (ListClaudeTokensResponse);
 
   // Adds (or with `unregister`, removes) a UnifiedPush endpoint the hub posts notifications
   // to: a JSON object per held request or finished turn (ADR-0026).
@@ -292,6 +295,9 @@ message ClaudeToken {
   optional int64 five_hour_resets_s = 7;
   optional double seven_day_pct = 8;
   optional int64 seven_day_resets_s = 9;
+  // What a session under it starts on when none is picked (ADR-0079), as `--model` takes
+  // it; empty for Claude Code's own default.
+  string default_model = 10;
 }
 
 message ListClaudeTokensRequest {}
@@ -303,6 +309,11 @@ message ListClaudeTokensResponse {
 message SetClaudeTokenExpiryRequest {
   string name = 1;
   int64 expires_ms = 2;         // 0 to clear: a year after first seen again
+}
+
+message SetClaudeTokenModelRequest {
+  string name = 1;
+  string model = 2;             // an alias such as `opus`, or a model id; empty to clear
 }
 
 message SetDefaultClaudeTokenRequest {

@@ -105,19 +105,25 @@ impl NodeService for Hub {
             }
         };
         if name.is_empty() {
-            return Ok(Response::new(ClaudeTokenReply { claude_token: None }));
+            return Ok(Response::new(ClaudeTokenReply { claude_token: None, model: String::new() }));
         }
         if self.claude_tokens.get(&name).is_none() {
             return Err(Status::not_found(format!(
                 "the hub holds no Claude token named {name}"
             )));
         }
-        tracing::info!(%node, claude_token = %name, "named a Claude token for a terminal session");
+        let model = self
+            .db
+            .claude_token_model(&name)
+            .await
+            .map_err(|e| Status::internal(format!("{e:#}")))?;
+        tracing::info!(%node, claude_token = %name, %model, "named a Claude token for a terminal session");
         Ok(Response::new(ClaudeTokenReply {
             claude_token: Some(ClaudeToken {
                 name,
                 token: String::new(),
             }),
+            model,
         }))
     }
 

@@ -92,6 +92,9 @@ pub enum Ctl {
     /// Set a Claude token's expiry by hand (`YYYY-MM-DD`), or `clear` it back to a year
     /// after the hub first saw the token.
     TokenExpiry { name: String, date: String },
+    /// Set the model a session under a Claude token starts on when none is picked
+    /// (ADR-0079): an alias such as `opus` or a model id, or `clear` for Claude Code's own.
+    TokenModel { name: String, model: String },
     /// Set the Claude token a node's spawned sessions run under when none is picked.
     DefaultToken {
         node: String,
@@ -555,6 +558,14 @@ pub async fn run(hub: &str, token: &str, cmd: Ctl) -> Result<()> {
                 println!("{}", token_line(&t, saarthi_node::outbox::now_ms()));
             }
         }
+        Ctl::TokenModel { name, model } => {
+            let model = if model == "clear" { String::new() } else { model };
+            let req = SetClaudeTokenModelRequest { name, model };
+            let r = c.inner.set_claude_token_model(c.request(req)).await?;
+            for t in r.into_inner().tokens {
+                println!("{}", token_line(&t, saarthi_node::outbox::now_ms()));
+            }
+        }
         Ctl::DefaultToken {
             node,
             name,
@@ -683,10 +694,13 @@ async fn resolve(
     report(c.inner.resolve(c.request(req)).await?.into_inner())
 }
 
-/// `work  expires 2027-11-11 (set)  5h 4%  7d 36%  (2 min ago)`
+/// `work  expires 2027-11-11 (set)  model opus  5h 4%  7d 36%  (2 min ago)`
 fn token_line(t: &ClaudeToken, now_ms: i64) -> String {
     let set = if t.expiry_set { " (set)" } else { "" };
     let mut line = format!("{}  expires {}{set}", t.name, date(t.expires_ms));
+    if !t.default_model.is_empty() {
+        line += &format!("  model {}", t.default_model);
+    }
     if t.usage_ms > 0 {
         let pct = |p: Option<f64>| p.map(|p| format!("{p:.0}%")).unwrap_or_else(|| "-".into());
         let age = (now_ms - t.usage_ms).max(0) / 60_000;
