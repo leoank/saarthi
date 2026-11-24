@@ -1,0 +1,35 @@
+READY
+MODE print
+DIRECT CONNECT api.anthropic.com:443
+DIRECT CONNECT api.anthropic.com:443
+DIRECT CONNECT api.anthropic.com:443
+DIRECT CONNECT api.anthropic.com:443
+DIRECT CONNECT api.anthropic.com:443
+DIRECT CONNECT api.anthropic.com:443
+DIRECT CONNECT api.anthropic.com:443
+DIRECT CONNECT api.anthropic.com:443
+DIRECT CONNECT api.anthropic.com:443
+DIRECT CONNECT api.anthropic.com:443
+DIRECT CONNECT api.anthropic.com:443
+DIRECT CONNECT api.anthropic.com:443
+DIRECT CONNECT api.anthropic.com:443
+DIRECT CONNECT api.anthropic.com:443
+SOCKET POST /v1/messages token=dummy
+SOCKET POST /v1/messages token=dummy
+MODE terminal
+DIRECT CONNECT api.anthropic.com:443
+DIRECT CONNECT api.anthropic.com:443
+DIRECT CONNECT api.anthropic.com:443
+DIRECT CONNECT api.anthropic.com:443
+DIRECT CONNECT api.anthropic.com:443
+DIRECT CONNECT api.anthropic.com:443
+DIRECT CONNECT api.anthropic.com:443
+DIRECT CONNECT api.anthropic.com:443
+DIRECT CONNECT api.anthropic.com:443
+DIRECT CONNECT api.anthropic.com:443
+DIRECT CONNECT api.anthropic.com:443
+DIRECT CONNECT api.anthropic.com:443
+DIRECT CONNECT api.anthropic.com:443
+DIRECT CONNECT api.anthropic.com:443
+DIRECT CONNECT api.anthropic.com:443
+DIRECT CONNECT platform.claude.com:443
