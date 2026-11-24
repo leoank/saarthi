@@ -255,3 +255,16 @@ fn the_wrapper_runs_its_program_under_the_account_the_daemon_gives() {
     assert!(String::from_utf8_lossy(&out.stderr).contains("no Claude token nope"));
     assert!(!String::from_utf8_lossy(&out.stdout).contains("started"));
 }
+
+#[test]
+fn a_nested_saarthi_run_execs_directly_without_rewrapping() {
+    // When SAARTHI_RUN is already in the environment, saarthi run execs the command
+    // directly without attempting to connect to a wrapper socket or allocate a second PTY.
+    let out = Command::new(env!("CARGO_BIN_EXE_saarthi"))
+        .env("SAARTHI_RUN", "1")
+        .args(["run", "--command", "sh", "--", "-c", "echo directly-executed"])
+        .output()
+        .unwrap();
+    assert!(out.status.success());
+    assert_eq!(String::from_utf8_lossy(&out.stdout).trim(), "directly-executed");
+}

@@ -96,6 +96,13 @@ type Link = Arc<Mutex<Option<UnixStream>>>;
 
 /// Runs the command under a PTY until it exits; returns its exit code.
 pub fn run(opts: Options) -> Result<i32> {
+    if std::env::var_os("SAARTHI_RUN").is_some() {
+        use std::os::unix::process::CommandExt;
+        let mut cmd = std::process::Command::new(&opts.command);
+        cmd.args(&opts.args);
+        let err = cmd.exec();
+        anyhow::bail!("executing {}: {err}", opts.command);
+    }
     let account = account_token(&opts.socket, &opts.account)?;
     let pty = native_pty_system()
         .openpty(terminal_size())
@@ -135,6 +142,7 @@ pub fn run(opts: Options) -> Result<i32> {
             (String::new(), String::new())
         }
     };
+    cmd.env("SAARTHI_RUN", "1");
     let mut child = pty
         .slave
         .spawn_command(cmd)

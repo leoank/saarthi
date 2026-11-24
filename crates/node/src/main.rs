@@ -266,7 +266,8 @@ async fn main() -> Result<()> {
         Command::Shells(Shells::Serve { socket }) => {
             saarthi_node::shells::serve(&socket.unwrap_or_else(saarthi_node::shells::default_socket)).await
         }
-        Command::Run(args) => {
+        Command::Run(mut args) => {
+            extract_account_args(&mut args);
             let opts = saarthi_node::run::Options {
                 command: args.command,
                 args: args.args,
@@ -631,4 +632,71 @@ async fn scan_registry(
     })
     .await
     .unwrap_or_default()
+}
+
+/// Extracts `--claude-token <name>`, `--claude-token=<name>`, or `--own-login` from the
+/// arguments after `--` if `saarthi run` was not given an account option itself (e.g. when
+/// invoked via a shell wrapper like `claude "$@"`).
+fn extract_account_args(args: &mut RunArgs) {
+    if args.claude_token.is_some() || args.own_login {
+        return;
+    }
+    let mut i = 0;
+    while i < args.args.len() {
+        if args.args[i] == "--own-login" {
+            args.own_login = true;
+            args.args.remove(i);
+            return;
+        } else if args.args[i] == "--claude-token" && i + 1 < args.args.len() {
+            args.args.remove(i);
+            args.claude_token = Some(args.args.remove(i));
+            return;
+        } else if let Some(token) = args.args[i].strip_prefix("--claude-token=") {
+            args.claude_token = Some(token.to_string());
+            args.args.remove(i);
+            return;
+        }
+        i += 1;
+    }
+}
+
+#[cfg(test)]
+mod run_arg_tests {
+    use super::*;
+
+    #[test]
+    fn extracts_account_from_wrapped_arguments() {
+        let mut args = RunArgs {
+            command: "claude".into(),
+            wrapper_socket: None,
+            claude_token: None,
+            own_login: false,
+            args: vec!["--claude-token".into(), "work".into(), "--continue".into()],
+        };
+        extract_account_args(&mut args);
+        assert_eq!(args.claude_token.as_deref(), Some("work"));
+        assert_eq!(args.args, vec!["--continue"]);
+
+        let mut args = RunArgs {
+            command: "claude".into(),
+            wrapper_socket: None,
+            claude_token: None,
+            own_login: false,
+            args: vec!["--claude-token=personal".into(), "-p".into(), "hi".into()],
+        };
+        extract_account_args(&mut args);
+        assert_eq!(args.claude_token.as_deref(), Some("personal"));
+        assert_eq!(args.args, vec!["-p", "hi"]);
+
+        let mut args = RunArgs {
+            command: "claude".into(),
+            wrapper_socket: None,
+            claude_token: None,
+            own_login: false,
+            args: vec!["--own-login".into()],
+        };
+        extract_account_args(&mut args);
+        assert!(args.own_login);
+        assert!(args.args.is_empty());
+    }
 }
