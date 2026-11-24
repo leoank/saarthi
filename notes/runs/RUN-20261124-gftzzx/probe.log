@@ -1,0 +1,149 @@
+READY
+CASE none
+DIRECT CONNECT api.anthropic.com:443
+DIRECT CONNECT api.anthropic.com:443
+DIRECT CONNECT api.anthropic.com:443
+DIRECT CONNECT api.anthropic.com:443
+DIRECT CONNECT api.anthropic.com:443
+DIRECT CONNECT api.anthropic.com:443
+DIRECT CONNECT api.anthropic.com:443
+DIRECT CONNECT api.anthropic.com:443
+DIRECT CONNECT api.anthropic.com:443
+DIRECT CONNECT api.anthropic.com:443
+DIRECT CONNECT api.anthropic.com:443
+DIRECT CONNECT api.anthropic.com:443
+DIRECT CONNECT api.anthropic.com:443
+DIRECT CONNECT api.anthropic.com:443
+DIRECT CONNECT api.anthropic.com:443
+DIRECT CONNECT api.anthropic.com:443
+DIRECT CONNECT api.anthropic.com:443
+DIRECT CONNECT api.anthropic.com:443
+DIRECT CONNECT api.anthropic.com:443
+DIRECT CONNECT api.anthropic.com:443
+SOCKET POST /v1/messages token=dummy model=claude-sonnet-5-5
+SOCKET POST /v1/messages token=dummy model=claude-sonnet-5-5
+DIRECT CONNECT api.anthropic.com:443
+CASE env-opus
+DIRECT CONNECT api.anthropic.com:443
+DIRECT CONNECT api.anthropic.com:443
+DIRECT CONNECT api.anthropic.com:443
+DIRECT CONNECT api.anthropic.com:443
+DIRECT CONNECT api.anthropic.com:443
+DIRECT CONNECT api.anthropic.com:443
+DIRECT CONNECT api.anthropic.com:443
+DIRECT CONNECT api.anthropic.com:443
+DIRECT CONNECT api.anthropic.com:443
+DIRECT CONNECT api.anthropic.com:443
+DIRECT CONNECT api.anthropic.com:443
+DIRECT CONNECT api.anthropic.com:443
+DIRECT CONNECT api.anthropic.com:443
+DIRECT CONNECT api.anthropic.com:443
+DIRECT CONNECT api.anthropic.com:443
+DIRECT CONNECT api.anthropic.com:443
+DIRECT CONNECT api.anthropic.com:443
+DIRECT CONNECT api.anthropic.com:443
+DIRECT CONNECT api.anthropic.com:443
+DIRECT CONNECT api.anthropic.com:443
+SOCKET POST /v1/messages token=dummy model=claude-opus-5-5
+SOCKET POST /v1/messages token=dummy model=claude-opus-5-5
+DIRECT CONNECT api.anthropic.com:443
+CASE env-opus-flag
+DIRECT CONNECT api.anthropic.com:443
+DIRECT CONNECT api.anthropic.com:443
+DIRECT CONNECT api.anthropic.com:443
+DIRECT CONNECT api.anthropic.com:443
+DIRECT CONNECT api.anthropic.com:443
+DIRECT CONNECT api.anthropic.com:443
+DIRECT CONNECT api.anthropic.com:443
+DIRECT CONNECT api.anthropic.com:443
+DIRECT CONNECT api.anthropic.com:443
+DIRECT CONNECT api.anthropic.com:443
+DIRECT CONNECT api.anthropic.com:443
+DIRECT CONNECT api.anthropic.com:443
+DIRECT CONNECT api.anthropic.com:443
+DIRECT CONNECT api.anthropic.com:443
+DIRECT CONNECT api.anthropic.com:443
+DIRECT CONNECT api.anthropic.com:443
+DIRECT CONNECT api.anthropic.com:443
+DIRECT CONNECT api.anthropic.com:443
+DIRECT CONNECT api.anthropic.com:443
+DIRECT CONNECT api.anthropic.com:443
+SOCKET POST /v1/messages token=dummy model=claude-sonnet-5-5
+SOCKET POST /v1/messages token=dummy model=claude-sonnet-5-5
+DIRECT CONNECT api.anthropic.com:443
+CASE settings-haiku
+DIRECT CONNECT api.anthropic.com:443
+DIRECT CONNECT api.anthropic.com:443
+DIRECT CONNECT api.anthropic.com:443
+DIRECT CONNECT api.anthropic.com:443
+DIRECT CONNECT api.anthropic.com:443
+DIRECT CONNECT api.anthropic.com:443
+DIRECT CONNECT api.anthropic.com:443
+DIRECT CONNECT api.anthropic.com:443
+DIRECT CONNECT api.anthropic.com:443
+DIRECT CONNECT api.anthropic.com:443
+DIRECT CONNECT api.anthropic.com:443
+DIRECT CONNECT api.anthropic.com:443
+DIRECT CONNECT api.anthropic.com:443
+DIRECT CONNECT api.anthropic.com:443
+DIRECT CONNECT api.anthropic.com:443
+DIRECT CONNECT api.anthropic.com:443
+DIRECT CONNECT api.anthropic.com:443
+DIRECT CONNECT api.anthropic.com:443
+DIRECT CONNECT api.anthropic.com:443
+DIRECT CONNECT api.anthropic.com:443
+SOCKET POST /v1/messages token=dummy model=claude-haiku-5-5
+SOCKET POST /v1/messages token=dummy model=claude-haiku-5-5
+DIRECT CONNECT api.anthropic.com:443
+CASE settings-env
+DIRECT CONNECT api.anthropic.com:443
+DIRECT CONNECT api.anthropic.com:443
+DIRECT CONNECT api.anthropic.com:443
+DIRECT CONNECT api.anthropic.com:443
+DIRECT CONNECT api.anthropic.com:443
+DIRECT CONNECT api.anthropic.com:443
+DIRECT CONNECT api.anthropic.com:443
+DIRECT CONNECT api.anthropic.com:443
+DIRECT CONNECT api.anthropic.com:443
+DIRECT CONNECT api.anthropic.com:443
+DIRECT CONNECT api.anthropic.com:443
+DIRECT CONNECT api.anthropic.com:443
+DIRECT CONNECT api.anthropic.com:443
+DIRECT CONNECT api.anthropic.com:443
+DIRECT CONNECT api.anthropic.com:443
+DIRECT CONNECT api.anthropic.com:443
+DIRECT CONNECT api.anthropic.com:443
+DIRECT CONNECT api.anthropic.com:443
+DIRECT CONNECT api.anthropic.com:443
+DIRECT CONNECT api.anthropic.com:443
+SOCKET POST /v1/messages token=dummy model=claude-opus-5-5
+SOCKET POST /v1/messages token=dummy model=claude-opus-5-5
+DIRECT CONNECT api.anthropic.com:443
+CASE env-opus-tty
+DIRECT CONNECT api.anthropic.com:443
+DIRECT CONNECT api.anthropic.com:443
+DIRECT CONNECT api.anthropic.com:443
+DIRECT CONNECT api.anthropic.com:443
+DIRECT CONNECT api.anthropic.com:443
+DIRECT CONNECT api.anthropic.com:443
+DIRECT CONNECT api.anthropic.com:443
+DIRECT CONNECT api.anthropic.com:443
+DIRECT CONNECT api.anthropic.com:443
+DIRECT CONNECT api.anthropic.com:443
+DIRECT CONNECT api.anthropic.com:443
+DIRECT CONNECT api.anthropic.com:443
+DIRECT CONNECT api.anthropic.com:443
+DIRECT CONNECT api.anthropic.com:443
+DIRECT CONNECT api.anthropic.com:443
+DIRECT CONNECT api.anthropic.com:443
+DIRECT CONNECT api.anthropic.com:443
+DIRECT CONNECT api.anthropic.com:443
+DIRECT CONNECT api.anthropic.com:443
+DIRECT CONNECT api.anthropic.com:443
+DIRECT CONNECT raw.githubusercontent.com:443
+DIRECT CONNECT api.anthropic.com:443
+DIRECT CONNECT downloads.claude.ai:443
+SOCKET POST /v1/messages token=dummy model=claude-haiku-4-5-20251001
+SOCKET POST /v1/messages token=dummy model=claude-opus-5-5
+SOCKET POST /v1/messages token=dummy model=claude-opus-5-5
+DIRECT CONNECT api.anthropic.com:443
