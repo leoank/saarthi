@@ -10,6 +10,8 @@ status: done              # planned | in_progress | done | aborted
 created: 2026-11-24
 author: agent:claude
 script: notes/runs/RUN-20261124-gftzzx/run.sh          # executable that re-creates this run, relative to the repo root
+commit: 4775f058e75aa8596b1bf31be43870ef71efa514
+host: rogue
 ---
 
 ## Notes
