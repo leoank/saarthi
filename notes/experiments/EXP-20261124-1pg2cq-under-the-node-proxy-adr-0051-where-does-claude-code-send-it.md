@@ -59,8 +59,8 @@ rejects a bare link here. Metric runs also land in results.tsv.
 
 - [[RUN-20261124-1qtntf]] the node's environment, both modes: only `POST /v1/messages` reached the proxy's socket; 21 (`-p`) and 21 (terminal) other connections went straight to Anthropic, so H1 is false and widening the proxy would change nothing
 - [[RUN-20261124-1sae23]] the same with `CLAUDE_CODE_DISABLE_NONESSENTIAL_TRAFFIC=1`: 14 and 16 direct connections, still none through the proxy
-- [[RUN-20261124-1qtntf]] compute run, not yet described
-- [[RUN-20261124-1sae23]] compute run, not yet described
+- [[RUN-20261124-1ypdgw]] H2 on the hub, both hub tokens: `policy_limits` 200, `oauth/profile` 403, `claude_code/settings` 404, the control 200; the bodies were not read (no python3 on the hub)
+- [[RUN-20261124-fbreex]] H2 again, reading the bodies: profile 403 for want of the `user:profile` scope, policy limits 200 with `restrictions` and the rest, settings a bare `not_found_error` that does not say whether the organizations simply have none
 
 ## Conclusion
 Written once, by a human, when status becomes `concluded`.
