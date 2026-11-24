@@ -4,7 +4,7 @@ type: experiment
 schema_version: 1
 title: Under the node proxy (ADR-0051), where does Claude Code send its account and settings calls, and would a hub token answer them?
 project: PRJ-0001
-status: active            # planned | active | paused | concluded | abandoned
+status: concluded         # planned | active | paused | concluded | abandoned
 outcome: negative           # null | positive | negative | inconclusive | infra
 influenced_by: []
 created: 2026-11-24
@@ -61,6 +61,24 @@ rejects a bare link here. Metric runs also land in results.tsv.
 - [[RUN-20261124-1sae23]] the same with `CLAUDE_CODE_DISABLE_NONESSENTIAL_TRAFFIC=1`: 14 and 16 direct connections, still none through the proxy
 - [[RUN-20261124-1ypdgw]] H2 on the hub, both hub tokens: `policy_limits` 200, `oauth/profile` 403, `claude_code/settings` 404, the control 200; the bodies were not read (no python3 on the hub)
 - [[RUN-20261124-fbreex]] H2 again, reading the bodies: profile 403 for want of the `user:profile` scope, policy limits 200 with `restrictions` and the rest, settings a bare `not_found_error` that does not say whether the organizations simply have none
+- [[RUN-20261124-fr2ybd]] the shape of the policy-limits answer a hub token gets, model and effort values shown: no: `defaults` holds only `remote_control_at_startup`, `restrictions` seven on/off switches; no model anywhere
 
 ## Conclusion
-Written once, by a human, when status becomes `concluded`.
+Draft by agent:claude, for the owner to approve.
+
+H1 is false ([[RUN-20261124-1qtntf]], [[RUN-20261124-1sae23]]): under the node's proxy
+Claude Code sends only `POST /v1/messages` through it; its account, settings and policy
+calls go straight to Anthropic with the dummy token and fail. Letting `/api/` paths through
+the proxy would change nothing.
+
+H2 is mostly false ([[RUN-20261124-1ypdgw]], [[RUN-20261124-fbreex]],
+[[RUN-20261124-fr2ybd]]): a hub token (a `claude setup-token` token) is refused the profile
+(403, it lacks the `user:profile` scope) and gets 404 on `/api/claude_code/settings` though
+the organizations have managed settings; it is answered only on
+`/api/claude_code/policy_limits`, which carries on/off restrictions and no default model.
+
+So the hub cannot learn an organization's managed settings, its default model among them,
+from the tokens it holds. A session under a hub token gets Claude Code's own default model
+(Sonnet where the organization set Opus) unless saarthi names one. The way open is to say
+it on saarthi's side, a default model per hub account or per machine, kept in step with the
+organization's setting by hand.
