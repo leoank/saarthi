@@ -101,8 +101,22 @@ one-line instructions under headings such as *Runs*.
 - **Curated pages are human-signed.** When you edit an `EXP`, `PRO` or `MAT` page, set
   `review: pending` in its frontmatter; only a human signs it off (`yajna approve`, or a
   review that covers it), never you. Rewrite *Current belief*;
-  append everywhere else. The *Conclusion* of an experiment is written
-  once, by a human: propose it in the log or the `AGS` page instead.
+  append everywhere else.
+- **Conclude the experiments you finish.** When the runs answer the question, write the
+  *Conclusion* (what was found, resting on which runs, and what it means for the project),
+  set `status: concluded` and `outcome`, rewrite the experiment's line on the project page,
+  and keep `review: pending`: it is a draft until a human approves it with `yajna approve`.
+  Do not leave finished work `active` waiting for a human. Never rewrite a conclusion a
+  human has approved; a new finding goes into a new experiment that names it in
+  `influenced_by`, or into the log.
+- **A codified protocol's steps are generated.** A `PRO` page with `stage: codified` gets
+  its `## Steps` from the Python file in `source:` (`notes/protocols/PRO-0012/protocol.py`).
+  Change the code, bump `version` in its `metadata` and on the page together, then
+  `yajna-protocol page <page>`; never edit those steps by hand. `yajna-protocol render
+  <file> -p name=value` shows the steps for a run's parameters.
+- **Threads `@ work`** are on lines you have not committed yet, often written from the
+  phone: change them, and once you commit, `yajna review update REV-…` moves the thread to
+  that commit; address it with that commit as for any thread.
 - **Your changes go under a review.** Keep one `REV` page for the piece of work you are
   doing and add to it rather than opening one per change. Look first: `yajna review list
   --open` and `yajna review todo`; continue the unfinished review of your work when there
