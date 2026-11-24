@@ -37,7 +37,7 @@ tracing = "0.1.44"
 tracing-subscriber = "0.3.23"
 # The files viewer and changes view a session's changes are served with (ADR-0067),
 # pinned with yajna's commit; its routes change only with this in step.
-yajna-serve = { git = "https://github.com/leoank/yajna", rev = "9712852e8e490208f9bac0a4448adfc89344fd53" }
+yajna-serve = { git = "https://github.com/leoank/yajna", rev = "8e59d75c6c45df46a6861d61691bd3f2a58f56ef" }
 uuid = { version = "1.28.0", features = ["v4"] }
 ratatui = { version = "0.30.2", default-features = false, features = ["crossterm", "layout-cache"] }
 qrcode = { version = "0.14.1", default-features = false }
