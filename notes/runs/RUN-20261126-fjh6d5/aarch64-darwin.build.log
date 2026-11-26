@@ -1,0 +1,437 @@
+warning: Git tree '/Users/ank/workspace/repos/leoank/saarthi/main' is dirty
+warning: creating lock file "/Users/ank/workspace/repos/leoank/saarthi/main/spikes/16-cedar/flake.lock": 
+• Added input 'nixpkgs':
+    'github:NixOS/nixpkgs/f4a03c008967841f2a0b3cb7c436fc6fc31671f6?narHash=sha256-ziZn2PvCJE5JEEpqTdxXwJpPB%2BL3YqoCpTAMCzyaP3U%3D' (2026-11-07)
+these 47 derivations will be built:
+  /nix/store/06nn7knidzwsn2pv1ikv80dy836xbll0-lalrpop-0.22.2.drv
+  /nix/store/aja7ybrqcpyz07xd8cy68z3yz50vmph0-crate-cedar-policy-core-4.15.0.tar.gz.drv
+  /nix/store/0fp6bz6k8pdq5pghwpilhdzi1kpw5k5n-cedar-policy-core-4.15.0.drv
+  /nix/store/g5byvzdgkardfwz6s0iq2hihvzrbysgd-crate-jiff-core-1.0.2.tar.gz.drv
+  /nix/store/0qihzix6rv6hlv78wn9s4pbn76w6g34k-jiff-core-1.0.2.drv
+  /nix/store/1vl6ahxmzf2dbgv54fdc6338jkjcl2l6-ena-0.14.4.drv
+  /nix/store/56sq11f3vhkh6xxb95np4xnc0pp0q0ql-crate-jiff-tzdb-1.0.0.tar.gz.drv
+  /nix/store/2r7bididhckna4jzsw4mqqf970cf9xzm-jiff-tzdb-1.0.0.drv
+  /nix/store/wbya3xj6y676s6nxpjcadvbvf1sv0wib-crate-serde_with-3.25.0.tar.gz.drv
+  /nix/store/7vpif31sa1qk2gl396n3nv52v7088day-serde_with-3.25.0.drv
+  /nix/store/xsphr0sasngzc601z0brkd9hp0d9cfbl-crate-rustc-literal-escaper-0.0.8.tar.gz.drv
+  /nix/store/7xzr81lcbfv2cnag1dpzljxxpj0jqnpg-rustc-literal-escaper-0.0.8.drv
+  /nix/store/6w2v18sw0rkkzhza2hqzxj5vf4886hvg-crate-unicode-script-0.5.9.tar.gz.drv
+  /nix/store/85x2yxprl2bj0ri7aa30b2vgkn0lbds5-unicode-script-0.5.9.drv
+  /nix/store/wf0j80344bapk6gmhvks87455m2nnvz2-crate-pretty-0.12.5.tar.gz.drv
+  /nix/store/8m58j72v0v9y9ni1y1jswmbpp0qinpkw-pretty-0.12.5.drv
+  /nix/store/97zb3d0rynf0f7wgxxxk81br56fmv141-precomputed-hash-0.1.1.drv
+  /nix/store/n89ig2qd4b9k7sgj8rgl9y86ywsc7y46-crate-serde_with_macros-3.25.0.tar.gz.drv
+  /nix/store/9mdkkdaplndcpvdcs44h2l1v11hccjmc-serde_with_macros-3.25.0.drv
+  /nix/store/9p1sfs3knjnfb18979slkldrkff3hxsa-miette-7.6.0.drv
+  /nix/store/779bkvjmmzlw7hgwfd4sppq9gi2njj4p-crate-educe-0.8.2.tar.gz.drv
+  /nix/store/aw8w1qawhq75bjrl38l6lf30cs1qshm6-educe-0.8.2.drv
+  /nix/store/z5dnlv6wjh49a75g6817g4lvfkn55jkz-crate-cedar-policy-4.15.0.tar.gz.drv
+  /nix/store/bkslgfdz6x90a3ij6w1k9w1wq7gy4dk1-cedar-policy-4.15.0.drv
+  /nix/store/fiyi69ar9v32f6lfhbm14rypplnry69q-lalrpop-util-0.22.2.drv
+  /nix/store/ahsir4w9gkzjascpz24wa9szrsc5j3bk-crate-jiff-static-1.0.3.tar.gz.drv
+  /nix/store/gzapxy5132f2s83265ldjn0rzr5gd33b-jiff-static-1.0.3.drv
+  /nix/store/hlpq23v2h9r6d9f9bj1gl8vksny69g2q-anyhow-1.0.105.drv
+  /nix/store/ss00bj6nwxq4dw054l32xfbd1h22jy5b-crate-jiff-tzdb-platform-1.0.0.tar.gz.drv
+  /nix/store/i3qishqja6hz8lhds2npnhk33yx5vk8v-jiff-tzdb-platform-1.0.0.drv
+  /nix/store/qpp3llh9cj0fa88y8r550g36ylvpygg6-crate-cedar-policy-formatter-4.15.0.tar.gz.drv
+  /nix/store/irf8x68hdqdvc9g1ys10m50s5j1mihxv-cedar-policy-formatter-4.15.0.drv
+  /nix/store/jha64rfqyv0cw9q5r0lmspb1mzg74xnm-crate-fixedbitset-0.5.9.tar.gz.drv
+  /nix/store/jhas5xp0z0lfhjfxbq02z7607iklva2n-fixedbitset-0.5.9.drv
+  /nix/store/kypbca3c6lqy0wk39cfmcakh9bql3l6m-string_cache-0.8.9.drv
+  /nix/store/l2grnf6zhv8x4gxig881v5yw33innn8x-pico-args-0.5.0.drv
+  /nix/store/ldyk9laj78rf4wiyr2g7q0cq078pphby-term-1.2.1.drv
+  /nix/store/b49w3676ss3z4nwg8p8jyrnkgm2zvc7i-crate-jiff-1.0.3.tar.gz.drv
+  /nix/store/pgnc5xwa72xmlq0fhxgpa3r6jghc72jm-jiff-1.0.3.drv
+  /nix/store/dppw4amsc9aj8w9vh59hn97br86d8lvg-crate-unicode-security-0.1.3.tar.gz.drv
+  /nix/store/rml6j5qcbpn84xjlm98k6rwalnjyrf6r-unicode-security-0.1.3.drv
+  /nix/store/w0ga7v5yjg3x2pcjbq6s8h5l0yrgfmh3-ascii-canvas-4.0.0.drv
+  /nix/store/d3vgjd3z0n58jnbwifgq8l5caw5ghrxc-crate-smol_str-0.3.7.tar.gz.drv
+  /nix/store/wzbyliaic6nv00x3k1vrcr6l671km9fg-smol_str-0.3.7.drv
+  /nix/store/x3ki8j0j16zvdx88fr1j1vh95yp8r5s6-miette-derive-7.6.0.drv
+  /nix/store/87qajdhzbyc10cpbnkbj8kkn262rr3a5-cargo-vendor-dir.drv
+  /nix/store/2k412lzqn4rvxaw7cllzn50jz4lysaj1-cedar-spike-0.1.0.drv
+these 56 paths will be fetched (5.1 MiB download, 26.2 MiB unpacked):
+  /nix/store/l3b72f468jyac91wib34jhkr0a8mvkkb-ar_archive_writer-0.5.5
+  /nix/store/m4pqd1ahscrmq2036np05h0phfmk1fxr-arrayvec-0.5.2
+  /nix/store/m0ahixl7j1yzm33vqdaf9c13a09whjg7-borsh-1.8.1
+  /nix/store/q6j45ci7zcphi19y5wm79s61c6y3kbn6-bs58-0.5.1
+  /nix/store/pz4wvmgpd3hzvq6q8rm8dnqg8jlw101n-bumpalo-3.20.4
+  /nix/store/lkdfzxwpp7h5czcsxqylzgg6rk91mwiq-cc-1.11.3
+  /nix/store/kvqjhh6ggy1aynbi8zbjvvkiv1zbikfi-crate-anyhow-1.0.105.tar.gz
+  /nix/store/gvqh7mkjlpfv0lchv0gmnf62k37ynwk3-crate-ascii-canvas-4.0.0.tar.gz
+  /nix/store/430k7rfh15dv3w9ryh90yqniq94jfk0n-crate-ena-0.14.4.tar.gz
+  /nix/store/3gpmz0kw80pkrmf8gfrnadppc9y1bv1z-crate-lalrpop-0.22.2.tar.gz
+  /nix/store/yg2ikka7bbfv71gk5rqr1rcpsxgqmz0s-crate-lalrpop-util-0.22.2.tar.gz
+  /nix/store/din3lwlx99lp9f7y62g69l3dhxv8nwgq-crate-miette-7.6.0.tar.gz
+  /nix/store/vvn1cwsac0lm6x6j4yvyai5cmn5c6sfp-crate-miette-derive-7.6.0.tar.gz
+  /nix/store/yq4n3rmqdil3yxxphj63qq00zzd0688c-crate-pico-args-0.5.0.tar.gz
+  /nix/store/yqaz7xa4b41ayi2pp4s13w0mawkxkmw4-crate-precomputed-hash-0.1.1.tar.gz
+  /nix/store/spgs20yg154z9w65dh8ffnvrisqy3ixb-crate-string_cache-0.8.9.tar.gz
+  /nix/store/8ajlmybv38dgvqwm7zazp3yipm8pans2-crate-term-1.2.1.tar.gz
+  /nix/store/mhlsaf890xdx46gnfzniz5gg45vscyy2-enum-ordinalize-4.4.2
+  /nix/store/ndhvl5pidkfpw1blxsii15gmy2ldkb6i-enum-ordinalize-derive-4.4.2
+  /nix/store/pgfg8y0i1zh59hy49nsc9fl759qd3h97-find-msvc-tools-0.1.15
+  /nix/store/qpq27zp3cpacfcgz0v8qia1jrv7b1213-hashbrown-0.12.3
+  /nix/store/z6vrhww69gf24zx7l05n8476338qbmj1-hashbrown-0.17.2
+  /nix/store/63h26gy3cx6xnbqvmm0fix1qm8b59c49-indexmap-1.9.3
+  /nix/store/crjgsj86wwc27pky4yfrkkwmg1idp6dl-itertools-0.15.0
+  /nix/store/jdirdxdbkj6ixh25gqhdqr10c0gqzhy8-jiff-0.2.46
+  /nix/store/ch67sijgcifl2xkybv1szsybi6swclml-jiff-core-0.1.8
+  /nix/store/2x6sfr90k7jk8k6rb9w3r6b8pk1s9cfp-jiff-static-0.2.46
+  /nix/store/4dmm5ip03x4z96vva1ry4b6jnf2n58qc-jiff-tzdb-0.1.10
+  /nix/store/zxx9q32pqnh64jpki4b4p71dhs2yhxja-js-sys-0.3.107
+  /nix/store/43j802chkbp98lgn8ijsl404ig08yv4j-keccak-0.1.6
+  /nix/store/amlml57kh1ckkc22s9bpdqqmnd4bimyl-linked-hash-map-0.5.6
+  /nix/store/2smkx3qgnm5a68bj2qpc8f25k01g524z-linked_hash_set-0.1.6
+  /nix/store/w9w4z3m5xfvmrmrc2y13z8x6hah5bzl5-logos-0.16.1
+  /nix/store/2i4y46rx4gcbkjkw22j66dh6hlqql4wv-logos-codegen-0.16.1
+  /nix/store/9iamaq6flikrxg0yapmdlimy2wp0czc5-logos-derive-0.16.1
+  /nix/store/i63p1l3kxqrd2b04kn9zl4arxvzmy54b-new_debug_unreachable-1.0.6
+  /nix/store/ab7gar7spq14n7bxchkz6bclvqhgnsh7-nonempty-0.12.0
+  /nix/store/43csra5pgd9k0zp02bk3zd1hw25wxrr6-object-0.39.1
+  /nix/store/bb5068yccyxg41w9w0niy7fk316clgrb-petgraph-0.7.1
+  /nix/store/mmladvjfgmh91ywlrs6yl194si8xncbz-phf_shared-0.11.3
+  /nix/store/hmmbvi04wis8aymcx9hrrkdlypmsaisr-psm-0.1.32
+  /nix/store/zkq0f8qlxgzbn3s94b89y79dc25xqc2b-regex-1.13.2
+  /nix/store/ljryxfnhvx4r03n86dhdc1jyjqfnir5q-schemars-0.9.0
+  /nix/store/8h2xd8s574ra9fv06y851s13rnqk10n8-schemars-1.2.3
+  /nix/store/62wilk7yjrlwhk89308qnma02pdgqymz-sha3-0.10.9
+  /nix/store/q4qynzfar43l1s2kfhgf0xgazzyjcjls-stacker-0.1.25
+  /nix/store/mph6i5hvrixb2487m3by8ndbvndbhmfd-time-macros-0.2.32
+  /nix/store/gh5fq3rcds9pqflkh4qd4abqxp9wnzsb-typed-arena-2.0.2
+  /nix/store/gi3dzv4dimc9k96bsr95gw8kq8rwcj36-unicode-width-0.1.14
+  /nix/store/b9drx95kyyl3c42k7nhsrhif3q2ljfbj-unicode-width-0.2.3
+  /nix/store/b5qdry4m0l1b4lyrznyidwik6cp0fml1-unicode-xid-0.2.6
+  /nix/store/ga8m0sazlqng50nxqa0m0g1fq6k4qv4v-walkdir-2.5.1
+  /nix/store/59id2l2h23rbvambqivq526xgii47jw4-wasm-bindgen-0.2.130
+  /nix/store/3glzplzw51z1vclyh9i9j1hjjgnrb554-wasm-bindgen-macro-0.2.130
+  /nix/store/5frmgqbygyxxia1jqvk32k127z65lb16-wasm-bindgen-macro-support-0.2.130
+  /nix/store/3abfvy3xgvzank8cgfmbvk9m7b7xnxfc-wasm-bindgen-shared-0.2.130
+copying path '/nix/store/l3b72f468jyac91wib34jhkr0a8mvkkb-ar_archive_writer-0.5.5' from 'https://nix-community.cachix.org'...
+copying path '/nix/store/m4pqd1ahscrmq2036np05h0phfmk1fxr-arrayvec-0.5.2' from 'https://cache.nixos.org'...
+copying path '/nix/store/m0ahixl7j1yzm33vqdaf9c13a09whjg7-borsh-1.8.1' from 'https://cache.nixos.org'...
+copying path '/nix/store/q6j45ci7zcphi19y5wm79s61c6y3kbn6-bs58-0.5.1' from 'https://nix-community.cachix.org'...
+copying path '/nix/store/pz4wvmgpd3hzvq6q8rm8dnqg8jlw101n-bumpalo-3.20.4' from 'https://nix-community.cachix.org'...
+copying path '/nix/store/lkdfzxwpp7h5czcsxqylzgg6rk91mwiq-cc-1.11.3' from 'https://nix-community.cachix.org'...
+copying path '/nix/store/pgfg8y0i1zh59hy49nsc9fl759qd3h97-find-msvc-tools-0.1.15' from 'https://cache.nixos.org'...
+copying path '/nix/store/ndhvl5pidkfpw1blxsii15gmy2ldkb6i-enum-ordinalize-derive-4.4.2' from 'https://nix-community.cachix.org'...
+copying path '/nix/store/qpq27zp3cpacfcgz0v8qia1jrv7b1213-hashbrown-0.12.3' from 'https://cache.nixos.org'...
+copying path '/nix/store/mhlsaf890xdx46gnfzniz5gg45vscyy2-enum-ordinalize-4.4.2' from 'https://nix-community.cachix.org'...
+copying path '/nix/store/63h26gy3cx6xnbqvmm0fix1qm8b59c49-indexmap-1.9.3' from 'https://cache.nixos.org'...
+copying path '/nix/store/jdirdxdbkj6ixh25gqhdqr10c0gqzhy8-jiff-0.2.46' from 'https://nix-community.cachix.org'...
+copying path '/nix/store/z6vrhww69gf24zx7l05n8476338qbmj1-hashbrown-0.17.2' from 'https://nix-community.cachix.org'...
+copying path '/nix/store/ch67sijgcifl2xkybv1szsybi6swclml-jiff-core-0.1.8' from 'https://nix-community.cachix.org'...
+copying path '/nix/store/crjgsj86wwc27pky4yfrkkwmg1idp6dl-itertools-0.15.0' from 'https://cache.nixos.org'...
+copying path '/nix/store/2x6sfr90k7jk8k6rb9w3r6b8pk1s9cfp-jiff-static-0.2.46' from 'https://nix-community.cachix.org'...
+building '/nix/store/z5dnlv6wjh49a75g6817g4lvfkn55jkz-crate-cedar-policy-4.15.0.tar.gz.drv'...
+building '/nix/store/aja7ybrqcpyz07xd8cy68z3yz50vmph0-crate-cedar-policy-core-4.15.0.tar.gz.drv'...
+building '/nix/store/qpp3llh9cj0fa88y8r550g36ylvpygg6-crate-cedar-policy-formatter-4.15.0.tar.gz.drv'...
+building '/nix/store/779bkvjmmzlw7hgwfd4sppq9gi2njj4p-crate-educe-0.8.2.tar.gz.drv'...
+building '/nix/store/jha64rfqyv0cw9q5r0lmspb1mzg74xnm-crate-fixedbitset-0.5.9.tar.gz.drv'...
+building '/nix/store/b49w3676ss3z4nwg8p8jyrnkgm2zvc7i-crate-jiff-1.0.3.tar.gz.drv'...
+building '/nix/store/g5byvzdgkardfwz6s0iq2hihvzrbysgd-crate-jiff-core-1.0.2.tar.gz.drv'...
+building '/nix/store/ahsir4w9gkzjascpz24wa9szrsc5j3bk-crate-jiff-static-1.0.3.tar.gz.drv'...
+building '/nix/store/56sq11f3vhkh6xxb95np4xnc0pp0q0ql-crate-jiff-tzdb-1.0.0.tar.gz.drv'...
+building '/nix/store/ss00bj6nwxq4dw054l32xfbd1h22jy5b-crate-jiff-tzdb-platform-1.0.0.tar.gz.drv'...
+building '/nix/store/wf0j80344bapk6gmhvks87455m2nnvz2-crate-pretty-0.12.5.tar.gz.drv'...
+building '/nix/store/xsphr0sasngzc601z0brkd9hp0d9cfbl-crate-rustc-literal-escaper-0.0.8.tar.gz.drv'...
+building '/nix/store/wbya3xj6y676s6nxpjcadvbvf1sv0wib-crate-serde_with-3.25.0.tar.gz.drv'...
+building '/nix/store/n89ig2qd4b9k7sgj8rgl9y86ywsc7y46-crate-serde_with_macros-3.25.0.tar.gz.drv'...
+crate-jiff-static> 
+crate-jiff-static> trying https://static.crates.io/crates/jiff-static/1.0.3/download
+crate-jiff-static>   % Total    % Received % Xferd  Average Speed  Time    Time    Time   Current
+crate-jiff-static>                                  Dload  Upload  Total   Spent   Left   Speed
+crate-jiff-static> 
+crate-jiff-static>   0      0   0      0   0      0      0      0                              0
+crate-jiff-static> 100   7595 100   7595   0      0 212.8k      0                              0
+crate-jiff-static> 100   7595 100   7595   0      0 212.7k      0                              0
+crate-jiff-static> 100   7595 100   7595   0      0 212.6k      0                              0
+crate-jiff-tzdb> 
+crate-jiff-tzdb> trying https://static.crates.io/crates/jiff-tzdb/1.0.0/download
+crate-jiff-tzdb>   % Total    % Received % Xferd  Average Speed  Time    Time    Time   Current
+crate-jiff-tzdb>                                  Dload  Upload  Total   Spent   Left   Speed
+crate-jiff-tzdb> 
+crate-jiff-tzdb>   0      0   0      0   0      0      0      0                              0
+crate-jiff-tzdb> 100  62763 100  62763   0      0  1.38M      0                              0
+crate-jiff-tzdb> 100  62763 100  62763   0      0  1.38M      0                              0
+crate-jiff-tzdb> 100  62763 100  62763   0      0  1.38M      0                              0
+crate-jiff-tzdb-platform> 
+crate-jiff-tzdb-platform> trying https://static.crates.io/crates/jiff-tzdb-platform/1.0.0/download
+crate-jiff-tzdb-platform>   % Total    % Received % Xferd  Average Speed  Time    Time    Time   Current
+crate-jiff-tzdb-platform>                                  Dload  Upload  Total   Spent   Left   Speed
+crate-jiff-tzdb-platform> 
+crate-jiff-tzdb-platform>   0      0   0      0   0      0      0      0                              0
+crate-jiff-tzdb-platform> 100   3185 100   3185   0      0  59762      0                              0
+crate-jiff-tzdb-platform> 100   3185 100   3185   0      0  59697      0                              0
+crate-jiff-tzdb-platform> 100   3185 100   3185   0      0  59641      0                              0
+crate-pretty> 
+crate-pretty> trying https://static.crates.io/crates/pretty/0.12.5/download
+crate-pretty>   % Total    % Received % Xferd  Average Speed  Time    Time    Time   Current
+crate-pretty>                                  Dload  Upload  Total   Spent   Left   Speed
+crate-pretty> 
+crate-pretty>   0      0   0      0   0      0      0      0                              0
+crate-pretty> 100  29867 100  29867   0      0 743.9k      0                              0
+crate-pretty> 100  29867 100  29867   0      0 743.6k      0                              0
+crate-pretty> 100  29867 100  29867   0      0 743.2k      0                              0
+crate-rustc-literal-escaper> 
+crate-rustc-literal-escaper> trying https://static.crates.io/crates/rustc-literal-escaper/0.0.8/download
+crate-rustc-literal-escaper>   % Total    % Received % Xferd  Average Speed  Time    Time    Time   Current
+crate-rustc-literal-escaper>                                  Dload  Upload  Total   Spent   Left   Speed
+crate-rustc-literal-escaper> 
+crate-rustc-literal-escaper>   0      0   0      0   0      0      0      0                              0
+crate-rustc-literal-escaper> 100  14104 100  14104   0      0 345.4k      0                              0
+crate-rustc-literal-escaper> 100  14104 100  14104   0      0 345.3k      0                              0
+crate-rustc-literal-escaper> 100  14104 100  14104   0      0 344.9k      0                              0
+crate-serde_with> 
+crate-serde_with> trying https://static.crates.io/crates/serde_with/3.25.0/download
+crate-serde_with>   % Total    % Received % Xferd  Average Speed  Time    Time    Time   Current
+crate-serde_with>                                  Dload  Upload  Total   Spent   Left   Speed
+crate-serde_with> 
+crate-serde_with>   0      0   0      0   0      0      0      0                              0
+crate-serde_with> 100 208.5k 100 208.5k   0      0  3.36M      0                              0
+crate-serde_with> 100 208.5k 100 208.5k   0      0  3.35M      0                              0
+crate-serde_with> 100 208.5k 100 208.5k   0      0  3.35M      0                              0
+copying path '/nix/store/kvqjhh6ggy1aynbi8zbjvvkiv1zbikfi-crate-anyhow-1.0.105.tar.gz' from 'https://cache.numtide.com'...
+copying path '/nix/store/430k7rfh15dv3w9ryh90yqniq94jfk0n-crate-ena-0.14.4.tar.gz' from 'https://cache.nixos.org'...
+copying path '/nix/store/gvqh7mkjlpfv0lchv0gmnf62k37ynwk3-crate-ascii-canvas-4.0.0.tar.gz' from 'https://cache.nixos.org'...
+copying path '/nix/store/3gpmz0kw80pkrmf8gfrnadppc9y1bv1z-crate-lalrpop-0.22.2.tar.gz' from 'https://cache.nixos.org'...
+copying path '/nix/store/yg2ikka7bbfv71gk5rqr1rcpsxgqmz0s-crate-lalrpop-util-0.22.2.tar.gz' from 'https://cache.nixos.org'...
+copying path '/nix/store/din3lwlx99lp9f7y62g69l3dhxv8nwgq-crate-miette-7.6.0.tar.gz' from 'https://cache.numtide.com'...
+copying path '/nix/store/vvn1cwsac0lm6x6j4yvyai5cmn5c6sfp-crate-miette-derive-7.6.0.tar.gz' from 'https://cache.numtide.com'...
+copying path '/nix/store/yq4n3rmqdil3yxxphj63qq00zzd0688c-crate-pico-args-0.5.0.tar.gz' from 'https://cache.numtide.com'...
+copying path '/nix/store/yqaz7xa4b41ayi2pp4s13w0mawkxkmw4-crate-precomputed-hash-0.1.1.tar.gz' from 'https://cache.nixos.org'...
+copying path '/nix/store/spgs20yg154z9w65dh8ffnvrisqy3ixb-crate-string_cache-0.8.9.tar.gz' from 'https://cache.nixos.org'...
+copying path '/nix/store/8ajlmybv38dgvqwm7zazp3yipm8pans2-crate-term-1.2.1.tar.gz' from 'https://cache.nixos.org'...
+copying path '/nix/store/4dmm5ip03x4z96vva1ry4b6jnf2n58qc-jiff-tzdb-0.1.10' from 'https://nix-community.cachix.org'...
+copying path '/nix/store/43j802chkbp98lgn8ijsl404ig08yv4j-keccak-0.1.6' from 'https://nix-community.cachix.org'...
+copying path '/nix/store/2smkx3qgnm5a68bj2qpc8f25k01g524z-linked_hash_set-0.1.6' from 'https://nix-community.cachix.org'...
+copying path '/nix/store/zxx9q32pqnh64jpki4b4p71dhs2yhxja-js-sys-0.3.107' from 'https://cache.nixos.org'...
+copying path '/nix/store/amlml57kh1ckkc22s9bpdqqmnd4bimyl-linked-hash-map-0.5.6' from 'https://cache.nixos.org'...
+building '/nix/store/d3vgjd3z0n58jnbwifgq8l5caw5ghrxc-crate-smol_str-0.3.7.tar.gz.drv'...
+building '/nix/store/6w2v18sw0rkkzhza2hqzxj5vf4886hvg-crate-unicode-script-0.5.9.tar.gz.drv'...
+building '/nix/store/dppw4amsc9aj8w9vh59hn97br86d8lvg-crate-unicode-security-0.1.3.tar.gz.drv'...
+building '/nix/store/bkslgfdz6x90a3ij6w1k9w1wq7gy4dk1-cedar-policy-4.15.0.drv'...
+building '/nix/store/0fp6bz6k8pdq5pghwpilhdzi1kpw5k5n-cedar-policy-core-4.15.0.drv'...
+building '/nix/store/irf8x68hdqdvc9g1ys10m50s5j1mihxv-cedar-policy-formatter-4.15.0.drv'...
+building '/nix/store/aw8w1qawhq75bjrl38l6lf30cs1qshm6-educe-0.8.2.drv'...
+warning: SQLite database '/nix/var/nix/db/db.sqlite' is busy
+warning: SQLite database '/nix/var/nix/db/db.sqlite' is busy
+warning: SQLite database '/nix/var/nix/db/db.sqlite' is busy
+warning: SQLite database '/nix/var/nix/db/db.sqlite' is busy
+warning: SQLite database '/nix/var/nix/db/db.sqlite' is busy
+crate-unicode-script> 
+crate-unicode-script> trying https://static.crates.io/crates/unicode-script/0.5.9/download
+crate-unicode-script>   % Total    % Received % Xferd  Average Speed  Time    Time    Time   Current
+crate-unicode-script>                                  Dload  Upload  Total   Spent   Left   Speed
+crate-unicode-script> 
+crate-unicode-script>   0      0   0      0   0      0      0      0                              0
+crate-unicode-script> 100  48814 100  48814   0      0  1.00M      0                              0
+crate-unicode-script> 100  48814 100  48814   0      0  1.00M      0                              0
+crate-unicode-script> 100  48814 100  48814   0      0  1.00M      0                              0
+crate-unicode-security> 
+crate-unicode-security> trying https://static.crates.io/crates/unicode-security/0.1.3/download
+crate-unicode-security>   % Total    % Received % Xferd  Average Speed  Time    Time    Time   Current
+crate-unicode-security>                                  Dload  Upload  Total   Spent   Left   Speed
+crate-unicode-security> 
+crate-unicode-security>   0      0   0      0   0      0      0      0                              0
+crate-unicode-security> 100 101.6k 100 101.6k   0      0  2.04M      0                              0
+crate-unicode-security> 100 101.6k 100 101.6k   0      0  2.04M      0                              0
+crate-unicode-security> 100 101.6k 100 101.6k   0      0  2.04M      0                              0
+copying path '/nix/store/w9w4z3m5xfvmrmrc2y13z8x6hah5bzl5-logos-0.16.1' from 'https://cache.nixos.org'...
+copying path '/nix/store/2i4y46rx4gcbkjkw22j66dh6hlqql4wv-logos-codegen-0.16.1' from 'https://cache.nixos.org'...
+copying path '/nix/store/mmladvjfgmh91ywlrs6yl194si8xncbz-phf_shared-0.11.3' from 'https://cache.nixos.org'...
+copying path '/nix/store/i63p1l3kxqrd2b04kn9zl4arxvzmy54b-new_debug_unreachable-1.0.6' from 'https://nix-community.cachix.org'...
+copying path '/nix/store/ab7gar7spq14n7bxchkz6bclvqhgnsh7-nonempty-0.12.0' from 'https://nix-community.cachix.org'...
+copying path '/nix/store/43csra5pgd9k0zp02bk3zd1hw25wxrr6-object-0.39.1' from 'https://nix-community.cachix.org'...
+copying path '/nix/store/9iamaq6flikrxg0yapmdlimy2wp0czc5-logos-derive-0.16.1' from 'https://cache.nixos.org'...
+copying path '/nix/store/hmmbvi04wis8aymcx9hrrkdlypmsaisr-psm-0.1.32' from 'https://nix-community.cachix.org'...
+copying path '/nix/store/ljryxfnhvx4r03n86dhdc1jyjqfnir5q-schemars-0.9.0' from 'https://cache.nixos.org'...
+copying path '/nix/store/zkq0f8qlxgzbn3s94b89y79dc25xqc2b-regex-1.13.2' from 'https://cache.nixos.org'...
+copying path '/nix/store/bb5068yccyxg41w9w0niy7fk316clgrb-petgraph-0.7.1' from 'https://nix-community.cachix.org'...
+building '/nix/store/jhas5xp0z0lfhjfxbq02z7607iklva2n-fixedbitset-0.5.9.drv'...
+building '/nix/store/pgnc5xwa72xmlq0fhxgpa3r6jghc72jm-jiff-1.0.3.drv'...
+building '/nix/store/0qihzix6rv6hlv78wn9s4pbn76w6g34k-jiff-core-1.0.2.drv'...
+building '/nix/store/w0ga7v5yjg3x2pcjbq6s8h5l0yrgfmh3-ascii-canvas-4.0.0.drv'...
+building '/nix/store/1vl6ahxmzf2dbgv54fdc6338jkjcl2l6-ena-0.14.4.drv'...
+building '/nix/store/gzapxy5132f2s83265ldjn0rzr5gd33b-jiff-static-1.0.3.drv'...
+building '/nix/store/2r7bididhckna4jzsw4mqqf970cf9xzm-jiff-tzdb-1.0.0.drv'...
+building '/nix/store/i3qishqja6hz8lhds2npnhk33yx5vk8v-jiff-tzdb-platform-1.0.0.drv'...
+building '/nix/store/06nn7knidzwsn2pv1ikv80dy836xbll0-lalrpop-0.22.2.drv'...
+building '/nix/store/fiyi69ar9v32f6lfhbm14rypplnry69q-lalrpop-util-0.22.2.drv'...
+building '/nix/store/x3ki8j0j16zvdx88fr1j1vh95yp8r5s6-miette-derive-7.6.0.drv'...
+copying path '/nix/store/8h2xd8s574ra9fv06y851s13rnqk10n8-schemars-1.2.3' from 'https://nix-community.cachix.org'...
+copying path '/nix/store/62wilk7yjrlwhk89308qnma02pdgqymz-sha3-0.10.9' from 'https://nix-community.cachix.org'...
+copying path '/nix/store/q4qynzfar43l1s2kfhgf0xgazzyjcjls-stacker-0.1.25' from 'https://nix-community.cachix.org'...
+copying path '/nix/store/mph6i5hvrixb2487m3by8ndbvndbhmfd-time-macros-0.2.32' from 'https://cache.nixos.org'...
+copying path '/nix/store/gh5fq3rcds9pqflkh4qd4abqxp9wnzsb-typed-arena-2.0.2' from 'https://cache.nixos.org'...
+copying path '/nix/store/gi3dzv4dimc9k96bsr95gw8kq8rwcj36-unicode-width-0.1.14' from 'https://cache.nixos.org'...
+copying path '/nix/store/b9drx95kyyl3c42k7nhsrhif3q2ljfbj-unicode-width-0.2.3' from 'https://nix-community.cachix.org'...
+copying path '/nix/store/ga8m0sazlqng50nxqa0m0g1fq6k4qv4v-walkdir-2.5.1' from 'https://cache.nixos.org'...
+copying path '/nix/store/59id2l2h23rbvambqivq526xgii47jw4-wasm-bindgen-0.2.130' from 'https://cache.nixos.org'...
+copying path '/nix/store/5frmgqbygyxxia1jqvk32k127z65lb16-wasm-bindgen-macro-support-0.2.130' from 'https://cache.nixos.org'...
+copying path '/nix/store/3abfvy3xgvzank8cgfmbvk9m7b7xnxfc-wasm-bindgen-shared-0.2.130' from 'https://cache.nixos.org'...
+copying path '/nix/store/b5qdry4m0l1b4lyrznyidwik6cp0fml1-unicode-xid-0.2.6' from 'https://cache.nixos.org'...
+copying path '/nix/store/3glzplzw51z1vclyh9i9j1hjjgnrb554-wasm-bindgen-macro-0.2.130' from 'https://cache.nixos.org'...
+building '/nix/store/97zb3d0rynf0f7wgxxxk81br56fmv141-precomputed-hash-0.1.1.drv'...
+building '/nix/store/8m58j72v0v9y9ni1y1jswmbpp0qinpkw-pretty-0.12.5.drv'...
+building '/nix/store/7xzr81lcbfv2cnag1dpzljxxpj0jqnpg-rustc-literal-escaper-0.0.8.drv'...
+building '/nix/store/7vpif31sa1qk2gl396n3nv52v7088day-serde_with-3.25.0.drv'...
+building '/nix/store/9mdkkdaplndcpvdcs44h2l1v11hccjmc-serde_with_macros-3.25.0.drv'...
+building '/nix/store/wzbyliaic6nv00x3k1vrcr6l671km9fg-smol_str-0.3.7.drv'...
+building '/nix/store/kypbca3c6lqy0wk39cfmcakh9bql3l6m-string_cache-0.8.9.drv'...
+building '/nix/store/ldyk9laj78rf4wiyr2g7q0cq078pphby-term-1.2.1.drv'...
+building '/nix/store/hlpq23v2h9r6d9f9bj1gl8vksny69g2q-anyhow-1.0.105.drv'...
+building '/nix/store/9p1sfs3knjnfb18979slkldrkff3hxsa-miette-7.6.0.drv'...
+building '/nix/store/l2grnf6zhv8x4gxig881v5yw33innn8x-pico-args-0.5.0.drv'...
+building '/nix/store/85x2yxprl2bj0ri7aa30b2vgkn0lbds5-unicode-script-0.5.9.drv'...
+building '/nix/store/rml6j5qcbpn84xjlm98k6rwalnjyrf6r-unicode-security-0.1.3.drv'...
+building '/nix/store/87qajdhzbyc10cpbnkbj8kkn262rr3a5-cargo-vendor-dir.drv'...
+building '/nix/store/2k412lzqn4rvxaw7cllzn50jz4lysaj1-cedar-spike-0.1.0.drv'...
+cedar-spike> Running phase: unpackPhase
+cedar-spike> unpacking source archive /nix/store/h71sh8rdl5aq7x40ghpnd6w963pfzv6k-source
+cedar-spike> source root is source
+cedar-spike> Executing cargoSetupPostUnpackHook
+cedar-spike> Finished cargoSetupPostUnpackHook
+cedar-spike> Running phase: patchPhase
+cedar-spike> Executing cargoSetupPostPatchHook
+cedar-spike> Validating consistency between /nix/var/nix/builds/nix-94491-3084801450/source/Cargo.lock and /nix/var/nix/builds/nix-94491-3084801450/cargo-vendor-dir/Cargo.lock
+cedar-spike> Finished cargoSetupPostPatchHook
+cedar-spike> Running phase: updateAutotoolsGnuConfigScriptsPhase
+cedar-spike> Running phase: configurePhase
+cedar-spike> Running phase: buildPhase
+cedar-spike> Executing cargoBuildHook
+cedar-spike> cargoBuildHook flags: -j 14 --target aarch64-apple-darwin --offline --profile release
+cedar-spike>    Compiling proc-macro2 v1.0.107
+cedar-spike>    Compiling quote v1.0.47
+cedar-spike>    Compiling unicode-ident v1.0.27
+cedar-spike>    Compiling memchr v2.8.3
+cedar-spike>    Compiling libc v0.2.191
+cedar-spike>    Compiling serde_core v1.0.229
+cedar-spike>    Compiling version_check v0.9.5
+cedar-spike>    Compiling regex-syntax v0.8.12
+cedar-spike>    Compiling typenum v1.20.1
+cedar-spike>    Compiling find-msvc-tools v0.1.15
+cedar-spike>    Compiling rustversion v1.0.23
+cedar-spike>    Compiling object v0.39.1
+cedar-spike>    Compiling parking_lot_core v0.9.12
+cedar-spike>    Compiling shlex v2.0.1
+cedar-spike>    Compiling cc v1.11.3
+cedar-spike>    Compiling cfg-if v1.0.5
+cedar-spike>    Compiling scopeguard v1.2.0
+cedar-spike>    Compiling generic-array v0.14.7
+cedar-spike>    Compiling smallvec v1.16.6
+cedar-spike>    Compiling serde v1.0.229
+cedar-spike>    Compiling aho-corasick v1.1.5
+cedar-spike>    Compiling lock_api v0.4.14
+cedar-spike>    Compiling strsim v0.11.1
+cedar-spike>    Compiling hashbrown v0.17.2
+cedar-spike>    Compiling ident_case v1.0.1
+cedar-spike>    Compiling regex-automata v0.4.19
+cedar-spike>    Compiling siphasher v1.0.4
+cedar-spike>    Compiling block-buffer v0.10.4
+cedar-spike>    Compiling crypto-common v0.1.7
+cedar-spike>    Compiling equivalent v1.0.3
+cedar-spike>    Compiling phf_shared v0.11.3
+cedar-spike>    Compiling digest v0.10.7
+cedar-spike>    Compiling same-file v1.0.6
+cedar-spike>    Compiling indexmap v2.14.2
+cedar-spike>    Compiling fixedbitset v0.5.9
+cedar-spike>    Compiling either v1.19.0
+cedar-spike>    Compiling log v0.4.35
+cedar-spike>    Compiling bit-vec v0.8.0
+cedar-spike>    Compiling term v1.2.1
+cedar-spike>    Compiling autocfg v1.5.1
+cedar-spike>    Compiling new_debug_unreachable v1.0.6
+cedar-spike>    Compiling zmij v1.0.23
+cedar-spike>    Compiling precomputed-hash v0.1.1
+cedar-spike>    Compiling petgraph v0.7.1
+cedar-spike>    Compiling ascii-canvas v4.0.0
+cedar-spike>    Compiling num-traits v0.2.19
+cedar-spike>    Compiling bit-set v0.8.0
+cedar-spike>    Compiling itertools v0.14.0
+cedar-spike>    Compiling ena v0.14.4
+cedar-spike>    Compiling walkdir v2.5.1
+cedar-spike>    Compiling cpufeatures v0.2.17
+cedar-spike>    Compiling keccak v0.1.6
+cedar-spike>    Compiling parking_lot v0.12.5
+cedar-spike>    Compiling sha3 v0.10.9
+cedar-spike>    Compiling string_cache v0.8.9
+cedar-spike>    Compiling unicode-xid v0.2.6
+cedar-spike>    Compiling serde_json v1.0.154
+cedar-spike>    Compiling pico-args v0.5.0
+cedar-spike>    Compiling syn v3.0.10
+cedar-spike>    Compiling syn v2.0.119
+cedar-spike>    Compiling stacker v0.1.25
+cedar-spike>    Compiling regex v1.13.2
+cedar-spike>    Compiling lalrpop-util v0.22.2
+cedar-spike>    Compiling itoa v1.0.19
+cedar-spike>    Compiling foldhash v0.2.0
+cedar-spike>    Compiling lalrpop v0.22.2
+cedar-spike>    Compiling ref-cast v1.0.27
+cedar-spike>    Compiling ar_archive_writer v0.5.5
+cedar-spike>    Compiling tinyvec v1.13.3
+cedar-spike>    Compiling thiserror v2.0.21
+cedar-spike>    Compiling fnv v1.0.7
+cedar-spike>    Compiling unicode-normalization v0.1.26
+cedar-spike>    Compiling unicode-script v0.5.9
+cedar-spike>    Compiling unicode-width v0.1.14
+cedar-spike>    Compiling psm v0.1.32
+cedar-spike>    Compiling chrono v0.4.45
+cedar-spike>    Compiling itertools v0.15.0
+cedar-spike>    Compiling smol_str v0.3.7
+cedar-spike>    Compiling unicode-security v0.1.3
+cedar-spike>    Compiling logos-codegen v0.16.1
+cedar-spike>    Compiling typed-arena v2.0.2
+cedar-spike>    Compiling rustc-literal-escaper v0.0.8
+cedar-spike>    Compiling unicode-width v0.2.3
+cedar-spike>    Compiling arrayvec v0.5.2
+cedar-spike>    Compiling cedar-policy v4.15.0
+cedar-spike>    Compiling pretty v0.12.5
+cedar-spike>    Compiling anyhow v1.0.105
+cedar-spike>    Compiling darling_core v0.24.1
+cedar-spike>    Compiling semver v1.0.28
+cedar-spike>    Compiling miette-derive v7.6.0
+cedar-spike>    Compiling logos-derive v0.16.1
+cedar-spike>    Compiling logos v0.16.1
+cedar-spike>    Compiling serde_derive v1.0.229
+cedar-spike>    Compiling enum-ordinalize-derive v4.4.2
+cedar-spike>    Compiling ref-cast-impl v1.0.27
+cedar-spike>    Compiling thiserror-impl v2.0.21
+cedar-spike>    Compiling enum-ordinalize v4.4.2
+cedar-spike>    Compiling educe v0.8.2
+cedar-spike>    Compiling darling_macro v0.24.1
+cedar-spike>    Compiling darling v0.24.1
+cedar-spike>    Compiling serde_with_macros v3.25.0
+cedar-spike>    Compiling serde_with v3.25.0
+cedar-spike>    Compiling cedar-policy-core v4.15.0
+cedar-spike>    Compiling linked-hash-map v0.5.6
+cedar-spike>    Compiling miette v7.6.0
+cedar-spike>    Compiling nonempty v0.12.0
+cedar-spike>    Compiling linked_hash_set v0.1.6
+cedar-spike>    Compiling cedar-policy-formatter v4.15.0
+cedar-spike>    Compiling cedar-spike v0.1.0 (/nix/var/nix/builds/nix-94491-3084801450/source)
+cedar-spike>     Finished `release` profile [optimized] target(s) in 1m 01s
+cedar-spike> Executing cargoInstallPostBuildHook
+cedar-spike> Finished cargoInstallPostBuildHook
+cedar-spike> Finished cargoBuildHook
+cedar-spike> buildPhase completed in 1 minutes 2 seconds
+cedar-spike> Running phase: checkPhase
+cedar-spike> Executing cargoCheckHook
+cedar-spike> cargoCheckHook flags: -j 14 --profile release --target aarch64-apple-darwin --offline --
+cedar-spike>    Compiling cedar-spike v0.1.0 (/nix/var/nix/builds/nix-94491-3084801450/source)
+cedar-spike>     Finished `release` profile [optimized] target(s) in 1.81s
+cedar-spike>      Running unittests src/main.rs (target/aarch64-apple-darwin/release/deps/cedar_spike-c9b1ea83962790b3)
+cedar-spike> 
+cedar-spike> running 1 test
+cedar-spike> test tests::the_table_decides_as_intended ... ok(B
+cedar-spike> 
+cedar-spike> test result: ok(B. 1 passed; 0 failed; 0 ignored; 0 measured; 0 filtered out; finished in 0.02s
+cedar-spike> 
+cedar-spike> Finished cargoCheckHook
+cedar-spike> Running phase: installPhase
+cedar-spike> Executing cargoInstallHook
+cedar-spike> Finished cargoInstallHook
+cedar-spike> Running phase: fixupPhase
+cedar-spike> checking for references to /nix/var/nix/builds/nix-94491-3084801450/ in /nix/store/cr7cf2hwacmvvkv3phwngr4vad7kmnd4-cedar-spike-0.1.0...
+cedar-spike> patching script interpreter paths in /nix/store/cr7cf2hwacmvvkv3phwngr4vad7kmnd4-cedar-spike-0.1.0
+cedar-spike> stripping (with command strip and flags -S) in /nix/store/cr7cf2hwacmvvkv3phwngr4vad7kmnd4-cedar-spike-0.1.0/bin
