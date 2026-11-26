@@ -170,7 +170,9 @@ impl Wrappers {
         }
     }
 
-    /// Binds the socket (replacing a stale one) in a directory only this user can enter.
+    /// Binds the socket (replacing a stale one) in a directory only this user can enter. One
+    /// another node still answers on is left to it, as an error: replacing it would leave that
+    /// node running with no socket a `saarthi run` can reach (EXP-20261126-f3e5v3).
     pub fn bind(path: &Path) -> Result<UnixListener> {
         use std::os::unix::fs::PermissionsExt;
         let dir = path
@@ -178,6 +180,9 @@ impl Wrappers {
             .context("the wrapper socket needs a directory")?;
         std::fs::create_dir_all(dir).with_context(|| format!("creating {}", dir.display()))?;
         std::fs::set_permissions(dir, std::fs::Permissions::from_mode(0o700))?;
+        if std::os::unix::net::UnixStream::connect(path).is_ok() {
+            anyhow::bail!("{}: another node answers there; give this one its own --wrapper-socket", path.display());
+        }
         let _ = std::fs::remove_file(path);
         UnixListener::bind(path).with_context(|| format!("binding {}", path.display()))
     }
@@ -330,6 +335,20 @@ mod tests {
     use super::*;
     use crate::registry::Record;
     use std::time::Duration;
+
+    /// A second node on the same socket is refused and the first keeps it; a stale socket,
+    /// left by a node that is gone, is replaced.
+    #[tokio::test]
+    async fn a_live_socket_is_not_taken() {
+        let dir = tempfile::tempdir().unwrap();
+        let socket = dir.path().join("node.sock");
+        let first = Wrappers::bind(&socket).unwrap();
+        let e = Wrappers::bind(&socket).unwrap_err();
+        assert!(e.to_string().contains("another node answers there"), "{e}");
+        assert!(tokio::net::UnixStream::connect(&socket).await.is_ok());
+        drop(first);
+        assert!(Wrappers::bind(&socket).is_ok());
+    }
 
     /// The test runs under `nix develop`, whose `$TMPDIR` is a `/tmp/nix-shell.*`
     /// directory: the sockets must not follow it.
