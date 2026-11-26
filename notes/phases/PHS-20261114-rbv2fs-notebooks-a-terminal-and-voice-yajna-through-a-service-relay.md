@@ -28,8 +28,8 @@ done ones. The project page's *Progress* lists this phase on one line.
 - [x] 4. New project: a spawn of `/yajna:project <brief>` in a chosen notebook (ADR-0053): built in 0.12.0, a sheet on the notebooks screen spawning yajna's command for the kind of project; a spawned session has no AskUserQuestion, so the node gives it a question tool of its own and the interview arrives as question cards ([[EXP-20261117-de4f82]], ADR-0060, ADR-0061); checked on the emulator against a local hub and node, the question tool against real Claude Code
 - [x] 5. The terminal: does libghostty-vt build for Android and keep up ([[EXP-20261114-raqjf0]]): yes; on the Fold it takes a shell's output in at about 91 MB/s and draws a 10-second flood at 60 fps, 40 to 80 times Termux's library ([[RUN-20261118-f1904n]]), so ADR-0054 keeps libghostty-vt
 - [x] 6. The terminal: `--terminal` on the node, the `Terminal` stream, the app's terminal screen (ADR-0054): built, with the module's `terminal` option; the hub joins the client's `Terminal` stream to the `TerminalStream` the node dials back, tested end to end on loopback; the app draws libghostty-vt's cells and takes keys through a view whose input connection keeps no text (a hidden text field doubled keystrokes); checked on the emulator against a local hub and node (`ls` colours, `top`, ^C, sticky Ctrl, arrows), not yet on the phone
-- [ ] 7. Voice: which recognizer ([[EXP-20261114-raqk9b]])
-- [ ] 8. Voice: push to talk and spoken replies (ADR-0055)
+- [ ] 7. Voice: which recognizer ([[EXP-20261114-raqk9b]]). Android's own recognizer was taken ahead of the experiment for dictation (ADR-0070, then ADR-0073 and ADR-0074); the experiment can still move it.
+- [ ] 8. Voice: push to talk and spoken replies (ADR-0055). Push to talk is built (ADR-0073, ADR-0074, in 0.21.0); spoken replies are not.
 - [ ] 9. Reviews: a native list and threads, and "address this" to the branch's session (ADR-0053)
 - [ ] 10. Bench: timers and offline ticks on the phone ([[EXP-20261114-raqkym]]; needs yajna's run sheets, its phase 2b)
 - [ ] 11. Bench: a run sheet's steps, ticks and timers, and voice commands (ADR-0053)

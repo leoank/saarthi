@@ -4,9 +4,9 @@ type: phase
 schema_version: 1
 title: "Workspaces and the blue flame: the app as a home for agents, notebooks, terminals and nitya"
 project: PRJ-0001
-status: active
+status: done
 since: 2f32e5af5e5d17965bbd6aa3cafbf4fcb61fcacf
-until: null               # the commit it finished at: yajna phase done
+until: 5ff640c5da70e5c9acb10fc7eee2ee23367b43d2
 created: 2026-11-18
 author: agent:claude
 tags: []

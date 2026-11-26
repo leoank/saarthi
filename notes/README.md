@@ -25,14 +25,14 @@ The phases of the project's `docs/architecture.md`, one `PHS` page each with its
 checklist; phase 1's steps follow `docs/HANDOFF.md` section 4. Each ticked item says what
 landed and links the pages with the detail.
 - [x] [[PHS-20261106-3701mw]] Phase 0: spikes
-- [ ] [[PHS-20261106-3701r1]] Phase 1: watch and intervene
-- [ ] [[PHS-20261106-3701nh]] Phase 1.5: fit for daily use
+- [x] [[PHS-20261106-3701r1]] Phase 1: watch and intervene
+- [x] [[PHS-20261106-3701nh]] Phase 1.5: fit for daily use
 - [ ] [[PHS-20261106-3702ke]] Phase 2: launch and own sessions
 - [ ] [[PHS-20261106-3702q3]] Phase 3: confinement and many networks
 - [ ] [[PHS-20261106-37024q]] Phase 4: autonomous starts and more clients
 - [ ] [[PHS-20261114-rbv2fs]] Notebooks, a terminal and voice: yajna through a service relay, a node terminal, push to talk
-- [ ] [[PHS-20261117-f22kxe]] The app at a glance: lessons from ovis's design and UX
-- [ ] [[PHS-20261118-kbka9b]] Workspaces and the blue flame: the app as a home for agents, notebooks, terminals and nitya
+- [x] [[PHS-20261117-f22kxe]] The app at a glance: lessons from ovis's design and UX
+- [x] [[PHS-20261118-kbka9b]] Workspaces and the blue flame: the app as a home for agents, notebooks, terminals and nitya
 - [ ] [[PHS-20261126-f3e51h]] Apps on the hub: Cedar RBAC, who launched a session, the node as a library and an admin UI
 
 ## Open questions

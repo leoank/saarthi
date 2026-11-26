@@ -4,9 +4,9 @@ type: phase
 schema_version: 1
 title: "Phase 1: watch and intervene"
 project: PRJ-0001
-status: active
+status: done
 since: null               # the commit it started at: yajna phase start
-until: null               # the commit it finished at: yajna phase done
+until: ee5d51d2194fc88348830a101db6d4835869b99c
 created: 2026-11-06
 author: agent:claude
 tags: []
@@ -75,13 +75,15 @@ done ones. The project page's *Progress* lists this phase on one line.
   and `!` commands, task notices, meta text, images, errors) so nothing shows raw
   (2026-10-25; [[AGS-20261025-1mm7j6]])
 - Phase 1 is done when, from the phone:
-  - [ ] every node and every live session is listed, with the conversation streaming live
-  - [ ] a permission dialog can be allowed or denied, and falls through to the terminal
+  - [x] every node and every live session is listed, with the conversation streaming live
+  - [x] a permission dialog can be allowed or denied, and falls through to the terminal
     when ignored
-  - [ ] a question from Claude can be answered
-  - [ ] a session under the wrapper can be prompted and interrupted
-  - [ ] a notification arrives when a session blocks or finishes
-  - [ ] health shows as a chart per node
+  - [x] a question from Claude can be answered
+  - [x] a session under the wrapper can be prompted and interrupted
+  - [x] a notification arrives when a session blocks or finishes
+  - [x] health shows as a chart per node
+  Each checked on the emulator in items 5.6 and 7 and used daily from the phone since
+  phase 1.5 (ticked 2026-11-26; [[AGS-20261126-f3e4hp]])
 
 ## Notes
 Migrated from PRJ-0001's Progress by `yajna phase migrate`.

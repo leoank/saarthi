@@ -18,7 +18,7 @@ Start, kill, resume and look back on sessions from the phone: spawn a headless s
 ## Progress
 One item per piece of work, ticked when it lands; add items as the plan grows and keep the
 done ones. The project page's *Progress* lists this phase on one line.
-- [ ] 1. Spawn and kill under the node's own login, and the keep-awake switch (ADR-0034;
+- [x] 1. Spawn and kill under the node's own login, and the keep-awake switch (ADR-0034;
   [[EXP-20261106-37f79k]] checked the stream-json session it rests on)
   - [x] 1.1 Node, hub and `rc2s2 ctl`: `--spawn-root` and `--claude`, the spawner owning
     stdin and stdout (prompt, interrupt, kill, idle and busy from the stream), kill for
@@ -98,8 +98,10 @@ done ones. The project page's *Progress* lists this phase on one line.
     resume that names no model, and `saarthi run` gives it as `ANTHROPIC_MODEL`
     ([[EXP-20261124-gfp268]]) (ADR-0079). Hub and wrapper tests; set from the app against
     a scratch hub (2026-11-24; [[AGS-20261124-gf6jge]])
-  - [ ] 3.5 The egress proxy that adds the token, so a sandbox holds a dummy (phase 3
-    with the sandbox's network policy; [[EXP-20261110-g5mh89]] decides its transport)
+  - [x] 3.5 The egress proxy that adds the token, so a sandbox holds a dummy (phase 3
+    with the sandbox's network policy; [[EXP-20261110-g5mh89]] decides its transport):
+    built as phase [[PHS-20261106-3702q3]] items 2.4 and 2.6, a proxy per sandboxed session
+    (ADR-0050), then the hub adding every hub token (ADR-0051) (ticked 2026-11-26)
 - [x] 4. `saarthi tui`, a terminal dashboard on the control service: nodes with their
   live sessions, the held requests and the accounts' usage, with keys to allow, deny,
   answer, prompt, interrupt, end and start sessions (ADR-0047). Unit tests on the state and

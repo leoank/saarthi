@@ -19,7 +19,7 @@ mxc sandbox profiles, embedded tsnet in hub, node and phone, PreToolUse policy r
 One item per piece of work, ticked when it lands; add items as the plan grows and keep the
 done ones. The project page's *Progress* lists this phase on one line.
 - [ ] Phase 3: confinement and many networks: mxc sandbox profiles, embedded tsnet in hub, node and phone, PreToolUse policy rules, a terminal-level adapter, Postgres
-- [ ] 1. Confined spawned sessions on seatbelt (the owner's choices of 2026-11-07, [[AGS-20261107-413qp0]]):
+- [x] 1. Confined spawned sessions on seatbelt (the owner's choices of 2026-11-07, [[AGS-20261107-413qp0]]):
   a `claude setup-token` token instead of leases, all egress, launch profiles in the node's
   config picked at spawn, and inside the nix daemon, git identity, the SSH agent, the
   owner's Claude files and tools
@@ -37,8 +37,10 @@ done ones. The project page's *Progress* lists this phase on one line.
   - [x] 1.4 The app and the node's profiles: reported to the hub, picked on New session,
     shown on the session; `Session.profile` stored by the hub; `ctl nodes` lists them
     ([[AGS-20261107-7mpyze]])
-  - [ ] 1.5 neusis: the profiles option and the token as an agenix secret
-- [ ] 2. Embedded tsnet in the hub and the node, then the sandbox egress proxy (the owner's
+  - [x] 1.5 neusis: the profiles option and the token as an agenix secret: neusis 884b9c3,
+    rogue's `sandbox` seatbelt profile with its own Claude token as an agenix secret,
+    checked by rogue's machine test (ticked 2026-11-26)
+- [x] 2. Embedded tsnet in the hub and the node, then the sandbox egress proxy (the owner's
   order and choices of 2026-11-12, [[AGS-20261112-rpj0rk]]): a first join by an auth key
   file, plain TCP kept, several tailnets on the hub, the peer's tailnet identity recorded
   - [x] 2.1 tonic over libtailscale on a real tailnet, two identities in one process,
@@ -47,8 +49,10 @@ done ones. The project page's *Progress* lists this phase on one line.
     node's `--tailnet`; the caller's tailnet and peer recorded and shown by `ctl nodes`;
     libtailscale `ac7ed43` in the flake; the modules' options; a live test gated on
     `SAARTHI_TAILNET_AUTHKEY_FILE`; checked live with the real binaries (ADR-0048)
-  - [ ] 2.3 neusis: the hub's tailnets and a node's tailnet, with their auth keys as
-    agenix secrets
+  - [x] 2.3 neusis: the hub's tailnets and a node's tailnet, with their auth keys as
+    agenix secrets: neusis 3b7ffbf, ghost001's hub on the leoank tailnet and rogue's node
+    joining it, the keys as agenix secrets, checked by both machines' tests (ticked
+    2026-11-26)
   - [x] 2.4 The egress proxy that adds the Claude token, so a sandbox holds a dummy
     ([[EXP-20261110-g5mh89]]): the owner's choices of 2026-11-13 ([[AGS-20261113-28sfr0]]),
     egress kept open and only sandboxed sessions proxied; a proxy per sandboxed session on

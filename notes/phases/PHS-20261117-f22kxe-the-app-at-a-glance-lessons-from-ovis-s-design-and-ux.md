@@ -4,9 +4,9 @@ type: phase
 schema_version: 1
 title: "The app at a glance: lessons from ovis's design and UX"
 project: PRJ-0001
-status: active
+status: done
 since: 6d5fd16be624b3dc10069156e731d2b58c479cd2
-until: null               # the commit it finished at: yajna phase done
+until: 4454e76a2b93f3936b0d9b91a4292d8bec39648e
 created: 2026-11-17
 author: agent:claude
 tags: []
