@@ -51,10 +51,10 @@ async fn a_node_links_over_the_tailnet_and_the_hub_records_who_it_is() {
     let serving = hub_tailnet.clone();
     tokio::spawn(async move { saarthi_hub::serve_tailnet(&serving, 7700, hub).await });
 
-    saarthi_node::link::dial_via_tailnet();
-    saarthi_node::link::tailnet_up(node_tailnet);
+    let addr = saarthi_node::link::HubAddr::via_tailnet(format!("http://{hub_host}:7700"));
+    addr.tailnet_up(node_tailnet);
     let claude = tempfile::tempdir().unwrap();
-    let _node = common::start_node(&format!("{hub_host}:7700"), "t-node", claude.path(), Duration::from_secs(5)).await;
+    let _node = common::start_node_at(addr, "t-node", claude.path(), Duration::from_secs(5)).await;
 
     let deadline = tokio::time::Instant::now() + Duration::from_secs(60);
     let node = loop {

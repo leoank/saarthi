@@ -46,7 +46,7 @@ async fn a_large_backlog_is_resent_on_one_link() {
         queue: saarthi_node::queue::Queue::new(sessions.clone()),
     };
     let cfg = link::Config {
-        hub: format!("http://{addr}"),
+        hub: format!("http://{addr}").into(),
         token: "t-node".into(),
         name: "test-node".into(),
         buffer_cap: 100_000,

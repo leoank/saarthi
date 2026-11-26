@@ -116,7 +116,7 @@ pub struct Wrappers {
     by_pid: Mutex<HashMap<u32, mpsc::Sender<ToWrapper>>>,
     /// The hub's address and this node's token, once the node links to a hub: where a
     /// wrapper's Claude token comes from.
-    hub: std::sync::OnceLock<(String, String)>,
+    hub: std::sync::OnceLock<(crate::link::HubAddr, String)>,
     /// The same hub, relaying the API requests of wrapped programs under its tokens.
     hub_api: std::sync::OnceLock<Arc<crate::claude_api::HubApi>>,
 }
@@ -134,7 +134,7 @@ impl Wrappers {
     }
 
     /// Where to ask for a wrapper's Claude token: the hub this node links to.
-    pub fn set_hub(&self, hub: String, token: String) {
+    pub fn set_hub(&self, hub: crate::link::HubAddr, token: String) {
         let _ = self.hub_api.set(crate::claude_api::HubApi::new(hub.clone(), token.clone()));
         let _ = self.hub.set((hub, token));
     }

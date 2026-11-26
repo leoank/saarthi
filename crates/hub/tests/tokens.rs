@@ -501,7 +501,7 @@ async fn a_terminal_session_runs_under_the_node_default_or_a_named_account() {
     assert_eq!(ask(Account::NodeDefault).await.unwrap(), None);
     assert!(ask(Account::Named("work".into())).await.is_err());
 
-    wrappers.set_hub(format!("http://{addr}"), "t-node".into());
+    wrappers.set_hub(format!("http://{addr}").into(), "t-node".into());
     // No default yet: the own login.
     assert_eq!(ask(Account::NodeDefault).await.unwrap(), None);
     c.set_default_claude_token(req(SetDefaultClaudeTokenRequest {
@@ -562,7 +562,7 @@ async fn a_terminal_session_runs_under_the_node_default_or_a_named_account() {
     assert!(format!("{unknown:#}").contains("no Claude token named nope"), "{unknown:#}");
 
     // A wrong node token gets nothing.
-    let refused = saarthi_node::link::claude_token(&format!("http://{addr}"), "t-wrong", None)
+    let refused = saarthi_node::link::claude_token(&format!("http://{addr}").into(), "t-wrong", None)
         .await
         .unwrap_err();
     assert!(refused.contains("unknown node token"), "{refused}");

@@ -96,7 +96,7 @@ async fn the_core_lists_watches_answers_and_streams() {
     let pending = Pending::new(outbox.clone());
     let wrappers = Wrappers::new(sessions.clone(), pending.clone(), outbox.clone());
     let cfg = saarthi_node::link::Config {
-        hub: format!("http://{addr}"),
+        hub: format!("http://{addr}").into(),
         token: "t-node".into(),
         name: "mac".into(),
         buffer_cap: 1000,

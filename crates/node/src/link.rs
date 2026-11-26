@@ -31,8 +31,8 @@ const MIN_BACKOFF: Duration = Duration::from_secs(1);
 const MAX_BACKOFF: Duration = Duration::from_secs(30);
 
 pub struct Config {
-    /// The hub's node service, `http://host:port`.
-    pub hub: String,
+    /// The hub's node service, `http://host:port`, and how it is reached.
+    pub hub: HubAddr,
     pub token: String,
     pub name: String,
     /// Unacked events kept at most; the oldest are dropped beyond it.
@@ -125,49 +125,74 @@ impl Buffer {
     }
 }
 
-/// Whether this node reaches the hub through a tailnet identity of its own (ADR-0048),
-/// set once at start; the identity itself arrives when it has joined.
-static VIA_TAILNET: AtomicBool = AtomicBool::new(false);
-static TAILNET: std::sync::OnceLock<Arc<saarthi_tailnet::Tailnet>> = std::sync::OnceLock::new();
-
-/// From now on every connection to the hub goes through the node's tailnet identity; until
-/// [`tailnet_up`] hands it over, connecting fails and the link retries.
-pub fn dial_via_tailnet() {
-    VIA_TAILNET.store(true, Ordering::SeqCst);
+/// The hub a node reports to and how it is reached, the transport boundary (ADR-0004): plain
+/// TCP over the host's network, or a tailnet identity of the node's own (ADR-0048). Each node
+/// holds its own, so two nodes in one process may reach their hubs differently
+/// (EXP-20261126-f3e5v3). Clones share the identity once it has joined.
+#[derive(Clone)]
+pub struct HubAddr {
+    url: String,
+    /// `Some` when the hub is reached through a tailnet; the identity arrives when it has joined.
+    tailnet: Option<Arc<std::sync::OnceLock<Arc<saarthi_tailnet::Tailnet>>>>,
 }
 
-/// The node's tailnet identity has joined.
-pub fn tailnet_up(tailnet: Arc<saarthi_tailnet::Tailnet>) {
-    let _ = TAILNET.set(tailnet);
-}
-
-/// The transport boundary (ADR-0004): plain TCP over the host's network, or the node's own
-/// tailnet identity (ADR-0048), where the hub's name may not resolve for a moment after a
-/// start ([[EXP-20261112-rq8kgc]]) and the caller's retry covers it.
-pub(crate) async fn dial(hub: &str) -> Result<Channel> {
-    // A machine that sleeps leaves a dead link behind; HTTP/2 pings notice within half a
-    // minute so the stream ends and the outbox's buffer is resent on the next connection,
-    // and a connect attempt gives up in seconds (phase 1.5 item 15).
-    let endpoint = Endpoint::from_shared(hub.to_string())
-        .context("hub address")?
-        .connect_timeout(std::time::Duration::from_secs(6))
-        .tcp_keepalive(Some(std::time::Duration::from_secs(30)))
-        .http2_keep_alive_interval(std::time::Duration::from_secs(15))
-        .keep_alive_timeout(std::time::Duration::from_secs(10))
-        .keep_alive_while_idle(true);
-    if VIA_TAILNET.load(Ordering::SeqCst) {
-        let Some(tailnet) = TAILNET.get() else {
-            bail!("not on the tailnet yet");
-        };
-        return endpoint
-            .connect_with_connector(tailnet.connector())
-            .await
-            .with_context(|| format!("connecting to {hub} over tailnet {}", tailnet.name()));
+impl HubAddr {
+    /// The hub at `url`, `http://host:port`, over the host's network.
+    pub fn direct(url: impl Into<String>) -> Self {
+        Self { url: url.into(), tailnet: None }
     }
-    endpoint
-        .connect()
-        .await
-        .with_context(|| format!("connecting to {hub}"))
+
+    /// The hub at `url` as named on the node's tailnet; until [`HubAddr::tailnet_up`] hands
+    /// the identity over, connecting fails and the link retries.
+    pub fn via_tailnet(url: impl Into<String>) -> Self {
+        Self { url: url.into(), tailnet: Some(Default::default()) }
+    }
+
+    /// The node's tailnet identity has joined; ignored for a hub reached directly.
+    pub fn tailnet_up(&self, tailnet: Arc<saarthi_tailnet::Tailnet>) {
+        if let Some(slot) = &self.tailnet {
+            let _ = slot.set(tailnet);
+        }
+    }
+
+    pub fn url(&self) -> &str {
+        &self.url
+    }
+
+    /// A connection to the hub. Over a tailnet, the hub's name may not resolve for a moment
+    /// after a start ([[EXP-20261112-rq8kgc]]) and the caller's retry covers it.
+    pub(crate) async fn dial(&self) -> Result<Channel> {
+        let hub = &self.url;
+        // A machine that sleeps leaves a dead link behind; HTTP/2 pings notice within half a
+        // minute so the stream ends and the outbox's buffer is resent on the next connection,
+        // and a connect attempt gives up in seconds (phase 1.5 item 15).
+        let endpoint = Endpoint::from_shared(hub.to_string())
+            .context("hub address")?
+            .connect_timeout(std::time::Duration::from_secs(6))
+            .tcp_keepalive(Some(std::time::Duration::from_secs(30)))
+            .http2_keep_alive_interval(std::time::Duration::from_secs(15))
+            .keep_alive_timeout(std::time::Duration::from_secs(10))
+            .keep_alive_while_idle(true);
+        if let Some(slot) = &self.tailnet {
+            let Some(tailnet) = slot.get() else {
+                bail!("not on the tailnet yet");
+            };
+            return endpoint
+                .connect_with_connector(tailnet.connector())
+                .await
+                .with_context(|| format!("connecting to {hub} over tailnet {}", tailnet.name()));
+        }
+        endpoint
+            .connect()
+            .await
+            .with_context(|| format!("connecting to {hub}"))
+    }
+}
+
+impl From<String> for HubAddr {
+    fn from(url: String) -> Self {
+        Self::direct(url)
+    }
 }
 
 /// Asks the hub for the Claude token a session started at this machine's terminal runs
@@ -175,11 +200,11 @@ pub(crate) async fn dial(hub: &str) -> Result<Channel> {
 /// model (ADR-0079). No token is the node's own login. The error is the hub's or the
 /// network's, for the person at the terminal.
 pub async fn claude_token(
-    hub: &str,
+    hub: &HubAddr,
     token: &str,
     name: Option<String>,
 ) -> Result<saarthi_proto::node::v1::ClaudeTokenReply, String> {
-    let channel = dial(hub).await.map_err(|e| format!("{e:#}"))?;
+    let channel = hub.dial().await.map_err(|e| format!("{e:#}"))?;
     let mut client = NodeServiceClient::new(channel);
     let mut request = Request::new(saarthi_proto::node::v1::ClaudeTokenRequest { name });
     let bearer = format!("Bearer {token}")
@@ -202,7 +227,7 @@ async fn stream(
     buffer: &mut Buffer,
     backoff: &mut Duration,
 ) -> Result<()> {
-    let mut client = NodeServiceClient::new(dial(&cfg.hub).await?);
+    let mut client = NodeServiceClient::new(cfg.hub.dial().await?);
     let (tx, outbound) = mpsc::channel(256);
     let register = Register {
         name: cfg.name.clone(),
@@ -553,6 +578,23 @@ async fn prompt(sessions: &Sessions, session_id: &str, text: &str) -> Result<Str
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    /// One node set to reach its hub through a tailnet leaves another in the same process on
+    /// the host's network, which a process-wide setting did not (EXP-20261126-f3e5v3).
+    #[tokio::test]
+    async fn each_node_reaches_its_hub_its_own_way() {
+        let listener = tokio::net::TcpListener::bind("127.0.0.1:0").await.unwrap();
+        let url = format!("http://{}", listener.local_addr().unwrap());
+        let over_tailnet = HubAddr::via_tailnet(url.clone());
+        let direct = HubAddr::direct(url);
+        let e = over_tailnet.dial().await.unwrap_err();
+        assert_eq!(e.to_string(), "not on the tailnet yet");
+        // The direct one connects over TCP: whatever answers, it is not the tailnet's refusal.
+        let accept = tokio::spawn(async move { listener.accept().await.map(|_| ()) });
+        let dialled = tokio::time::timeout(Duration::from_secs(2), direct.dial()).await;
+        assert!(!matches!(&dialled, Ok(Err(e)) if e.to_string().contains("tailnet")));
+        accept.await.unwrap().unwrap();
+    }
 
     fn event(seq: u64) -> NodeMessage {
         NodeMessage {

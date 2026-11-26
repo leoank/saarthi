@@ -106,13 +106,13 @@ pub fn socket_name() -> String {
 /// The hub, for sessions under its tokens: its address and this node's token, with one
 /// connection kept for every session's requests and made again after a failure.
 pub struct HubApi {
-    hub: String,
+    hub: crate::link::HubAddr,
     token: String,
     channel: tokio::sync::Mutex<Option<Channel>>,
 }
 
 impl HubApi {
-    pub fn new(hub: String, token: String) -> Arc<Self> {
+    pub fn new(hub: crate::link::HubAddr, token: String) -> Arc<Self> {
         Arc::new(Self {
             hub,
             token,
@@ -123,7 +123,7 @@ impl HubApi {
     async fn client(&self) -> Result<NodeServiceClient<Channel>, String> {
         let mut kept = self.channel.lock().await;
         if kept.is_none() {
-            *kept = Some(crate::link::dial(&self.hub).await.map_err(|e| format!("{e:#}"))?);
+            *kept = Some(self.hub.dial().await.map_err(|e| format!("{e:#}"))?);
         }
         let channel = kept.clone().expect("just made");
         Ok(NodeServiceClient::new(channel).max_decoding_message_size(16 << 20))

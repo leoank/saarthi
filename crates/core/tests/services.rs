@@ -95,7 +95,7 @@ async fn the_core_reads_a_nodes_notebooks_and_streams_its_answers() {
         queue: saarthi_node::queue::Queue::new(sessions.clone()),
     };
     let cfg = saarthi_node::link::Config {
-        hub: format!("http://{addr}"),
+        hub: format!("http://{addr}").into(),
         token: "t-node".into(),
         name: "mac".into(),
         buffer_cap: 1000,

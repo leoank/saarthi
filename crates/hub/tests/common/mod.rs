@@ -172,6 +172,11 @@ pub async fn start_node(
     start_spawning_node(hub_addr, token, claude_dir, hold, "claude", &[], Default::default()).await
 }
 
+/// The same, reaching the hub as `hub` says, such as through a tailnet identity of its own.
+pub async fn start_node_at(hub: link::HubAddr, token: &str, claude_dir: &std::path::Path, hold: Duration) -> NodeProc {
+    start_node_full(hub, token, claude_dir, hold, "claude", &[], Default::default(), Default::default()).await
+}
+
 /// The same, allowed to spawn sessions under `roots` with `claude` as the program.
 pub async fn start_spawning_node(
     hub_addr: &str,
@@ -182,7 +187,7 @@ pub async fn start_spawning_node(
     roots: &[std::path::PathBuf],
     contained: saarthi_node::spawner::Contained,
 ) -> NodeProc {
-    start_node_full(hub_addr, token, claude_dir, hold, claude, roots, contained, Default::default()).await
+    start_node_full(direct(hub_addr), token, claude_dir, hold, claude, roots, contained, Default::default()).await
 }
 
 /// A node offering local services through the hub (ADR-0052).
@@ -193,12 +198,16 @@ pub async fn start_serving_node(
     services: Arc<saarthi_node::services::Services>,
 ) -> NodeProc {
     let hold = Duration::from_secs(30);
-    start_node_full(hub_addr, token, claude_dir, hold, "claude", &[], Default::default(), services).await
+    start_node_full(direct(hub_addr), token, claude_dir, hold, "claude", &[], Default::default(), services).await
+}
+
+fn direct(hub_addr: &str) -> link::HubAddr {
+    link::HubAddr::direct(format!("http://{hub_addr}"))
 }
 
 #[allow(clippy::too_many_arguments)]
 async fn start_node_full(
-    hub_addr: &str,
+    hub: link::HubAddr,
     token: &str,
     claude_dir: &std::path::Path,
     hold: Duration,
@@ -221,7 +230,7 @@ async fn start_node_full(
     let socket = shells.clone();
     tokio::spawn(async move { saarthi_node::shells::serve(&socket).await });
     let cfg = link::Config {
-        hub: format!("http://{hub_addr}"),
+        hub,
         token: token.to_string(),
         name: "test-node".to_string(),
         buffer_cap: 10_000,

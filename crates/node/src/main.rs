@@ -416,13 +416,18 @@ async fn serve(args: Serve) -> Result<()> {
                 .with_context(|| format!("reading {}", token_file.display()))?
                 .trim()
                 .to_string();
+            let hub = if args.tailnet {
+                saarthi_node::link::HubAddr::via_tailnet(hub)
+            } else {
+                saarthi_node::link::HubAddr::direct(hub)
+            };
             wrappers.set_hub(hub.clone(), token.clone());
             let name = args
                 .name
                 .or_else(sysinfo::System::host_name)
                 .unwrap_or_else(|| "node".to_string());
             if args.tailnet {
-                link::dial_via_tailnet();
+                let joined = hub.clone();
                 let opts = saarthi_tailnet::Options {
                     name: "hub".to_string(),
                     dir: args.tailnet_state.unwrap_or_else(|| {
@@ -444,7 +449,7 @@ async fn serve(args: Serve) -> Result<()> {
                     loop {
                         match saarthi_tailnet::Tailnet::start(opts.clone()).await {
                             Ok(t) => {
-                                link::tailnet_up(t);
+                                joined.tailnet_up(t);
                                 break;
                             }
                             Err(e) => {
