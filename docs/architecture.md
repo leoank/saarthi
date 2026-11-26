@@ -146,6 +146,12 @@ facts come from hooks and the transcript, and the PTY is only a channel for inpu
 - **Tailnet identity.** Optionally (`--tailnet`), an embedded tsnet identity of its own,
   so the daemon reaches the hub on the hub's tailnet whatever network the host is on;
   every connection to the hub is dialled through it (ADR-0048).
+- **The node as a library (proposed, ADR-0080).** An app builds a `Node` from a hub, a name
+  and a state directory, and runs it on its own runtime; nothing in the library is
+  process-wide, and how a node reaches its hub is its own (`HubAddr`). The daemon is the
+  machine's node, the one that watches the user's Claude dir; an embedded node sees only
+  the sessions it starts, which run in a Claude config dir under its state directory and
+  under the hub's accounts, as a sandbox profile's do ([[EXP-20261126-f3e5v3]]).
 
 ### saarthi-hub
 
