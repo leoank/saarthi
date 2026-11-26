@@ -1,0 +1,28 @@
+=== A: default paths, one HOME, one runtime dir ===
+x up: alive; wrapper socket inode 69857191 answers; changes answers
+y on x's hook port: exited
+  y: Address already in use
+  y: binding the hook endpoint on 127.0.0.1:7791
+after y: wrapper socket inode 69857199 dead (x still alive)
+y on its own hook port: alive; wrapper socket inode 69857211 answers
+  y: another server answers there (a second node?)
+  hub: node x connected
+  hub: node y connected
+y stopped, x alive: wrapper socket 69857211 dead, changes answers
+=== B: the user's Claude dir, every path apart ===
+a alive, b alive
+  hub: node a connected
+  hub: node b connected
+  hub: node x offline
+  hub: node y offline
+live sessions: a lists 9, b lists 9, listed by both 9
+hub events settled after about 60 s: from a 114683, from b 114683; 'database is locked' 3 times
+user settings name hook urls: http://127.0.0.1:7777/hook 
+spawned on a: a2c8dad9-1963-4aad-a13d-ef650e45e6e4
+after 3s: the spawned session listed under a: 1, under b: 1
+  hub: a a2c8dad9-1963-4aad-a13d-ef650e45e6e4 pid 37294 SESSION_STATUS_IDLE /private$W/work/s
+  hub: b a2c8dad9-1963-4aad-a13d-ef650e45e6e4 pid 37294 SESSION_STATUS_BUSY /private$W/work/s
+  history: 1c081341452b4e17bfb9fbbc2c747b03  a2c8dad9-1963-4aad-a13d-ef650e45e6e4  1795710235725  live  /private$W/work/s  Reply with the single word ok.
+  history: 139eb84d40c941839edda03c51ee11e4  a2c8dad9-1963-4aad-a13d-ef650e45e6e4  1795710235725  live  /private$W/work/s  Reply with the single word ok.
+kill on a: ok
+after 3s: listed under a 0, under b 0

@@ -1,0 +1,84 @@
+# crates/node at 67e5112
+
+## statics (process-wide)
+./link.rs:130:static VIA_TAILNET: AtomicBool = AtomicBool::new(false);
+./link.rs:131:static TAILNET: std::sync::OnceLock<Arc<saarthi_tailnet::Tailnet>> = std::sync::OnceLock::new();
+
+## environment written
+
+## environment read
+./ctl.rs:314:    let base = std::env::var_os("XDG_CONFIG_HOME")
+./ctl.rs:317:        .or_else(|| std::env::var_os("HOME").map(|h| PathBuf::from(h).join(".config")))?;
+./ctl.rs:341:        let token_file = match (token_file.strip_prefix("~"), std::env::var_os("HOME")) {
+./ctl.rs:755:        let home = PathBuf::from(std::env::var_os("HOME").unwrap());
+./shells/mod.rs:41:    if let Some(run) = std::env::var_os("XDG_RUNTIME_DIR").filter(|d| Path::new(d).is_dir()) {
+./shells/mod.rs:44:    let home = std::env::var_os("HOME").map(PathBuf::from).unwrap_or_else(|| PathBuf::from("/tmp"));
+./shells/mod.rs:155:        match std::env::var_os("HOME").filter(|h| Path::new(h).is_dir()) {
+./link.rs:494:    let home = std::env::var_os("HOME").map(std::path::PathBuf::from).ok_or("the node has no HOME to save photos under")?;
+./wrapper.rs:86:    if let Some(dir) = std::env::var_os("XDG_RUNTIME_DIR") {
+./wrapper.rs:342:        if std::env::var_os("XDG_RUNTIME_DIR").is_none() {
+./run.rs:153:            if let Some(home) = std::env::var_os("HOME") {
+./main.rs:302:    let home = std::env::var_os("HOME")
+./spawner.rs:193:            Some(rest) => std::env::var_os("HOME")
+./spawner.rs:860:    std::env::var_os("SHELL")
+
+## fixed paths
+./registry.rs:66:                    "kind":"interactive","messagingSocketPath":"/tmp/cc-socks/{pid}.sock"}}"#
+./registry.rs:85:            format!("/tmp/cc-socks/{me}.sock")
+./claude_api.rs:516:        let long = PathBuf::from(format!("/tmp/{}/api.sock", "x".repeat(100)));
+./ctl.rs:763:            .resolve(Some("http://other:7700".into()), Some("/tmp/t".into()), &path)
+./ctl.rs:765:        assert_eq!((hub.as_str(), token), ("http://other:7700", PathBuf::from("/tmp/t")));
+./shells/mod.rs:45:    home.join(".local/state/saarthi/shells.sock")
+./sessions.rs:594:            messaging_socket_path: "/tmp/cc-socks/42.sock".into(),
+./sessions.rs:603:                socket: "/tmp/cc-socks/42.sock".into(),
+./changes.rs:27:    home.join(".local/state/saarthi/changes.sock")
+./containment.rs:28:const CC_SOCKS: &str = "/private/tmp/cc-socks";
+./containment.rs:469:state_dir = "~/.local/state/saarthi/sandbox"
+./containment.rs:491:        assert_eq!(s.state_dir.as_deref(), Some(Path::new("/home/me/.local/state/saarthi/sandbox")));
+./containment.rs:492:        assert_eq!(s.claude_dir().unwrap(), Path::new("/home/me/.local/state/saarthi/sandbox/claude"));
+./usage.rs:199:        let other = Store::for_dir(Path::new("/tmp/other"), false);
+./uploads.rs:19:    home.join(".local/state/saarthi/uploads")
+./uploads.rs:128:        assert_eq!(dir(Path::new("/home/u"), None, "s1"), Path::new("/home/u/.local/state/saarthi/uploads/s1"));
+./main.rs:370:        .unwrap_or_else(|| home.join(".local/state/saarthi/hook.sock"));
+./main.rs:429:                        home.join(".local/state/saarthi/tailnet")
+
+## sockets and ports bound
+./claude_api.rs:263:        let listener = tokio::net::UnixListener::bind(path)?;
+./claude_api.rs:458:        let listener = tokio::net::TcpListener::bind("127.0.0.1:0").await.unwrap();
+./shells/mod.rs:300:    let listener = tokio::net::UnixListener::bind(socket)?;
+./wrapper.rs:182:        UnixListener::bind(path).with_context(|| format!("binding {}", path.display()))
+./hooks.rs:182:        let listener = tokio::net::TcpListener::bind("127.0.0.1:0").await.unwrap();
+./hooks.rs:217:        let listener = tokio::net::TcpListener::bind("127.0.0.1:0").await.unwrap();
+./changes.rs:43:    let listener = tokio::net::UnixListener::bind(&socket).with_context(|| format!("binding {}", socket.display()))?;
+./usage.rs:185:        let listener = tokio::net::TcpListener::bind("127.0.0.1:0").await.unwrap();
+./prompt.rs:105:        let listener = UnixListener::bind(socket).unwrap();
+./main.rs:497:    let listener = tokio::net::TcpListener::bind(args.hook_addr)
+./main.rs:511:        let listener = tokio::net::UnixListener::bind(&hook_socket)
+
+## signals and the log subscriber
+./main.rs:253:    tracing_subscriber::fmt()
+./main.rs:610:        _ = tokio::signal::ctrl_c() => tracing::info!("stopping"),
+
+## the registry scan and the user's settings
+./awake.rs:274:        sessions.apply_registry(&[record("busy")]).await;
+./awake.rs:281:        sessions.apply_registry(&[record("idle")]).await;
+./awake.rs:286:        sessions.apply_registry(&[record("busy")]).await;
+./queue.rs:162:        sessions.apply_registry(&[record("s", "busy")]).await;
+./queue.rs:168:        sessions.apply_registry(&[record("s", "idle")]).await;
+./queue.rs:173:        sessions.apply_registry(&[record("s", "busy")]).await;
+./queue.rs:175:        sessions.apply_registry(&[record("s", "idle")]).await;
+./queue.rs:185:        sessions.apply_registry(&[]).await;
+./wrapper.rs:403:        sessions.apply_registry(&[record]).await;
+./sessions.rs:340:    pub async fn apply_registry(&self, live: &[Record]) {
+./sessions.rs:526:        sessions.apply_registry(&[old.clone(), new.clone()]).await;
+./sessions.rs:531:            sessions.apply_registry(&[new.clone(), old.clone()]).await;
+./sessions.rs:532:            sessions.apply_registry(&[old.clone(), new.clone()]).await;
+./sessions.rs:536:        sessions.apply_registry(&[record(93263, 100, "busy"), new.clone()]).await;
+./sessions.rs:570:        sessions.apply_registry(&[record]).await;
+./sessions.rs:598:        sessions.apply_registry(std::slice::from_ref(&record)).await;
+./sessions.rs:608:        sessions.apply_registry(&[record]).await;
+./sessions.rs:610:        sessions.apply_registry(&[]).await;
+./sessions.rs:639:        sessions.apply_registry(&[record]).await;
+./main.rs:411:        .apply_registry(&scan_registry(&registry_dir, &profile_dirs).await)
+./main.rs:525:            scan.apply_registry(&scan_registry(&registry_dir, &profile_dirs).await).await;
+./main.rs:617:async fn scan_registry(

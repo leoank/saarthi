@@ -4,8 +4,8 @@ type: experiment
 schema_version: 1
 title: "Can two saarthi nodes share one machine, and one process, without stepping on each other: hooks, the session registry, sockets, Claude settings and tsnet state?"
 project: PRJ-0001
-status: planned           # planned | active | paused | concluded | abandoned
-outcome: null             # null | positive | negative | inconclusive | infra
+status: concluded          # planned | active | paused | concluded | abandoned
+outcome: positive         # null | positive | negative | inconclusive | infra
 influenced_by: []
 created: 2026-11-26
 author: agent:claude
@@ -57,6 +57,48 @@ Both nodes in one process spawn and finish a session each.
 ## Runs
 One line per run after its link, what was tried and what it showed; `yajna validate`
 rejects a bare link here. Metric runs also land in results.tsv.
+- [[RUN-20261126-hsed5n]] the node crate read for process- and machine-wide state: two statics, both the tailnet's (`link.rs`); no environment written; every default path overridable; signals, the log subscriber and the registry scan only in `main.rs`
+- [[RUN-20261126-hsee10]] two daemons on one machine: with default paths the second silently takes the first's wrapper socket (and leaves it dead when it stops or fails), and its changes service will not start; with paths apart both run, but both list all 9 sessions and upload the same ~114,700 events, and a session spawned on one is listed by the other
+- [[RUN-20261126-hseepp]] two library nodes in one process: each spawns and steers its own session and both survive a hub restart; once one node is set to dial through a tailnet, the other loses its plain link too (`not on the tailnet yet`)
 
 ## Conclusion
-Written when status becomes `concluded`; an agent's draft waits for a human to approve it.
+Draft by agent:claude, for the owner to approve.
+
+Two nodes can share a machine and a process, once three things the daemon takes for granted
+are made the node's own. Every collision found, with its run and its answer:
+
+1. **The tailnet setting is the process's** ([[RUN-20261126-hseepp]]). `VIA_TAILNET` and
+   `TAILNET` in `link.rs` are statics: one node set to dial through a tailnet makes every node
+   in the process dial through it. H4 was right that tsnet is fine (EXP-20261112-rq8kgc) and
+   wrong that nothing else is: the fix is saarthi's, the way to reach the hub moving into
+   `link::Config`. Nothing else in the library is process-wide: no environment is written,
+   and signals and the log subscriber are installed only by the binary
+   ([[RUN-20261126-hsed5n]]).
+2. **The default paths are the user's, not the node's** ([[RUN-20261126-hsee10]], A; H3
+   right). A second node on the defaults deletes the first's wrapper socket and binds its own,
+   silently, even when it then fails on the hook port, so the first is left deaf to
+   `saarthi run`; its changes service will not start. Every path has a flag, and with them
+   apart nothing collides. For the library: a node is given a state directory, and every
+   socket, the hook port (or port 0) and the tailnet state derive from it; the `$HOME`
+   defaults stay the daemon's. Separately, `Wrappers::bind` should refuse a socket another
+   node answers on, as `changes::serve` already does, and that is a fix for the daemon too.
+3. **A Claude dir is scanned by every node pointed at it** ([[RUN-20261126-hsee10]], B; H2
+   right, and costlier than predicted). Two nodes on the user's `~/.claude` both list all 9
+   sessions, and both upload all of their transcripts, about 114,700 events each, the same
+   ones, which held the hub's database long enough for a spawn's reply to miss its 15 s
+   deadline. The hub keys sessions by node and session, so it cannot merge them. A session
+   one node spawns is listed by the other too, in another state. Rule: an embedded node does
+   not scan the registry, does not serve wrappers or a terminal, and sees only the sessions it
+   starts.
+4. **Hooks** (H1 right). `~/.claude/settings.json` names one node, the machine's daemon; a
+   spawned session carries its own node's hooks, and run 3's nodes each gave theirs a port of
+   its own. But a session an embedded node starts in the user's Claude dir also reads that
+   settings file, and is in the registry the daemon scans: the owner's daemon reports the
+   app's sessions as bare ones, which is what b did with a's session in run 2.
+
+So an embedded node should run its sessions under a Claude config dir of its own, as a
+sandbox profile does (ADR-0038): neither the daemon's scan nor the user's hooks reach it.
+Such a dir has no login, so its sessions run under the hub's Claude accounts through the
+node's proxy (ADR-0051), which is also what the app's grant names (EXP-20261126-f3e5a9).
+That last step follows from the code and the sandbox profiles, and was not run with a real
+claude here: the example app's end-to-end test (phase item 17) should check it.

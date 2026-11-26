@@ -1,0 +1,23 @@
+=== A: default paths, one HOME, one runtime dir ===
+x up: alive; wrapper socket inode 69851455 answers; changes answers
+y on x's hook port: exited
+  y: Address already in use
+  y: binding the hook endpoint on 127.0.0.1:7791
+after y: wrapper socket inode 69851463 dead (x still alive)
+y on its own hook port: alive; wrapper socket inode 69851468 answers
+  y: another server answers there (a second node?)
+  hub: node x connected
+  hub: node y connected
+y stopped, x alive: wrapper socket 69851468 dead, changes answers
+=== B: the user's Claude dir, every path apart ===
+a alive, b alive
+  hub: node a connected
+  hub: node b connected
+  hub: node x offline
+  hub: node y offline
+live sessions: a lists 9, b lists 9, listed by both 9
+user settings name hook urls: http://127.0.0.1:7777/hook 
+spawned on a: Error: code: 'Deadline expired before operation could complete', message: "the node did not answer in time"
+after 60s: the spawned session listed under a: 0, under b: 0
+kill on a: ok: it was not running on this node any more; it is marked ended
+after 1s: listed under a 0, under b 0

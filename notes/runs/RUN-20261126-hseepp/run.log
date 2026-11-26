@@ -1,0 +1,19 @@
+=== 1. two nodes in one process ===
+after 1s: p connected  q connected  
+session spawned on p: listed under p 1, under q 0
+session spawned on q: listed under p 0, under q 1
+prompts p's process read: hello from p,again to p,
+prompts q's process read: hello from q,again to q,
+  node p: hooks on 127.0.0.1:62106, Claude dir $W/p/claude
+  node q: hooks on 127.0.0.1:62107, Claude dir $W/q/claude
+--- the hub restarts
+after 1s: p connected  q connected  
+=== 2. the same, q set to dial through its tailnet ===
+after 20s: p connected  q offline  
+--- the hub restarts
+after 40s: p offline  q offline  
+each node's link since the restart:
+  before: p  1 registered with the hub;
+  before: q  5 not on the tailnet yet;
+  after: p 5 not on the tailnet yet;
+  after: q 2 not on the tailnet yet;
