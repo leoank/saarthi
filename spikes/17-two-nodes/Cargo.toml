@@ -1,0 +1,16 @@
+[package]
+name = "two-nodes"
+version = "0.1.0"
+edition = "2024"
+publish = false
+
+# EXP-20261126-f3e5v3 H4: two saarthi nodes built from the library in one process.
+[dependencies]
+anyhow = "1.0.104"
+axum = { version = "0.8.9", default-features = false, features = ["http1", "tokio", "json"] }
+saarthi-node = { path = "../../crates/node" }
+tokio = { version = "1.53.3", features = ["macros", "rt-multi-thread", "net", "signal", "time"] }
+tracing = "0.1.44"
+tracing-subscriber = "0.3.23"
+
+[workspace]
