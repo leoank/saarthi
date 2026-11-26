@@ -33,6 +33,7 @@ landed and links the pages with the detail.
 - [ ] [[PHS-20261114-rbv2fs]] Notebooks, a terminal and voice: yajna through a service relay, a node terminal, push to talk
 - [ ] [[PHS-20261117-f22kxe]] The app at a glance: lessons from ovis's design and UX
 - [ ] [[PHS-20261118-kbka9b]] Workspaces and the blue flame: the app as a home for agents, notebooks, terminals and nitya
+- [ ] [[PHS-20261126-f3e51h]] Apps on the hub: Cedar RBAC, who launched a session, the node as a library and an admin UI
 
 ## Open questions
 - Idle sessions were reported as missing from the app until the owner typed in them
@@ -135,3 +136,5 @@ touching the code:
 - [[EXP-20261123-j9wyqh]] libghostty-vt's VT formatter restoring a shell's screen in a fresh terminal; positive: screen, scrollback and cursor restore exactly, and the alternate screen too once the holder keeps the primary screen from when a program entered it (ADR-0078)
 - [[EXP-20261124-1pg2cq]] Under the node's proxy, Claude Code sends only `/v1/messages` through it; its account, settings and start-up calls go straight to Anthropic with the dummy token, so letting `/api/` paths through the proxy (or faking them there) would change nothing; and a hub token is refused the profile (scope) and managed settings (404), answered only on policy limits, which carry no default model: a hub-token session gets Claude Code's default model unless saarthi names one
 - [[EXP-20261124-gfp268]] `ANTHROPIC_MODEL` sets a hub-token session's main model in `-p` mode and at a terminal, below `--model` and above a `model` in settings: `saarthi run` can give an account's default model that way
+- [[EXP-20261126-f3e5a9]] Can the hub authorize every control call with Cedar: an entity model of clients, nodes, sessions and accounts, policies for an app limited to its own sessions, and the cost per call? planned, for phase [[PHS-20261126-f3e51h]] item 1
+- [[EXP-20261126-f3e5v3]] Can two saarthi nodes share one machine, and one process, without stepping on each other: hooks, the session registry, sockets, Claude settings and tsnet state? planned, for phase [[PHS-20261126-f3e51h]] item 2
