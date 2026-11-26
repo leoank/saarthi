@@ -4,8 +4,8 @@ type: experiment
 schema_version: 1
 title: Does /yajna:project run in a session spawned from the app, and how does its interview reach the person?
 project: PRJ-0001
-status: active            # planned | active | paused | concluded | abandoned
-outcome: null             # null | positive | negative | inconclusive | infra
+status: concluded            # planned | active | paused | concluded | abandoned
+outcome: positive             # null | positive | negative | inconclusive | infra
 influenced_by: []
 created: 2026-11-17
 author: agent:claude
@@ -48,8 +48,16 @@ rejects a bare link here. Metric runs also land in results.tsv.
 - [[RUN-20261117-e42048]] the same spawn with the node's question tool (ADR-0061): the interview's
   questions are held at the hub as question cards and their answers come back as the
   tool's result, the turn going on
-- [[RUN-20261117-de5vqw]] compute run, not yet described
-- [[RUN-20261117-e42048]] compute run, not yet described
 
 ## Conclusion
-Written once, by a human, when status becomes `concluded`.
+Draft by agent:claude, for the owner to approve.
+
+H1 is half true. The command runs in a session the node spawns and reads the notebook
+first, but `AskUserQuestion` is not among a `-p` session's tools, so the interview came in
+plain text, one topic at a time with numbered options, the session idle for a prompt after
+each ([[RUN-20261117-de5vqw]]). That reaches the person as messages answered from the
+prompt bar, which ADR-0060 took for *New project*. With the node's own question tool
+(ADR-0061) the same spawn's questions were held at the hub as question cards and the
+answers came back as the tool's result, the turn going on ([[RUN-20261117-e42048]]), so
+spawned sessions now ask that way. Both runs were on loopback with Haiku; the interview was
+not followed to a created project.

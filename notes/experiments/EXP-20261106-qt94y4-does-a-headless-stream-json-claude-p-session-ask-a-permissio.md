@@ -4,7 +4,7 @@ type: experiment
 schema_version: 1
 title: Does a headless stream-json claude -p session ask a PermissionRequest hook given only through --settings, and which flags start it in bypass mode?
 project: PRJ-0001
-status: active            # planned | active | paused | concluded | abandoned
+status: concluded           # planned | active | paused | concluded | abandoned
 outcome: positive         # null | positive | negative | inconclusive | infra
 influenced_by: []
 created: 2026-11-06
@@ -51,4 +51,16 @@ rejects a bare link here. Metric runs also land in results.tsv.
 - [[RUN-20261106-qtaf57]] eight cases on Claude Code 2.1.318: no hook refused at once; the `--settings` hook asked once and obeyed (twice for a deny, when the model retried), once also with a project copy; both bypass flags ran unasked; plan ran nothing
 
 ## Conclusion
-Written once, by a human, when status becomes `concluded`.
+Draft by agent:claude, for the owner to approve.
+
+The predictions hold on Claude Code 2.1.318 ([[RUN-20261106-qtaf57]]): with no hook a tool
+that needs approval is refused at once; a PermissionRequest hook given only through
+`--settings` is asked once per request and its answer decides (a deny was asked twice only
+because the model retried); the same hook also in the project's settings is asked once.
+`--dangerously-skip-permissions` and `--permission-mode bypassPermissions` both start the
+session in `bypassPermissions` and run the tool unasked; `acceptEdits` still asks for Bash;
+`plan` runs nothing. The SDK's `can_use_tool` is not needed.
+
+ADR-0037 followed: the spawner passes the node's hooks block as `--settings` to every
+session it starts or resumes, and a spawn carries a permission mode. A scratch node and hub
+confirmed both by hand.

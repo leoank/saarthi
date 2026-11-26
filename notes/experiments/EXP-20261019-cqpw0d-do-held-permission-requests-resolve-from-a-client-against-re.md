@@ -5,8 +5,8 @@ type: experiment
 schema_version: 1
 title: Do held permission requests resolve from a client against real Claude Code?
 project: PRJ-0001
-status: active            # planned | active | paused | concluded | abandoned
-outcome: null             # null | positive | negative | inconclusive | infra
+status: concluded            # planned | active | paused | concluded | abandoned
+outcome: positive             # null | positive | negative | inconclusive | infra
 influenced_by: [EXP-20261016-rq1401, EXP-20261019-ayya0b]
 created: 2026-10-19
 author: agent:claude
@@ -68,4 +68,14 @@ despite a deny, the message never reaches the model, or the fall-through hangs.
   permission handling needs a command or path that always asks.
 
 ## Conclusion
-Written once, by a human, when status becomes `concluded`.
+Draft by agent:claude, for the owner to approve.
+
+Yes, against real Claude Code in `-p` turns ([[RUN-20261019-c958hw]]). Each turn's
+PermissionRequest reached the hub as a pending Bash request; an allow from `rc2s2 ctl` ran
+the tool 334 ms after the hold began; a deny with a message stopped it in 264 ms and Claude
+quoted the message, so the documented deny shape reaches the model; an ignored request
+closed on timeout and `{}` left the decision to Claude Code, a refusal in `-p` mode. The
+hold-and-resolve chain of phase 1 step 4.1 stands as built (ADR-0013). Aside: Claude Code
+runs `touch` inside its working directory without asking, so a permission check needs a
+command or path that always asks. Plan step 2 (questions, keystroke release) went to
+[[EXP-20261019-fgm60e]].

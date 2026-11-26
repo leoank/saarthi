@@ -5,8 +5,8 @@ type: experiment
 schema_version: 1
 title: Does the phone app intervene in a real Claude Code session?
 project: PRJ-0001
-status: active            # planned | active | paused | concluded | abandoned
-outcome: null             # null | positive | negative | inconclusive | infra
+status: concluded            # planned | active | paused | concluded | abandoned
+outcome: positive             # null | positive | negative | inconclusive | infra
 influenced_by: [EXP-20261019-cqpw0d, EXP-20261019-fgm60e]
 created: 2026-10-19
 author: agent:claude
@@ -79,4 +79,15 @@ that fails shows which layer: the app's form, the core's call, or the hub.
   "interrupted" event is the one to rely on.
 
 ## Conclusion
-Written once, by a human, when status becomes `concluded`.
+Draft by agent:claude, for the owner to approve.
+
+Yes. The app on the emulator, through the hub, answered a question (the tapped option
+reached the model), denied a command with a message the model quoted, sent a prompt that
+was answered, interrupted a running count at 1325 of 3000 with a follow-up answered alone,
+and killed the session within a second ([[RUN-20261019-mvz0r3]]). The rebuilt app's screens
+of 2026-10-25 did the same five ([[RUN-20261025-166zqd]]), with the core stripping Claude
+Code's peer-message banner so the app shows prompts as typed. The hub records the app's
+resolutions under the client token's name. This closed phase 1 step 5.6. Whether an
+interrupted turn fires Stop differed between the two runs on the same Claude Code version,
+so the daemon's `interrupted` event remains the one to rely on. Checked on the emulator
+only, not on a phone.

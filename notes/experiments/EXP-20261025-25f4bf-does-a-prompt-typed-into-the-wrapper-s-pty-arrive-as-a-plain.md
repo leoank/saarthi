@@ -4,8 +4,8 @@ type: experiment
 schema_version: 1
 title: Does a prompt typed into the wrapper's PTY arrive as a plain user turn, and does one typed during a running turn queue rather than interrupt?
 project: PRJ-0001
-status: active            # planned | active | paused | concluded | abandoned
-outcome: null             # null | positive | negative | inconclusive | infra
+status: concluded            # planned | active | paused | concluded | abandoned
+outcome: positive             # null | positive | negative | inconclusive | infra
 influenced_by: [EXP-20261016-rq1403, EXP-20261019-fgm60e]
 created: 2026-10-25
 author: agent:claude
@@ -67,4 +67,12 @@ content, and the daemon must then wait for Stop before typing (ADR-0027, consequ
   of the socket path only ([[RUN-20261025-2aymst]]).
 
 ## Conclusion
-Written once, by a human, when status becomes `concluded`.
+Draft by agent:claude, for the owner to approve.
+
+Both hypotheses hold ([[RUN-20261025-2aymst]]). H1: a prompt typed into the PTY of an idle
+wrapped session reaches the model as exactly the text, with UserPromptSubmit carrying it
+and no peer banner. H2: typed during a running turn, the text and Enter are queued by
+Claude Code, UserPromptSubmit fires at submission with no interrupt, and the prompt is
+answered after the running turn, so the daemon need not wait for Stop before typing. In
+bypass-permissions mode a typed prompt is not held; the hold was a property of the socket
+path. This confirmed ADR-0027 without its fallback, built as phase 1.5 step 2.

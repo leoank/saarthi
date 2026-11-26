@@ -4,8 +4,8 @@ type: experiment
 schema_version: 1
 title: Does CLAUDE_CODE_OAUTH_TOKEN take precedence over the owner's keychain login for a session in the default config directory?
 project: PRJ-0001
-status: active            # planned | active | paused | concluded | abandoned
-outcome: null             # null | positive | negative | inconclusive | infra
+status: concluded           # planned | active | paused | concluded | abandoned
+outcome: positive         # null | positive | negative | inconclusive | infra
 influenced_by: []
 created: 2026-11-11
 author: agent:claude
@@ -43,7 +43,16 @@ One line per run after its link, what was tried and what it showed; `yajna valid
 rejects a bare link here. Metric runs also land in results.tsv.
 - [[RUN-20261111-q6t69j]] same account's token: auth status moves from `claude.ai` (team)
   to `oauth_token` with the variable set; windows equal, as expected for one account
-- [[RUN-20261111-q6t69j]] compute run, not yet described
 
 ## Conclusion
-Written once, by a human, when status becomes `concluded`.
+Draft by agent:claude, for the owner to approve.
+
+The variable wins ([[RUN-20261111-q6t69j]]): in the owner's default config directory, with
+`CLAUDE_CODE_OAUTH_TOKEN` set, `claude auth status` moves from `claude.ai` (team) to
+`oauth_token`; an empty variable is ignored, and `apiKeySource` is `none` both ways. Host
+sessions need no config directory of their own to run under a token. ADR-0046 relies on
+it: the wrapper starts a terminal session with the node's default token in the variable.
+
+Not checked: plan step 2, a second account's token, so the turn's own rate-limit windows
+were never seen to move; the token used belonged to the keychain's account, whose windows
+are the same either way.

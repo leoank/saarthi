@@ -4,8 +4,8 @@ type: experiment
 schema_version: 1
 title: Can a seatbelt-sandboxed claude reach an egress proxy on the node that adds a setup-token as its credential, with a dummy token inside and no TLS interception
 project: PRJ-0001
-status: active            # planned | active | paused | concluded | abandoned
-outcome: null             # null | positive | negative | inconclusive | infra
+status: concluded           # planned | active | paused | concluded | abandoned
+outcome: positive         # null | positive | negative | inconclusive | infra
 influenced_by: [EXP-20261107-413q82]
 created: 2026-11-10
 author: agent:claude
@@ -75,8 +75,20 @@ rejects a bare link here. Metric runs also land in results.tsv.
 
 - [[RUN-20261113-2s2fpy]] on the host: plain HTTP over the socket with an http:// base URL, a turn and a resume with a dummy, what still goes direct; positive
 - [[RUN-20261113-2s4d8h]] inside seatbelt under the node's policy: loopback refused, token unreadable, a turn and a resume through the socket; positive
-- [[RUN-20261113-2s2fpy]] compute run, not yet described
-- [[RUN-20261113-2s4d8h]] compute run, not yet described
 
 ## Conclusion
-Written once, by a human, when status becomes `concluded`.
+Draft by agent:claude, for the owner to approve.
+
+Yes, through a unix socket ([[RUN-20261113-2s2fpy]], [[RUN-20261113-2s4d8h]]). Claude
+Code's `ANTHROPIC_UNIX_SOCKET` with `ANTHROPIC_BASE_URL=http://api.anthropic.com` sends its
+API requests as plain HTTP/1.1 over the socket, the token in one `Authorization: Bearer`
+header; a proxy that swaps it and forwards over TLS ran a turn and a resume with only a
+dummy inside, on the host and inside mxc's seatbelt sandbox under the node's policy, where
+loopback TCP is refused and the token file is unreadable. No TLS interception, no loopback
+exception, no tailnet address needed.
+
+Only `/v1/messages` follows the base URL: remote settings, policy limits and an account
+check go straight to Anthropic and fail with the dummy, so an organisation's policy limits
+would not apply; the session runs on. Plan step 3 (egress denied except the proxy) was not
+run: the owner chose open egress. ADR-0050 built the node's proxy on this, and a sandboxed
+session spawned through a hub ran end to end ([[AGS-20261113-28sfr0]]).

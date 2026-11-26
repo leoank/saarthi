@@ -4,7 +4,7 @@ type: experiment
 schema_version: 1
 title: "Can every hub-token session reach the Claude API through the hub, which adds the token: does an interactive claude work over ANTHROPIC_UNIX_SOCKET with a dummy, what does a hub restart do to a turn mid-stream, and how many bytes does a turn move"
 project: PRJ-0001
-status: active            # planned | active | paused | concluded | abandoned
+status: concluded            # planned | active | paused | concluded | abandoned
 outcome: positive           # null | positive | negative | inconclusive | infra
 influenced_by: []
 created: 2026-11-14
@@ -95,9 +95,22 @@ rejects a bare link here. Metric runs also land in results.tsv.
 - [[RUN-20261114-gd7jeb]] the interactive TUI and headless auto mode with a dummy through a two-hop rig, against the real token as a baseline; works, starts in manual mode with a remote-settings warning
 - [[RUN-20261114-gd816v]] the hub hop gone mid-stream for 2, 15 and 90 s, and down at a turn's start; every turn finished whole and resumed, about 145 s of outage ends a turn
 - [[RUN-20261114-gd8fn2]] bytes per request in a session with tools, and an estimate for this machine's real sessions; 0.6 MB median, 2.4 MB max per request, about 11 GB in 30 days
-- [[RUN-20261114-gd7jeb]] compute run, not yet described
-- [[RUN-20261114-gd816v]] compute run, not yet described
-- [[RUN-20261114-gd8fn2]] compute run, not yet described
 
 ## Conclusion
-Written once, by a human, when status becomes `concluded`.
+Draft by agent:claude, for the owner to approve.
+
+All three hold. H1 ([[RUN-20261114-gd7jeb]]): the interactive TUI runs over
+`ANTHROPIC_UNIX_SOCKET` with a dummy token and no login prompt; it warns that remote
+managed settings failed to load and starts in manual permission mode where the account's
+default is auto, and auto itself works when passed. H2 ([[RUN-20261114-gd816v]]): a hub
+gone mid-stream for 2, 15 or 90 s, or down when a turn starts, costs one retried request
+and the turn finishes whole and resumes; about 145 s of outage exhausts the retries and
+ends the turn with `API Error: 502`. H3 ([[RUN-20261114-gd8fn2]]): each request is the
+whole context, 0.6 MB at the median and 2.4 MB at most on this machine's sessions, about
+11 GB a month, crossing the hub's link twice; the hub sees the unified rate-limit headers
+on every answer.
+
+So every session under a hub token can reach the API through the hub. This led to
+ADR-0051: the hub adds its Claude tokens and never hands them out, such sessions start in
+auto mode, and the hub records usage from the headers it relays. `CLAUDE_CODE_MAX_RETRIES`
+to outlast longer restarts and compressing node-to-hub traffic were left untried.

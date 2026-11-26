@@ -4,8 +4,8 @@ type: experiment
 schema_version: 1
 title: Do the transcript's turn_duration lines and the summed usage match what Claude Code's /cost reports?
 project: PRJ-0001
-status: active            # planned | active | paused | concluded | abandoned
-outcome: null             # null | positive | negative | inconclusive | infra
+status: concluded            # planned | active | paused | concluded | abandoned
+outcome: positive             # null | positive | negative | inconclusive | infra
 influenced_by: [EXP-20261016-rq1402]
 created: 2026-10-25
 author: agent:claude
@@ -59,4 +59,13 @@ which messages the daemon double counts or misses (subagent transcripts are a ca
   recoverable from the transcript ([[RUN-20261025-2g2812]]).
 
 ## Conclusion
-Written once, by a human, when status becomes `concluded`.
+Draft by agent:claude, for the owner to approve.
+
+H1 holds ([[RUN-20261025-2g2812]]): every completed turn writes one `turn_duration` line,
+within 40 ms of Stop minus UserPromptSubmit; an interrupted turn writes none and fires no
+Stop, so it shows no time. H2 holds against the transcript but not against `/cost`: the
+daemon's totals, once per message id with subagent transcripts included, equal a hand count
+of the transcript, and the id rule is right since a message with thinking and text is two
+lines with one usage. `/cost` is higher by the tokens of requests the transcript never
+records, here the interrupted stream; that difference is named, not recoverable. The app's
+numbers under ADR-0030 (phase 1.5 step 5) are the transcript's, with that gap noted.

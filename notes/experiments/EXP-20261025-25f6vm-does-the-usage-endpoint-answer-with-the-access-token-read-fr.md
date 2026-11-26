@@ -4,8 +4,8 @@ type: experiment
 schema_version: 1
 title: Does the usage endpoint answer with the access token read from the keychain, read only, without disturbing the login?
 project: PRJ-0001
-status: active            # planned | active | paused | concluded | abandoned
-outcome: null             # null | positive | negative | inconclusive | infra
+status: concluded            # planned | active | paused | concluded | abandoned
+outcome: positive             # null | positive | negative | inconclusive | infra
 influenced_by: [EXP-20261016-rq1402, EXP-20261016-rq1408]
 created: 2026-10-25
 author: agent:claude
@@ -78,4 +78,17 @@ Claude Code's cached value (refreshed by `/usage` only).
   the limit is shared with Claude Code's own `/usage` is not known.
 
 ## Conclusion
-Written once, by a human, when status becomes `concluded`.
+Draft by agent:claude, for the owner to approve.
+
+H1 holds: reading the keychain item read only leaves it and the login unchanged, including
+across Claude Code's own refresh at 12:55Z, after which the daemon read the new token
+([[RUN-20261025-9fytgj]], [[RUN-20261025-c5xjbh]]). H2 holds without even the one prompt:
+with no terminal, `security` reads the real item silently, and the endpoint's windows
+matched `/usage` (40% and 40%, [[RUN-20261025-c35jpc]]). H3 was not exercised: no call fell
+between the refresh and the old token's expiry.
+
+New, and it changed the design: the endpoint rate-limits its callers, answering 429 to
+every poll for half an hour after about 30 calls in 30 minutes ([[RUN-20261025-c5xjbh]]).
+The poller of ADR-0030 now runs every five minutes and backs off on a 429 (phase 1.5 step
+6, the owner's choice). Whether the limit is shared with Claude Code's own `/usage` is
+not known.

@@ -4,7 +4,7 @@ type: experiment
 schema_version: 1
 title: Does libghostty-vt's VT formatter restore a shell's screen, scrollback and alternate screen in a fresh terminal, on the machine's own platform?
 project: PRJ-0001
-status: active            # planned | active | paused | concluded | abandoned
+status: concluded            # planned | active | paused | concluded | abandoned
 outcome: positive           # null | positive | negative | inconclusive | infra
 influenced_by: []
 created: 2026-11-23
@@ -58,7 +58,18 @@ One line per run after its link, what was tried and what it showed; `yajna valid
 rejects a bare link here. Metric runs also land in results.tsv.
 
 - [[RUN-20261123-mqgb4x]] the probe on aarch64-darwin: screen, 10,000-line scrollback and cursor restored exactly from one formatted snapshot; the alternate screen too, once the holder keeps the primary screen as it was when a program entered the alternate one (the formatter reaches the active screen only); the library also builds for x86_64-linux
-- [[RUN-20261123-mqgb4x]] compute run, not yet described
 
 ## Conclusion
-Written once, by a human, when status becomes `concluded`.
+Draft by agent:claude, for the owner to approve.
+
+H1 holds for the primary screen and needs one extra step for the alternate one
+([[RUN-20261123-mqgb4x]]). On aarch64-darwin one formatted snapshot (314 KB of VT in about
+3 ms) restored the screen, a 10,000-line scrollback, a styled prompt and the cursor
+exactly in a fresh terminal, once the scrollback's byte cap was turned off. The formatter
+writes the active screen only, as the second prediction feared, and switching the source
+to read the primary screen leaves a mode set on it; so the holder formats and keeps the
+primary screen just before a program enters the alternate one, and a snapshot is that
+followed by the alternate screen with its modes. With that, the alternate screen and the
+return from it restored exactly. This is what ADR-0078's holder does, and the byte-log
+fallback is not needed. libghostty-vt also built for x86_64-linux, but the probe ran only
+on the Mac.

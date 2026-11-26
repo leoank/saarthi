@@ -4,8 +4,8 @@ type: experiment
 schema_version: 1
 title: Does tonic gRPC run over libtailscale's listen and dial on a real tailnet, with two identities in one process, peers named through status_json, and no fds leaking into spawned children?
 project: PRJ-0001
-status: active            # planned | active | paused | concluded | abandoned
-outcome: null             # null | positive | negative | inconclusive | infra
+status: concluded            # planned | active | paused | concluded | abandoned
+outcome: positive             # null | positive | negative | inconclusive | infra
 influenced_by: [EXP-20261016-rq1406]
 created: 2026-11-12
 author: agent:claude
@@ -90,8 +90,20 @@ One line per run after its link, what was tried and what it showed; `yajna valid
 rejects a bare link here. Metric runs also land in results.tsv.
 - [[RUN-20261112-s5yqfc]] aarch64-darwin: all checks pass; after a keyless restart the first dial cannot resolve the hub's name, the retry connects
 - [[RUN-20261112-s5z9yk]] aarch64-linux on ghost001: the same
-- [[RUN-20261112-s5yqfc]] compute run, not yet described
-- [[RUN-20261112-s5z9yk]] compute run, not yet described
 
 ## Conclusion
-Written once, by a human, when status becomes `concluded`.
+Draft by agent:claude, for the owner to approve.
+
+H1 is true on aarch64-darwin and aarch64-linux ([[RUN-20261112-s5yqfc]],
+[[RUN-20261112-s5z9yk]]): libtailscale's accepted and dialled connections are stream
+sockets tokio owns, so tonic serves and calls over them with a `Connected` wrapper and a
+dial connector, no copy loop or SOCKS5. Two identities ran in one process, the 1000-message
+stream and a minute-long idle stream under HTTP/2 pings passed, `status_json` named the
+dialling peer's host and login from its address, a spawned child held no descriptor at
+`ac7ed43`, and a keyless restart rejoined as the same node. One catch: `up` from saved
+state returns before the netmap names the peers, so the first dial by MagicDNS name may
+fail and a retry connects; the node treats it as a failed connect.
+
+x86_64-linux, in the plan, was not run; aarch64-linux stood in for it. This led to
+ADR-0048: the hub and the node embed tsnet beside plain TCP, the peer's tailnet identity
+recorded per connection.

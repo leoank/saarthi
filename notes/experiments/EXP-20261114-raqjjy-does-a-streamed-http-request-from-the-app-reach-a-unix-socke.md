@@ -4,8 +4,8 @@ type: experiment
 schema_version: 1
 title: Does a streamed HTTP request from the app reach a unix-socket service on a node through the hub and back, server-sent events and range reads included, inside an Android WebView
 project: PRJ-0001
-status: active            # planned | active | paused | concluded | abandoned
-outcome: null             # null | positive | negative | inconclusive | infra
+status: concluded            # planned | active | paused | concluded | abandoned
+outcome: positive             # null | positive | negative | inconclusive | infra
 influenced_by: []
 created: 2026-11-14
 author: agent:claude
@@ -60,4 +60,22 @@ rejects a bare link here. Metric runs also land in results.tsv.
 - [[RUN-20261116-ca6zg1]] an 86 ms link simulated on one machine: with tonic's default windows (1 MB and 2 MB per stream, not HTTP/2's 64 KB) the relay carries 9.8 MB/s; the adaptive window is slower (7.4 MB/s, a 1 MB range twice as long) as it starts every stream at 64 KB; keep the defaults
 
 ## Conclusion
-Written once, by a human, when status becomes `concluded`.
+Draft by agent:claude, for the owner to approve.
+
+H1 is true. On one machine the spike relay carried pages, a 1 MB range and 256 MB byte for
+byte in front of a real `yajna serve`, events with 0.2 ms added ([[RUN-20261114-rn027z]]).
+Through the hub on ghost001, 86 ms away, everything arrived whole and in order and an event
+cost one round trip (86 ms added); a small request cost three round trips (260 ms, two if
+`OpenService` carried the request's head), and a 1 MB range took 2.2 s, missing the 1 s
+target on this Mac's hostel link (0.9 MB/s), not on the relay
+([[RUN-20261115-2t8qqy]]). On a simulated 86 ms link tonic's default windows carry
+9.8 MB/s and the adaptive window is slower, so the defaults stay ([[RUN-20261116-ca6zg1]]).
+
+H2 is false ([[RUN-20261114-rwcse4]]): through `shouldInterceptRequest` the WebView takes
+the body in large blocks and none of ten events arrived; from a loopback port they came one
+by one. The owner chose a third way instead: a script the app puts in each page replaces
+`EventSource` and carries the stream over a `WebMessagePort`, events arriving in about
+240 ms, and yajna's files viewer, unchanged, followed an open file live
+([[RUN-20261115-218yt4]]). This settled ADR-0052's relay and led to ADR-0056, the bridge.
+The bridge was tried on the emulator; a range read at the 1 s target over a fast link was
+not timed through the real hub.

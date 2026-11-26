@@ -5,8 +5,8 @@ type: experiment
 schema_version: 1
 title: Does intervention work in an interactive session under rc2s2 run?
 project: PRJ-0001
-status: active            # planned | active | paused | concluded | abandoned
-outcome: null             # null | positive | negative | inconclusive | infra
+status: concluded            # planned | active | paused | concluded | abandoned
+outcome: positive             # null | positive | negative | inconclusive | infra
 influenced_by: [EXP-20261016-rq1403, EXP-20261016-rq1404, EXP-20261016-rq1405, EXP-20261019-cqpw0d]
 created: 2026-10-19
 author: agent:claude
@@ -89,4 +89,18 @@ interrupted prompt.
   ([[RUN-20261019-fzgrw0]]). A refusal at the terminal, like an interrupt, leaves no Stop.
 
 ## Conclusion
-Written once, by a human, when status becomes `concluded`.
+Draft by agent:claude, for the owner to approve.
+
+Yes, every prediction held in a real interactive session under `rc2s2 run`. A question held
+at PermissionRequest and answered with free text from a client reached the model as the
+tool result; Enter at the wrapped terminal released a held request 2 ms after the
+keystroke and the queued Enter allowed the dialog; a socket prompt was a user turn and
+fired UserPromptSubmit; kill ended the session within about a second
+([[RUN-20261019-e63842]]). An interrupt with a follow-up stopped a running count at 470 of
+3000 and the follow-up was answered alone ([[RUN-20261019-e78rne]]). Escape and `2` at the
+terminal also release a hold, refusing and allowing the tool ([[RUN-20261019-fzgrw0]]). In
+a bypass-permissions session a socket prompt is held by Claude Code undelivered, and the
+node's note tells the client ([[RUN-20261019-fyy0e4]]).
+
+One thing to rely on elsewhere: an interrupt or a refusal at the terminal fires no Stop
+hook, so the node's own `interrupted` event is the record. This closed phase 1 step 4.4.

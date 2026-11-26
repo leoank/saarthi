@@ -4,8 +4,8 @@ type: experiment
 schema_version: 1
 title: Does the PermissionRequest hook fire for AskUserQuestion in a bypass-permissions session, and can PreToolUse hold and answer it instead?
 project: PRJ-0001
-status: active            # planned | active | paused | concluded | abandoned
-outcome: null             # null | positive | negative | inconclusive | infra
+status: concluded            # planned | active | paused | concluded | abandoned
+outcome: negative             # null | positive | negative | inconclusive | infra
 influenced_by: [EXP-20261016-rq1404, EXP-20261025-25f4bf]
 created: 2026-10-25
 author: agent:claude
@@ -63,4 +63,12 @@ false the question must be shown as a notice only, with the answer typed at the 
   Step 2 of the plan is moot unless it recurs.
 
 ## Conclusion
-Written once, by a human, when status becomes `concluded`.
+Draft by agent:claude, for the owner to approve.
+
+H1 is false ([[RUN-20261025-36bknd]]): in a `--dangerously-skip-permissions` session the
+PermissionRequest hook fires for AskUserQuestion after PreToolUse, as in any other mode,
+and the node opens a question request from it. The owner's missed question fell in a window
+when the node was not forwarding (hooks not yet installed, or the daemon crash-looping after
+the first rogue switch, [[AGS-20261025-2vf58e]]). No PreToolUse path is needed, so H2 (step
+2) was not tested and is moot unless the miss recurs; phase 1.5 step 9 closed with no code
+change to the hold.

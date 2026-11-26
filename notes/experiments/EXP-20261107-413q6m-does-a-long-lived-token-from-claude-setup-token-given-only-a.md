@@ -4,8 +4,8 @@ type: experiment
 schema_version: 1
 title: Does a long-lived token from claude setup-token, given only as CLAUDE_CODE_OAUTH_TOKEN with an empty config dir, run headless stream-json turns, resume, and report rate limits, without touching the keychain or the owner login
 project: PRJ-0001
-status: active           # planned | active | paused | concluded | abandoned
-outcome: null             # null | positive | negative | inconclusive | infra
+status: concluded          # planned | active | paused | concluded | abandoned
+outcome: positive         # null | positive | negative | inconclusive | infra
 influenced_by: []
 created: 2026-11-07
 author: agent:claude
@@ -59,4 +59,15 @@ events still arrive (`five_hour`, `allowed`). The token is its own grant, so it 
 lease and no refresh while it lasts (a year, by `claude setup-token`'s description).
 
 ## Conclusion
-Written once, by a human, when status becomes `concluded`.
+Draft by agent:claude, for the owner to approve.
+
+The prediction holds ([[RUN-20261107-4dxwmx]], Claude Code 2.1.318): a `claude setup-token`
+token given only as `CLAUDE_CODE_OAUTH_TOKEN`, with an empty `CLAUDE_CONFIG_DIR`, runs a
+headless stream-json turn and a `--resume` under the same id that keeps the code word, and
+reports `rate_limit_event`s. No credential file is written, the keychain's item names are
+unchanged, and the owner's own login stays logged in. The token is a grant of its own, so
+a sandbox needs neither a lease nor a refresh while it lasts.
+
+ADR-0038 runs sandboxed spawns on such a token instead of waiting for leases, and ADR-0039
+makes named setup tokens held by the hub the way sessions run. Not checked: what happens
+when the token expires or is revoked mid-session.

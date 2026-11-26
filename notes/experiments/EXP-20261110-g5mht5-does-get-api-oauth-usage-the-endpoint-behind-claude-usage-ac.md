@@ -4,8 +4,8 @@ type: experiment
 schema_version: 1
 title: Does GET /api/oauth/usage, the endpoint behind --claude-usage, accept a claude setup-token token, and if not what other source gives an idle account's usage
 project: PRJ-0001
-status: active            # planned | active | paused | concluded | abandoned
-outcome: null             # null | positive | negative | inconclusive | infra
+status: concluded           # planned | active | paused | concluded | abandoned
+outcome: negative         # null | positive | negative | inconclusive | infra
 influenced_by: []
 created: 2026-11-10
 author: agent:claude
@@ -51,4 +51,16 @@ rejects a bare link here. Metric runs also land in results.tsv.
   headers, which Claude Code streams as `rate_limit_event` (the design uses those, ADR-0042)
 
 ## Conclusion
-Written once, by a human, when status becomes `concluded`.
+Draft by agent:claude, for the owner to approve.
+
+The endpoint refuses a setup-token ([[RUN-20261111-q60gf1]]): 403, "OAuth token does not
+meet scope requirement user:profile"; the token is scoped to inference, so the hub cannot
+poll an idle account through it. Of the alternatives ([[RUN-20261111-q6afjv]]),
+`claude -p "/usage"` gives only its own session's totals and `count_tokens` carries no
+windows; every inference request carries the account's 5-hour and 7-day windows in its
+headers, which Claude Code streams as `rate_limit_event`. The figures matched the owner's
+login on the same account ([[RUN-20261111-q6t69j]], 0.04 and 0.36).
+
+ADR-0042 followed: a token's usage comes from the sessions under it. An account no session
+uses has no fresh figures; a minimal turn of Claude Code itself is the probe left, not
+built.

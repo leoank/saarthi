@@ -4,8 +4,8 @@ type: experiment
 schema_version: 1
 title: Can libtailscale be cross-built for arm64 Android under Nix, linked into the uniffi core, and carry tonic gRPC to the hub from inside the app without the Tailscale app?
 project: PRJ-0001
-status: active            # planned | active | paused | concluded | abandoned
-outcome: null             # null | positive | negative | inconclusive | infra
+status: concluded            # planned | active | paused | concluded | abandoned
+outcome: positive             # null | positive | negative | inconclusive | infra
 influenced_by: [EXP-20261112-rq8kgc]
 created: 2026-11-13
 author: agent:claude
@@ -78,7 +78,19 @@ One line per run after its link, what was tried and what it showed; `yajna valid
 rejects a bare link here. Metric runs also land in results.tsv.
 
 - [[RUN-20261113-1v2rh6]] the Android build, the two fixes it needed, and the app reaching a hub through its own identity on the emulator; positive
-- [[RUN-20261113-1v2rh6]] compute run, not yet described
 
 ## Conclusion
-Written once, by a human, when status becomes `concluded`.
+Draft by agent:claude, for the owner to approve.
+
+H1 is true with two additions ([[RUN-20261113-1v2rh6]]): libtailscale at `ac7ed43`
+cross-builds for arm64 Android under Nix, as a c-shared `libtailscale.so` beside the core
+(Go builds no c-archive for Android), and the app reaches a hub through its own tailnet
+identity with no Tailscale app. The sandbox's ban on netlink stops `Up` until a netmon
+interface getter built on bionic's `getifaddrs` is registered, and tsnet panics without
+`TS_LOGS_DIR` set from inside Go. A cold start rejoins from saved state in about 160 ms.
+
+The run was on the emulator; on the owner's phone at 0.5.0 the app connected through its
+own identity and held across a switch between Wi-Fi and mobile data, though netmon there
+only polls every ten minutes and nothing reports network changes to it. This led to
+ADR-0049: the phone holds a tailnet identity per hub, with the Android build and the Go
+shim it needed.

@@ -5,8 +5,8 @@ type: experiment
 schema_version: 1
 title: Leasing a Claude Code credential into a fresh config dir
 project: PRJ-0001
-status: active           # planned | active | paused | concluded | abandoned
-outcome: null             # null | positive | negative | inconclusive | infra
+status: concluded           # planned | active | paused | concluded | abandoned
+outcome: positive             # null | positive | negative | inconclusive | infra
 influenced_by: []
 created: 2026-10-16
 author: ank
@@ -86,4 +86,20 @@ token and invalidate the copy or the original.
 - [[RUN-20261017-m3gg0y]] planned, deferred: do many sessions on one credential store survive a refresh
 
 ## Conclusion
-Written once, by a human, when status becomes `concluded`.
+Draft by agent:claude, for the owner to approve.
+
+Yes, an OAuth credential can be leased per session, and a refresh rotates it. Written to
+`<dir>/.credentials.json` and started with `CLAUDE_CONFIG_DIR=<dir>`, Claude Code uses the
+file and ignores the host keychain ([[RUN-20261016-rq14w7]]). A refresh returns a new
+access and refresh token and revokes the old pair within a minute, so a copy of a live
+login kills the original (the owner's session needed `/login`); on macOS the refreshed pair
+is saved to a hashed keychain item and the file is deleted ([[RUN-20261017-dssg3d]]).
+Separate logins are separate grants: a refresh on one leaves the other alone, and
+`claude auth logout` revokes a grant at the server ([[RUN-20261017-ebc0qq]]). The original
+login works at the end.
+
+This led to the leased slots of ADR-0018, one login per concurrent store, later superseded
+by the non-refreshing `claude setup-token` tokens of ADR-0039. Left unchecked: whether many
+sessions on one store survive a refresh ([[RUN-20261017-m3gg0y]], planned, not run; with
+ADR-0039 it no longer gates anything), the save path inside a sandbox without keychain
+access, and an API key as the lease.

@@ -55,7 +55,6 @@ One line per run after its link, what was tried and what it showed; `yajna valid
 rejects a bare link here. Metric runs also land in results.tsv.
 
 - [[RUN-20261124-gftzzx]] five `-p` cases and one terminal, under the node's environment for a hub token: `ANTHROPIC_MODEL=opus` gives Opus in both modes, `--model sonnet` beats it, and it beats `model: haiku` in settings
-- [[RUN-20261124-gftzzx]] compute run, not yet described
 
 ## Conclusion
 Draft by agent:claude, for the owner to approve.

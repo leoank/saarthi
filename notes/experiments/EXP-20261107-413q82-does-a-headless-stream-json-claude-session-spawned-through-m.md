@@ -4,8 +4,8 @@ type: experiment
 schema_version: 1
 title: Does a headless stream-json claude session spawned through mxc seatbelt keep stdin control (prompt, interrupt), deliver hooks over a unix socket, reach the nix daemon, ssh agent and git identity, and leave its registry entry and transcript in the sandbox config dir for resume
 project: PRJ-0001
-status: active           # planned | active | paused | concluded | abandoned
-outcome: null             # null | positive | negative | inconclusive | infra
+status: concluded          # planned | active | paused | concluded | abandoned
+outcome: positive         # null | positive | negative | inconclusive | infra
 influenced_by: []
 created: 2026-11-07
 author: agent:claude
@@ -93,4 +93,21 @@ From [[RUN-20261107-4dxw07]] (outputs in `notes/runs/RUN-20261107-438rq0/out/`),
   needs a long tool uses something else (`python3 -c 'time.sleep(N)'`).
 
 ## Conclusion
-Written once, by a human, when status becomes `concluded`.
+Draft by agent:claude, for the owner to approve.
+
+Mostly as predicted ([[RUN-20261107-4dxw07]], Claude Code 2.1.318 on rogue, the token of
+[[EXP-20261107-413q6m]]): through `mxc_sdk::v1::spawn` the stream-json protocol is
+unchanged (prompts, an interrupt that stopped the running tool in 0.2 s, end on closed
+stdin); command hooks over a unix socket deliver every event, SessionStart included, and
+13 held PermissionRequests were allowed; `nix develop`, git identity, SSH through the
+agent and the owner's tools work inside once `TMPDIR` points inside; `~/.ssh` keys, the
+home directory, the owner's credentials file and `/tmp/cc-socks` are refused; the registry
+entry and transcript land in the sandbox config dir and a resume there keeps the code word.
+So mxc's seatbelt backend serves the spawner; no fork-and-`sandbox_init` of its own is
+needed.
+
+One prediction failed: a kill through mxc ends claude but not the Bash tool's process
+group, which is reparented to launchd and keeps running (still confined). ADR-0038 builds
+sandboxed spawns on mxc with launch profiles and adds to the hard kill the process groups
+of the session's descendants. The session that was interrupted last exited 1 on closed
+stdin, the other 0; not looked into.

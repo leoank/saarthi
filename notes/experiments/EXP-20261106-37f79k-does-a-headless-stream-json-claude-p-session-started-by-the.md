@@ -4,7 +4,7 @@ type: experiment
 schema_version: 1
 title: Does a headless stream-json claude -p session started by the daemon show in the session registry, stop its turn on an interrupt control request over stdin, and end cleanly when stdin closes
 project: PRJ-0001
-status: active            # planned | active | paused | concluded | abandoned
+status: concluded           # planned | active | paused | concluded | abandoned
 outcome: positive         # null | positive | negative | inconclusive | infra
 influenced_by: [EXP-20261016-rq1405]
 created: 2026-11-06
@@ -48,4 +48,15 @@ rejects a bare link here. Metric runs also land in results.tsv.
 - [[RUN-20261106-37krk4]] one spawned session on 2.1.318: in the registry at once (its status stuck at busy), interrupted in 10 ms over stdin with the tool killed, exit 0 in 0.8 s on closing stdin; H1 to H3 hold
 
 ## Conclusion
-Written once, by a human, when status becomes `concluded`.
+Draft by agent:claude, for the owner to approve.
+
+All three hold on Claude Code 2.1.318 ([[RUN-20261106-37krk4]]). H1: the spawned session
+writes its registry entry at once under the id given by `--session-id`, but its `status`
+stays `busy` after the turn, so idle and busy must come from the stream (`result` lines),
+not the registry. H2: the `interrupt` control request ends the turn in 10 ms and kills its
+tool; the next turn runs with the context kept. H3: closing stdin exits 0 in 0.8 s and
+removes the registry entry.
+
+So the spawner needs no PTY, no SIGINT and no registration of its own; ADR-0034 builds on
+this, reading idle and busy from the stream. One session on one machine, without a
+permission request in the turn.
