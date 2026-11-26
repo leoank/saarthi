@@ -1,0 +1,73 @@
+// EXP-20261126-f3e5a9: the hub's authorization model, as a Cedar schema. Throwaway.
+namespace Saarthi {
+  // Roles a person (or an app) is in: admin, member, monitor.
+  entity Role;
+  // A person signs in to the admin page; their devices (the phone, ctl) act as them.
+  entity Person in [Role] { name: String };
+  // A device client is in its person, so it has its person's rights.
+  entity Client in [Person] { kind: String };
+  // An app is not in its person: it has only what its grant and the policies give it.
+  type Grant = {
+    nodes: Set<Node>,
+    profiles: Set<Profile>,
+    accounts: Set<ClaudeAccount>,
+    terminal: Bool,
+  };
+  entity App in [Role] { owner: Person, grant: Grant };
+  // A node belongs to a person, may be shared, and may be embedded in an app.
+  entity Node { owner: Person, shared_with: Set<Person>, app?: App };
+  entity Profile { node: Node, sandboxed: Bool };
+  entity ClaudeAccount { owner: Person, shared_with: Set<Person> };
+  // A session's owner is the person it is for (the launcher's, or the node's for a session
+  // started on the node); `app` is the app that launched it. Labels are tags.
+  entity Session { node: Node, owner: Person, launched_by: String, app?: App } tags String;
+  entity Shell { node: Node };
+  entity Hub;
+
+  type SpawnContext = { profile: Profile, account?: ClaudeAccount, model: String };
+  type ResumeContext = { account?: ClaudeAccount };
+
+  // Groups.
+  action "read";
+  action "operate";
+  action "shell";
+  action "manage";
+  action "admin";
+
+  // A session (list, watch, search and pending filter on ViewSession).
+  action ViewSession, StreamSession, History, SessionAbout in ["read"]
+    appliesTo { principal: [Person, Client, App], resource: [Session] };
+  action Prompt, Interrupt, Unqueue, Resolve, SetModel, Kill, DeleteSession in ["operate"]
+    appliesTo { principal: [Person, Client, App], resource: [Session] };
+  action Resume in ["operate"]
+    appliesTo { principal: [Person, Client, App], resource: [Session], context: ResumeContext };
+  // A node.
+  action ViewNode, GetHealth in ["read"]
+    appliesTo { principal: [Person, Client, App], resource: [Node] };
+  action Spawn in ["operate"]
+    appliesTo { principal: [Person, Client, App], resource: [Node], context: SpawnContext };
+  action SetKeepAwake, ServiceRequest in ["operate"]
+    appliesTo { principal: [Person, Client, App], resource: [Node] };
+  action Terminal, ListShells in ["shell"]
+    appliesTo { principal: [Person, Client, App], resource: [Node] };
+  action KillShell in ["shell"]
+    appliesTo { principal: [Person, Client, App], resource: [Shell] };
+  // Accounts.
+  action ViewAccount in ["read"]
+    appliesTo { principal: [Person, Client, App], resource: [ClaudeAccount] };
+  action SetClaudeTokenExpiry, SetClaudeTokenModel in ["manage"]
+    appliesTo { principal: [Person, Client, App], resource: [ClaudeAccount] };
+  action SetDefaultClaudeToken in ["manage"]
+    appliesTo { principal: [Person, Client, App], resource: [Node], context: { account: ClaudeAccount } };
+  // A person's own clients and apps (onboarding a device, adding an app).
+  action ManageClients in ["manage"]
+    appliesTo { principal: [Person, Client], resource: [Person] };
+  // The hub: people, tokens, policies, the audit of refusals.
+  action ManagePeople, ManageTokens, ManagePolicies, ViewAudit in ["admin"]
+    appliesTo { principal: [Person, Client, App], resource: [Hub] };
+  // What a node asks of the hub.
+  action GetClaudeToken, UseClaudeApi
+    appliesTo { principal: [Node], resource: [ClaudeAccount] };
+  action ReportSession
+    appliesTo { principal: [Node], resource: [Session] };
+}
