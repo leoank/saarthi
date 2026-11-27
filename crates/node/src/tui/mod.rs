@@ -159,6 +159,7 @@ async fn reload(c: &mut Client, state: &mut State) {
             .list_sessions(c.request(ListSessionsRequest {
                 node_id: String::new(),
                 include_ended: false,
+                labels: Default::default(),
             }))
             .await?
             .into_inner()
@@ -274,6 +275,7 @@ async fn call(c: &mut Client, action: Action) -> Result<String, String> {
                 permission_mode: mode,
                 profile: String::new(),
                 claude_token: token,
+                labels: Default::default(),
             };
             match c.inner.spawn(c.request(req)).await {
                 Ok(r) => {

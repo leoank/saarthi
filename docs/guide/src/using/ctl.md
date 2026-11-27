@@ -60,8 +60,14 @@ $ saarthi ctl spawn laptop ~/workspace/app "fix the failing test" --model sonnet
 $ saarthi ctl spawn laptop ~/workspace/new-idea --create      # made first, starts idle
 $ saarthi ctl spawn laptop ~/workspace/app "tidy the imports" --permission-mode bypassPermissions
 $ saarthi ctl spawn laptop ~/workspace/app "try the new parser" --profile sandbox
+$ saarthi ctl spawn laptop ~/workspace/app "run job 1234" --label job=1234
+$ saarthi ctl sessions --all --label job=1234       # the sessions labelled so
 $ saarthi ctl keep-awake laptop on
 ```
+
+A label is yours to set on a spawn, for matching a session to your own work: up to 16,
+each key letters, digits or `_.-/`. A resume keeps them, and a session a resume forks
+takes them too.
 
 ```console
 $ saarthi ctl history --node laptop --limit 10    # newest first: id, start, directory, first prompt

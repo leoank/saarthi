@@ -20,6 +20,9 @@ pub enum Ctl {
     Sessions {
         #[arg(long)]
         all: bool,
+        /// Only sessions with this label, `key=value`; repeatable, every one must match.
+        #[arg(long = "label", value_parser = label)]
+        labels: Vec<(String, String)>,
     },
     /// Open permission requests and questions.
     Pending,
@@ -73,6 +76,10 @@ pub enum Ctl {
         profile: String,
         #[command(flatten)]
         token: TokenChoice,
+        /// A label for the session, `key=value`, returned with it and matched by
+        /// `sessions --label`; repeatable.
+        #[arg(long = "label", value_parser = label)]
+        labels: Vec<(String, String)>,
     },
     /// Continue a finished session headless, in place; without a prompt it resumes idle.
     Resume {
@@ -388,10 +395,11 @@ pub async fn run(hub: &str, token: &str, cmd: Ctl) -> Result<()> {
                 );
             }
         }
-        Ctl::Sessions { all } => {
+        Ctl::Sessions { all, labels } => {
             let req = ListSessionsRequest {
                 node_id: String::new(),
                 include_ended: all,
+                labels: labels.into_iter().collect(),
             };
             let r = c.inner.list_sessions(c.request(req)).await?;
             for s in r.into_inner().sessions {
@@ -497,6 +505,7 @@ pub async fn run(hub: &str, token: &str, cmd: Ctl) -> Result<()> {
             permission_mode,
             profile,
             token,
+            labels,
         } => {
             let node_id = c.node_id(&node).await?;
             let req = SpawnRequest {
@@ -508,6 +517,7 @@ pub async fn run(hub: &str, token: &str, cmd: Ctl) -> Result<()> {
                 permission_mode,
                 profile,
                 claude_token: token.pick(),
+                labels: labels.into_iter().collect(),
             };
             let r = c.inner.spawn(c.request(req)).await?.into_inner();
             if !r.ok {
@@ -734,6 +744,13 @@ fn first_prompt(payload: &str) -> Option<String> {
     }
     let text = v["message"]["content"].as_str()?.trim();
     (!text.is_empty() && !text.starts_with('<')).then(|| text.lines().next().unwrap_or(text).to_string())
+}
+
+
+/// A `key=value` label.
+fn label(s: &str) -> Result<(String, String), String> {
+    let (k, v) = s.split_once('=').ok_or("a label is key=value")?;
+    Ok((k.to_string(), v.to_string()))
 }
 
 #[cfg(test)]

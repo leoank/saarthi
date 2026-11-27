@@ -257,10 +257,11 @@ impl Db {
         let just_ended = s.ended_ms.is_some() && matches!(was_live, Some((None,)));
         sqlx::query(
             "INSERT INTO sessions (node_id, id, harness, cwd, transcript_path, launch, pid, account_label, status,
-                                   started_ms, ended_ms, profile, claude_token, launched_by)
+                                   started_ms, ended_ms, profile, claude_token, launched_by, labels)
              VALUES (?1, ?2, ?3, ?4, ?5, ?6, ?7, ?8, ?9, ?10, ?11, ?12, ?13,
                      COALESCE((SELECT launched_by FROM launches WHERE node_id = ?1 AND session_id = ?2),
-                              'node:' || COALESCE((SELECT name FROM nodes WHERE id = ?1), '')))
+                              'node:' || COALESCE((SELECT name FROM nodes WHERE id = ?1), '')),
+                     COALESCE((SELECT labels FROM launches WHERE node_id = ?1 AND session_id = ?2), '{}'))
              ON CONFLICT (node_id, id) DO UPDATE SET
                harness = excluded.harness, cwd = excluded.cwd, transcript_path = excluded.transcript_path,
                launch = excluded.launch, pid = excluded.pid, account_label = excluded.account_label,
@@ -272,7 +273,7 @@ impl Db {
             // the session, or reported by the node for one started at its terminal under a
             // token (ADR-0046); kept when a restarted node reports the session without one.
             // launched_by is the hub's alone (ADR-0082): set once, from `record_launch` or as
-            // the node's, whatever the node reports.
+            // the node's, whatever the node reports; so are the labels, set from the launch.
         )
         .bind(node_id)
         .bind(&s.id)
@@ -491,21 +492,34 @@ impl Db {
         Ok(done.rows_affected() == 1)
     }
 
-    /// Records who launched session `id` on the node (ADR-0082), before the node is asked to
-    /// start it; a session the node reported already, as its own, takes it too.
-    pub async fn record_launch(&self, node_id: &str, id: &str, launched_by: &str) -> Result<()> {
-        sqlx::query("INSERT OR REPLACE INTO launches (node_id, session_id, launched_by) VALUES (?1, ?2, ?3)")
+    /// Records who launched session `id` on the node (ADR-0082), and its labels, before the
+    /// node is asked to start it; a session the node reported already, as its own, takes
+    /// them too.
+    pub async fn record_launch(
+        &self,
+        node_id: &str,
+        id: &str,
+        launched_by: &str,
+        labels: &std::collections::HashMap<String, String>,
+    ) -> Result<()> {
+        let labels = serde_json::to_string(labels)?;
+        sqlx::query("INSERT OR REPLACE INTO launches (node_id, session_id, launched_by, labels) VALUES (?1, ?2, ?3, ?4)")
             .bind(node_id)
             .bind(id)
             .bind(launched_by)
+            .bind(&labels)
             .execute(&self.pool)
             .await?;
-        sqlx::query("UPDATE sessions SET launched_by = ?3 WHERE node_id = ?1 AND id = ?2 AND launched_by LIKE 'node:%'")
-            .bind(node_id)
-            .bind(id)
-            .bind(launched_by)
-            .execute(&self.pool)
-            .await?;
+        sqlx::query(
+            "UPDATE sessions SET launched_by = ?3, labels = ?4
+             WHERE node_id = ?1 AND id = ?2 AND launched_by LIKE 'node:%'",
+        )
+        .bind(node_id)
+        .bind(id)
+        .bind(launched_by)
+        .bind(&labels)
+        .execute(&self.pool)
+        .await?;
         Ok(())
     }
 
@@ -657,14 +671,23 @@ impl Db {
         Ok(())
     }
 
-    /// Sessions of one node, or of every node when `node_id` is empty.
-    pub async fn sessions(&self, node_id: &str, include_ended: bool) -> Result<Vec<Session>> {
+    /// Sessions of one node, or of every node when `node_id` is empty, with every one of
+    /// `labels`.
+    pub async fn sessions(
+        &self,
+        node_id: &str,
+        include_ended: bool,
+        labels: &std::collections::HashMap<String, String>,
+    ) -> Result<Vec<Session>> {
         let rows = sqlx::query(
-            "SELECT * FROM sessions WHERE (?1 = '' OR node_id = ?1) AND (?2 OR ended_ms IS NULL)
+            "SELECT * FROM sessions s WHERE (?1 = '' OR node_id = ?1) AND (?2 OR ended_ms IS NULL)
+               AND NOT EXISTS (SELECT 1 FROM json_each(?3) w
+                               WHERE json_extract(s.labels, '$.\"' || w.key || '\"') IS NOT w.value)
              ORDER BY started_ms",
         )
         .bind(node_id)
         .bind(include_ended)
+        .bind(serde_json::to_string(labels)?)
         .fetch_all(&self.pool)
         .await?;
         Ok(rows.iter().map(session_from).collect())
@@ -943,6 +966,7 @@ pub(crate) fn session_from(r: &sqlx::sqlite::SqliteRow) -> Session {
         last_reply: String::new(),
         parent_id: r.get("parent_id"),
         launched_by: r.get("launched_by"),
+        labels: serde_json::from_str(r.get("labels")).unwrap_or_default(),
     }
 }
 
@@ -959,6 +983,7 @@ pub struct Windows {
 #[cfg(test)]
 mod tests {
     use super::*;
+    use std::collections::HashMap;
 
     #[tokio::test]
     async fn a_node_keeps_the_tailnet_it_last_linked_over_until_it_links_over_tcp() {
@@ -1045,17 +1070,42 @@ mod tests {
         db.store_session(&node, &Session { launched_by: "client:me".into(), ..s("own") }).await.unwrap();
         assert_eq!(by("own").await, "node:mac");
         // Spawned by a client: recorded before the node reports it, kept through every report.
-        db.record_launch(&node, "spawned", "client:phone").await.unwrap();
+        db.record_launch(&node, "spawned", "client:phone", &Default::default()).await.unwrap();
         db.store_session(&node, &s("spawned")).await.unwrap();
         db.store_session(&node, &Session { ended_ms: Some(5), ..s("spawned") }).await.unwrap();
         assert_eq!(by("spawned").await, "client:phone");
         // A fork named after the node's reply takes its resumer, even reported first.
         db.store_session(&node, &s("fork")).await.unwrap();
-        db.record_launch(&node, "fork", "client:ctl").await.unwrap();
+        db.record_launch(&node, "fork", "client:ctl", &Default::default()).await.unwrap();
         assert_eq!(by("fork").await, "client:ctl");
         // A client's session is never handed to another by a later record.
-        db.record_launch(&node, "spawned", "client:other").await.unwrap();
+        db.record_launch(&node, "spawned", "client:other", &Default::default()).await.unwrap();
         assert_eq!(by("spawned").await, "client:phone");
+    }
+
+    #[tokio::test]
+    async fn labels_come_with_the_launch_and_a_list_matches_them() {
+        let dir = tempfile::tempdir().unwrap();
+        let db = Db::open(&dir.path().join("hub.db")).await.unwrap();
+        let (node, _) = db.register_node("mac", "0.1.0", 1).await.unwrap();
+        let map = |kv: &[(&str, &str)]| kv.iter().map(|(k, v)| (k.to_string(), v.to_string())).collect::<HashMap<_, _>>();
+        let s = |id: &str| Session { id: id.into(), cwd: "/w".into(), ..Default::default() };
+        db.record_launch(&node, "a", "client:app", &map(&[("job", "1234"), ("app/run.id", "7")])).await.unwrap();
+        db.store_session(&node, &s("a")).await.unwrap();
+        db.record_launch(&node, "b", "client:app", &map(&[("job", "99")])).await.unwrap();
+        db.store_session(&node, &s("b")).await.unwrap();
+        db.store_session(&node, &s("c")).await.unwrap();
+        let ids = |l: HashMap<String, String>| {
+            let db = db.clone();
+            async move { db.sessions("", true, &l).await.unwrap().into_iter().map(|s| s.id).collect::<Vec<_>>() }
+        };
+        assert_eq!(db.session(&node, "a").await.unwrap().unwrap().labels, map(&[("job", "1234"), ("app/run.id", "7")]));
+        assert_eq!(db.session(&node, "c").await.unwrap().unwrap().labels, map(&[]));
+        assert_eq!(ids(map(&[])).await, ["a", "b", "c"]);
+        assert_eq!(ids(map(&[("job", "1234")])).await, ["a"]);
+        assert_eq!(ids(map(&[("job", "1234"), ("app/run.id", "7")])).await, ["a"]);
+        assert_eq!(ids(map(&[("job", "1234"), ("app/run.id", "8")])).await, Vec::<String>::new());
+        assert_eq!(ids(map(&[("nope", "")])).await, Vec::<String>::new());
     }
 
     #[tokio::test]

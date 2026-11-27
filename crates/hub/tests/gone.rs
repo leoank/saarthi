@@ -35,7 +35,7 @@ async fn session(addr: &str, id: &str, ended: bool) -> Session {
     let mut c = ControlServiceClient::connect(format!("http://{addr}")).await.unwrap();
     for _ in 0..250 {
         let all = c
-            .list_sessions(req(ListSessionsRequest { node_id: String::new(), include_ended: true }))
+            .list_sessions(req(ListSessionsRequest { node_id: String::new(), include_ended: true, labels: Default::default() }))
             .await
             .unwrap()
             .into_inner()

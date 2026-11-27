@@ -47,6 +47,10 @@ message Session {
   // its node started, at its terminal or under `saarthi run`. Kept through a resume. The
   // node sends it empty; the hub fills it.
   string launched_by = 19;
+  // An app's own labels for it, set on the spawn (`job` = `1234`), to match a session to its
+  // work; kept through a resume and carried to a fork. Not who launched it: that is
+  // `launched_by`, which no caller sets.
+  map<string, string> labels = 20;
 }
 
 // A way a node can start a session (`--profiles`, ADR-0038), as the app offers it.

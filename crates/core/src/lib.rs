@@ -560,6 +560,7 @@ impl Hub {
         let req = ListSessionsRequest {
             node_id: String::new(),
             include_ended,
+            labels: Default::default(),
         };
         let r = self.client.clone().list_sessions(self.req(req)).await?;
         Ok(r.into_inner().sessions.into_iter().map(session).collect())
@@ -752,6 +753,7 @@ impl Hub {
             permission_mode,
             profile,
             claude_token,
+            labels: Default::default(),
         };
         let r = self.client.clone().spawn(self.req(req)).await?.into_inner();
         let id = r.session_id.clone();

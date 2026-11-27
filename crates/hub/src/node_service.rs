@@ -299,7 +299,7 @@ async fn serve_node(
     // reads its session registry before it registers, so a running session is reported.
     let reported: std::collections::HashSet<&str> = register.sessions.iter().map(|s| s.id.as_str()).collect();
     let mut gone_sessions = Vec::new();
-    for mut session in db.sessions(&node_id, false).await? {
+    for mut session in db.sessions(&node_id, false, &Default::default()).await? {
         if !reported.contains(session.id.as_str()) {
             session.ended_ms = Some(now_ms());
             db.store_session(&node_id, &session).await?;

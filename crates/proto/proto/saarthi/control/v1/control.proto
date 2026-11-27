@@ -111,6 +111,7 @@ message ListNodesResponse {
 message ListSessionsRequest {
   string node_id = 1;           // empty for every node
   bool include_ended = 2;
+  map<string, string> labels = 3; // only sessions with every one of these labels; empty for all
 }
 
 message ListSessionsResponse {
@@ -232,6 +233,9 @@ message SpawnRequest {
   // The named Claude token to run under (ADR-0039): absent for the node's default, empty for
   // the node's own login.
   optional string claude_token = 8;
+  // Labels for the session (`job` = `1234`), returned with it and matched by a list: at most
+  // 16, each key 1 to 64 letters, digits or `_.-/`, each value at most 256 characters.
+  map<string, string> labels = 9;
 }
 
 message ResumeRequest {

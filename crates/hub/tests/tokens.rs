@@ -62,6 +62,7 @@ async fn session(c: &mut ControlServiceClient<Channel>, id: &str, ended: bool) -
             .list_sessions(req(ListSessionsRequest {
                 node_id: String::new(),
                 include_ended: true,
+                labels: Default::default(),
             }))
             .await
             .unwrap()
@@ -176,6 +177,7 @@ async fn sessions_run_under_named_tokens_chosen_or_by_default_and_report_their_u
         permission_mode: String::new(),
         profile: String::new(),
         claude_token: claude_token.map(str::to_string),
+        labels: Default::default(),
     };
 
     // Names and dates, never values.
@@ -426,6 +428,7 @@ async fn usage_probes_keep_every_account_fresh_without_listing_a_session() {
         .list_sessions(req(ListSessionsRequest {
             node_id: String::new(),
             include_ended: true,
+            labels: Default::default(),
         }))
         .await
         .unwrap()

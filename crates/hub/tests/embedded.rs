@@ -1,7 +1,8 @@
 //! Two nodes built as a library (ADR-0080) in one process, against a real hub on loopback:
 //! each registers with a token of its own and lists only the sessions it starts; those run
 //! in the node's own Claude config directory, only under the hub's Claude tokens, through a
-//! proxy whose socket is in the node's state directory; stopping a node ends its sessions.
+//! proxy whose socket is in the node's state directory; an app's labels come back with the
+//! session and find it (phase item 5); stopping a node ends its sessions.
 
 mod common;
 
@@ -56,7 +57,7 @@ async fn node_ids(c: &mut ControlServiceClient<Channel>) -> (String, String) {
 
 /// The nodes that list session `id`, and whether it has ended on each.
 async fn listed(c: &mut ControlServiceClient<Channel>, id: &str) -> Vec<(String, bool)> {
-    c.list_sessions(req(ListSessionsRequest { node_id: String::new(), include_ended: true }))
+    c.list_sessions(req(ListSessionsRequest { node_id: String::new(), include_ended: true, labels: Default::default() }))
         .await
         .unwrap()
         .into_inner()
@@ -103,6 +104,8 @@ async fn two_embedded_nodes_in_one_process_keep_to_their_own_sessions() {
         permission_mode: String::new(),
         profile: String::new(),
         claude_token: claude_token.map(str::to_string),
+        // An app's own labels, to find its work again (phase item 5).
+        labels: [("job".to_string(), "1234".to_string())].into(),
     };
 
     // Its config dir has no login: without a hub token there is nothing to run under.
@@ -127,6 +130,21 @@ async fn two_embedded_nodes_in_one_process_keep_to_their_own_sessions() {
     // Listed under the node that started it and no other.
     wait_for(async || listed(&mut c, &id).await == [(ida.clone(), false)], "listed under a alone").await;
     assert_ne!(ida, idb);
+
+    // With the app's labels, and found by them; launched by the app's client.
+    let by_label = |job: &str| ListSessionsRequest {
+        node_id: String::new(),
+        include_ended: true,
+        labels: [("job".to_string(), job.to_string())].into(),
+    };
+    let found = c.list_sessions(req(by_label("1234"))).await.unwrap().into_inner().sessions;
+    assert_eq!(found.iter().map(|s| s.id.as_str()).collect::<Vec<_>>(), [id.as_str()]);
+    assert_eq!(found[0].labels["job"], "1234");
+    assert_eq!(found[0].launched_by, "client:test-client");
+    assert!(c.list_sessions(req(by_label("9"))).await.unwrap().into_inner().sessions.is_empty());
+    let bad = SpawnRequest { labels: [("no spaces".to_string(), String::new())].into(), ..spawn(Some("work")) };
+    let e = c.spawn(req(bad)).await.unwrap_err();
+    assert_eq!(e.code(), tonic::Code::InvalidArgument, "{e}");
 
     // Stopping a ends its session; b goes on.
     a.stop().await;

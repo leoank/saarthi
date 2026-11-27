@@ -65,6 +65,7 @@ async fn session(c: &mut ControlServiceClient<Channel>, id: &str, ended: bool) -
             .list_sessions(req(ListSessionsRequest {
                 node_id: String::new(),
                 include_ended: true,
+                labels: Default::default(),
             }))
             .await
             .unwrap()
@@ -133,6 +134,7 @@ async fn a_client_spawns_prompts_and_kills_a_headless_session() {
         permission_mode: String::new(),
         profile: "plain".into(),
         claude_token: None,
+        labels: Default::default(),
     };
     let r = c.spawn(req(spawn)).await.unwrap().into_inner();
     assert!(r.ok, "{}", r.error);
@@ -173,6 +175,7 @@ async fn a_client_spawns_prompts_and_kills_a_headless_session() {
         permission_mode: String::new(),
         profile: String::new(),
         claude_token: None,
+        labels: Default::default(),
     };
     let r = c.spawn(req(outside)).await.unwrap().into_inner();
     assert!(!r.ok && r.error.contains("spawn root"), "{}", r.error);
@@ -188,6 +191,7 @@ async fn a_client_spawns_prompts_and_kills_a_headless_session() {
         permission_mode: "--yolo".into(),
         profile: String::new(),
         claude_token: None,
+        labels: Default::default(),
     };
     let r = c.spawn(req(flag)).await.unwrap().into_inner();
     assert!(!r.ok && r.error.contains("permission mode"), "{}", r.error);
@@ -202,6 +206,7 @@ async fn a_client_spawns_prompts_and_kills_a_headless_session() {
         permission_mode: String::new(),
         profile: "boxed".into(),
         claude_token: None,
+        labels: Default::default(),
     };
     let r = c.spawn(req(unknown)).await.unwrap().into_inner();
     assert!(!r.ok && r.error.contains("no launch profile boxed"), "{}", r.error);
@@ -234,6 +239,7 @@ async fn a_node_without_spawn_roots_refuses_to_spawn() {
         permission_mode: String::new(),
         profile: String::new(),
         claude_token: None,
+        labels: Default::default(),
     };
     let r = c.spawn(req(spawn)).await.unwrap().into_inner();
     assert!(!r.ok && r.error.contains("--spawn-root"), "{}", r.error);
@@ -276,6 +282,7 @@ async fn history_lists_a_session_with_its_first_prompt_and_usage_and_it_resumes_
         permission_mode: String::new(),
         profile: String::new(),
         claude_token: None,
+        labels: Default::default(),
     };
     let id = c.spawn(req(spawn)).await.unwrap().into_inner().session_id;
 
@@ -376,6 +383,7 @@ async fn a_session_resumes_on_a_node_that_lost_its_transcript_from_the_hubs_copy
         permission_mode: String::new(),
         profile: String::new(),
         claude_token: None,
+        labels: [("job".to_string(), "7".to_string())].into(),
     };
     let id = c.spawn(req(spawn)).await.unwrap().into_inner().session_id;
 
@@ -469,5 +477,8 @@ async fn a_session_resumes_on_a_node_that_lost_its_transcript_from_the_hubs_copy
     assert_eq!(read(&fork), lines[..3], "the hub's copy, under the new id");
     let forked = session(&mut c, &r.session_id, false).await;
     assert_eq!(forked.cwd, cwd);
+    // The fork carries on the session's work: its labels, and its resumer as launcher.
+    assert_eq!(forked.labels["job"], "7");
+    assert_eq!(forked.launched_by, "client:test-client");
     hub.stop();
 }

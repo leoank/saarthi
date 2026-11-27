@@ -146,9 +146,10 @@ impl ControlService for Hub {
     ) -> Result<Response<ListSessionsResponse>, Status> {
         self.client(&request)?;
         let r = request.into_inner();
+        check_labels(&r.labels)?;
         let mut sessions = self
             .db
-            .sessions(&r.node_id, r.include_ended)
+            .sessions(&r.node_id, r.include_ended, &r.labels)
             .await
             .map_err(internal)?;
         for s in &mut sessions {
@@ -515,6 +516,7 @@ impl ControlService for Hub {
     ) -> Result<Response<CommandResponse>, Status> {
         let client = self.client(&request)?;
         let r = request.into_inner();
+        check_labels(&r.labels)?;
         // A token picked, else the node's default (ADR-0039).
         let (name, why) = match r.claude_token {
             Some(name) => (name, "picked"),
@@ -535,7 +537,7 @@ impl ControlService for Hub {
         // The hub names the session, so the client can open it as soon as this returns.
         let session_id = uuid::Uuid::new_v4().to_string();
         self.db
-            .record_launch(&r.node_id, &session_id, &format!("client:{client}"))
+            .record_launch(&r.node_id, &session_id, &format!("client:{client}"), &r.labels)
             .await
             .map_err(internal)?;
         let action = command::Action::Spawn(Spawn {
@@ -584,6 +586,8 @@ impl ControlService for Hub {
         };
         let claude_token = self.claude_token(&name, why)?;
         let model = self.model(r.model, &name).await?;
+        // A fork carries on the session's work, under its labels.
+        let labels = session.labels;
         let last_line_id = self.db.last_line_id(&r.node_id, &r.session_id).await.map_err(internal)?;
         let action = command::Action::Resume(Resume {
             cwd: session.cwd,
@@ -598,7 +602,7 @@ impl ControlService for Hub {
         // A resume keeps its session's launcher; a fork is a new session, the resumer's.
         if result.ok && !forked.is_empty() {
             self.db
-                .record_launch(&r.node_id, &forked, &format!("client:{client}"))
+                .record_launch(&r.node_id, &forked, &format!("client:{client}"), &labels)
                 .await
                 .map_err(internal)?;
         }
@@ -830,4 +834,23 @@ where
     let (tx, rx) = tokio::sync::mpsc::channel(64);
     tokio::spawn(f(tx));
     Box::pin(tokio_stream::wrappers::ReceiverStream::new(rx))
+}
+
+/// Labels as `SpawnRequest` allows them: at most 16, each key 1 to 64 letters, digits or
+/// `_.-/`, each value at most 256 characters and no control characters.
+fn check_labels(labels: &std::collections::HashMap<String, String>) -> Result<(), Status> {
+    if labels.len() > 16 {
+        return Err(Status::invalid_argument("at most 16 labels"));
+    }
+    for (k, v) in labels {
+        let key_ok = (1..=64).contains(&k.len())
+            && k.chars().all(|c| c.is_ascii_alphanumeric() || "_.-/".contains(c));
+        if !key_ok {
+            return Err(Status::invalid_argument(format!("label key {k:?}: 1 to 64 letters, digits or _.-/")));
+        }
+        if v.chars().count() > 256 || v.chars().any(char::is_control) {
+            return Err(Status::invalid_argument(format!("label {k}: at most 256 characters, none of them control characters")));
+        }
+    }
+    Ok(())
 }
