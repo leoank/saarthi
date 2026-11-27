@@ -16,7 +16,8 @@ use saarthi_node::sessions::Sessions;
 use tokio::net::TcpListener;
 use tokio::task::JoinHandle;
 
-pub const TOKENS: &str = "test-node t-node\n";
+/// A second node token, for a test with two nodes.
+pub const TOKENS: &str = "test-node t-node\nother-node t-node-2\n";
 pub const CLIENT_TOKENS: &str = "test-client t-client\n";
 
 /// A hub on its own runtime in its own thread, so stopping it drops every connection and
@@ -249,6 +250,7 @@ async fn start_node_full(
         keep_awake: Default::default(),
         services,
         queue: saarthi_node::queue::Queue::new(sessions.clone()),
+        uploads: std::env::temp_dir().join("saarthi-test-uploads"),
     };
     link::run_queue(&parts);
     let task = tokio::spawn(link::run(cfg, rx, parts));

@@ -56,6 +56,10 @@ pub struct Parts {
     pub services: Arc<crate::services::Services>,
     /// Prompts held while their sessions work (phase PHS-20261117-f22kxe item 7).
     pub queue: Arc<crate::queue::Queue>,
+    /// Where photos sent to sessions on the host are saved, one directory per session
+    /// (ADR-0071): [`crate::uploads::host_root`] for the daemon, the state directory's
+    /// `uploads/` for a node built as a library (ADR-0080).
+    pub uploads: std::path::PathBuf,
 }
 
 /// Runs until the outbox closes, which happens only when the node shuts down.
@@ -153,6 +157,11 @@ impl HubAddr {
         if let Some(slot) = &self.tailnet {
             let _ = slot.set(tailnet);
         }
+    }
+
+    /// Whether the hub is reached through a tailnet identity of the node's own.
+    pub fn is_via_tailnet(&self) -> bool {
+        self.tailnet.is_some()
     }
 
     pub fn url(&self) -> &str {
@@ -354,7 +363,7 @@ async fn act(cmd: &Command, parts: &Parts, holder: Option<&std::path::Path>) -> 
     let id = &cmd.session_id;
     let outcome = match &cmd.action {
         Some(command::Action::Resolve(r)) => pending.resolve(r).await.map(|()| String::new()),
-        Some(command::Action::Prompt(p)) => match with_photos(sessions, spawner, id, p).await {
+        Some(command::Action::Prompt(p)) => match with_photos(sessions, spawner, &parts.uploads, id, p).await {
             Err(e) => Err(e),
             Ok(text) if p.queue && sessions.busy(id).await => {
                 queue.push(id, &text).await;
@@ -509,17 +518,16 @@ async fn terminate(sessions: &Sessions, id: &str) -> Result<String, String> {
 /// terminal beyond that.
 /// The prompt's text, with its photos saved where the session can read them and their paths
 /// added (ADR-0071).
-async fn with_photos(sessions: &Sessions, spawner: &Spawner, id: &str, p: &saarthi_proto::node::v1::Prompt) -> Result<String, String> {
+async fn with_photos(sessions: &Sessions, spawner: &Spawner, uploads: &std::path::Path, id: &str, p: &saarthi_proto::node::v1::Prompt) -> Result<String, String> {
     if p.attachments.is_empty() {
         return Ok(p.text.clone());
     }
     if id.is_empty() || !id.chars().all(|c| c.is_ascii_alphanumeric() || c == '-') {
         return Err("not a session id".into());
     }
-    let home = std::env::var_os("HOME").map(std::path::PathBuf::from).ok_or("the node has no HOME to save photos under")?;
     let profile = sessions.profile(id).await;
     let state = spawner.profiles().get(&profile).ok().flatten().and_then(|p| p.state_dir.clone());
-    let dir = crate::uploads::dir(&home, state.as_deref(), id);
+    let dir = crate::uploads::dir(uploads, state.as_deref(), id);
     let now = std::time::SystemTime::now().duration_since(std::time::UNIX_EPOCH).map(|d| d.as_millis() as u64).unwrap_or(0);
     let (text, photos) = (p.text.clone(), p.attachments.clone());
     tokio::task::spawn_blocking(move || crate::uploads::save(&dir, &text, &photos, now))

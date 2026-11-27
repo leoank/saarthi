@@ -25,11 +25,11 @@ pub fn profile_root(state_dir: &Path) -> PathBuf {
 }
 
 /// Where session `id`'s photos go: under `profile_state` for a sandboxed session, else
-/// under `home`.
-pub fn dir(home: &Path, profile_state: Option<&Path>, id: &str) -> PathBuf {
+/// under `host`, the node's root for sessions on the host.
+pub fn dir(host: &Path, profile_state: Option<&Path>, id: &str) -> PathBuf {
     match profile_state {
         Some(state) => profile_root(state).join(id),
-        None => host_root(home).join(id),
+        None => host.join(id),
     }
 }
 
@@ -125,14 +125,14 @@ mod tests {
     fn a_sandboxed_session_gets_its_profiles_tmp() {
         let d = dir(Path::new("/home/u"), Some(Path::new("/srv/box")), "s1");
         assert_eq!(d, Path::new("/srv/box/tmp/uploads/s1"));
-        assert_eq!(dir(Path::new("/home/u"), None, "s1"), Path::new("/home/u/.local/state/saarthi/uploads/s1"));
+        assert_eq!(dir(&host_root(Path::new("/home/u")), None, "s1"), Path::new("/home/u/.local/state/saarthi/uploads/s1"));
     }
 
     #[test]
     fn only_a_file_saved_for_the_session_counts_as_its_photo() {
         let tmp = tempfile::tempdir().unwrap();
         let root = host_root(tmp.path());
-        let d = dir(tmp.path(), None, "s1");
+        let d = dir(&root, None, "s1");
         save(&d, "x", &[photo("a.jpg", b"1")], 3).unwrap();
         let roots = [root.clone()];
         let saved = d.join("3-0-a.jpg");

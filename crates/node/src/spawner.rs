@@ -62,7 +62,8 @@ pub struct Spawner {
     questions: Arc<crate::questions::Questions>,
 }
 
-/// What sandboxed sessions need besides their profile.
+/// Where sessions run besides the spawn roots: what sandboxed ones need besides their
+/// profile, and an embedded node's own config directory (ADR-0080).
 #[derive(Default)]
 pub struct Contained {
     pub profiles: Profiles,
@@ -73,6 +74,13 @@ pub struct Contained {
     pub user_claude: PathBuf,
     /// Paths the node keeps from every sandbox, such as the wrappers' socket.
     pub deny: Vec<PathBuf>,
+    /// The Claude config directory sessions on the host run in, an embedded node's own
+    /// (ADR-0080); `None` leaves them the user's. It has no login, so every session in it
+    /// runs under one of the hub's tokens.
+    pub own_claude: Option<PathBuf>,
+    /// Where the Claude API proxies of sessions on the host listen; `None` for the per-user
+    /// [`crate::claude_api::host_socket_dir`].
+    pub api_dir: Option<PathBuf>,
 }
 
 /// A spawn root as a canonical directory, created when missing; None, logged, when it
@@ -453,6 +461,9 @@ impl Spawner {
         };
         let mode = if mode.is_empty() && hub.is_some() { "auto" } else { mode };
         let contained = profile.filter(|p| p.claude_dir().is_some());
+        if contained.is_none() && hub.is_none() && self.contained.own_claude.is_some() {
+            return Err("this node runs its sessions only under the hub's Claude tokens: name one, or set the node's default at the hub".into());
+        }
         let hooks = match contained {
             Some(_) => self.contained.hooks.as_ref().map(Value::to_string),
             None => self.hooks.clone(),
@@ -641,7 +652,7 @@ impl Spawner {
     }
 
     async fn probe_in(&self, hub: crate::claude_api::Upstream, cfg: &Path, work: &Path) -> Result<String, String> {
-        let socket = crate::claude_api::host_socket().map_err(|e| format!("the probe's API socket: {e}"))?;
+        let socket = self.api_socket().map_err(|e| format!("the probe's API socket: {e}"))?;
         let proxy = crate::claude_api::Proxy::start(&socket, hub)
             .map_err(|e| format!("starting the probe's Claude API proxy: {e}"))?;
         let mut child = tokio::process::Command::new(&self.shell)
@@ -709,8 +720,7 @@ impl Spawner {
         }
         let proxy = match hub {
             Some(hub) => {
-                let socket =
-                    crate::claude_api::host_socket().map_err(|e| format!("the session's API socket: {e}"))?;
+                let socket = self.api_socket().map_err(|e| format!("the session's API socket: {e}"))?;
                 let proxy = crate::claude_api::Proxy::start(&socket, hub)
                     .map_err(|e| format!("starting the Claude API proxy: {e}"))?;
                 command.envs(crate::claude_api::env(proxy.path()));
@@ -725,6 +735,9 @@ impl Spawner {
                 None
             }
         };
+        if let Some(own) = &self.contained.own_claude {
+            command.env("CLAUDE_CONFIG_DIR", own);
+        }
         let mut child = command
             .arg("-l")
             .arg("-c")
@@ -744,6 +757,19 @@ impl Spawner {
             stderr: Box::new(child.stderr.take().expect("piped")),
             proc: Proc::Host(child, proxy),
         })
+    }
+
+    /// A new socket path for a host session's Claude API proxy, in the node's API directory.
+    fn api_socket(&self) -> std::io::Result<PathBuf> {
+        match &self.contained.api_dir {
+            Some(dir) => {
+                use std::os::unix::fs::PermissionsExt;
+                std::fs::create_dir_all(dir)?;
+                std::fs::set_permissions(dir, std::fs::Permissions::from_mode(0o700))?;
+                Ok(dir.join(crate::claude_api::socket_name()))
+            }
+            None => crate::claude_api::host_socket(),
+        }
     }
 
     async fn send(&self, id: &str, line: String) -> Result<(), String> {
@@ -799,6 +825,26 @@ impl Spawner {
         };
         let _ = tx.send(interrupt_line()).await;
         Ok(())
+    }
+
+    /// Ends every session this node started, as [`Self::kill`] does each, and waits until
+    /// all have exited; one that lingers is killed after the grace period.
+    pub async fn end_all(&self) {
+        let ids: Vec<String> = self.procs.lock().await.keys().cloned().collect();
+        for id in &ids {
+            let _ = self.kill(id).await;
+        }
+        let deadline = tokio::time::Instant::now() + KILL_GRACE + Duration::from_secs(2);
+        while tokio::time::Instant::now() < deadline {
+            let mut running = false;
+            for id in &ids {
+                running |= self.sessions.is_live(id).await;
+            }
+            if !running {
+                break;
+            }
+            tokio::time::sleep(Duration::from_millis(50)).await;
+        }
     }
 }
 
@@ -1192,7 +1238,7 @@ echo closed >> LOG
                 profiles,
                 hooks: Some(json!({"hooks": "socket"})),
                 user_claude: base.join(".claude"),
-                deny: Vec::new(),
+                ..Default::default()
             },
             f.sessions.clone(),
         );

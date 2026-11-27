@@ -58,7 +58,7 @@ done ones. The project page's *Progress* lists this phase on one line.
 - [ ] 14. A client library for apps: the Rust client the core and `ctl` use, published as a crate with the protos; apps in other languages generate from the protos, nothing more for now.
 
 ### The node as a library
-- [ ] 15. A `Node` an app builds and runs (hub address and credential, state directory, spawn roots, profiles, which Claude login), started and stopped by the app, holding nothing process-wide that a second node or the app itself would trip over (what item 2 found).
+- [x] 15. A `Node` an app builds and runs (hub address and credential, state directory, spawn roots, profiles, which Claude login), started and stopped by the app, holding nothing process-wide that a second node or the app itself would trip over (what item 2 found). Done: `saarthi_node::node` (ADR-0080), `saarthi node serve` rewritten onto it, and `crates/hub/tests/embedded.rs`, two embedded nodes in one process against a test hub with a stand-in claude; the hub's test helpers still assemble their node from parts.
 - [ ] 16. An embedded node is registered as the app's: the hub records its owner, and the app's Agents list keeps it apart from the owner's machines.
 - [ ] 17. An example app and an end-to-end test: an embedded node and a client in one process, spawning and collecting a session against a test hub.
 

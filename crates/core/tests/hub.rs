@@ -119,6 +119,7 @@ async fn the_core_lists_watches_answers_and_streams() {
         keep_awake: Default::default(),
         services: Default::default(),
         queue: saarthi_node::queue::Queue::new(sessions.clone()),
+        uploads: std::env::temp_dir().join("saarthi-test-uploads"),
     };
     tokio::spawn(saarthi_node::link::run(cfg, rx, parts));
     let hooks_listener = tokio::net::TcpListener::bind("127.0.0.1:0").await.unwrap();

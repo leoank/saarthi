@@ -152,6 +152,9 @@ facts come from hooks and the transcript, and the PTY is only a channel for inpu
   machine's node, the one that watches the user's Claude dir; an embedded node sees only
   the sessions it starts, which run in a Claude config dir under its state directory and
   under the hub's accounts, as a sandbox profile's do ([[EXP-20261126-f3e5v3]]).
+  `saarthi_node::node` holds it: `Options` (with `Machine` for the daemon's parts),
+  `Node::start` and `Node::stop`; `saarthi node serve` is a caller with `~/.local/state/saarthi`
+  as its state directory. A state directory is locked by its node (`node.lock`).
 
 ### saarthi-hub
 

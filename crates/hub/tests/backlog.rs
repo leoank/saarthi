@@ -44,6 +44,7 @@ async fn a_large_backlog_is_resent_on_one_link() {
         keep_awake: Default::default(),
         services: Default::default(),
         queue: saarthi_node::queue::Queue::new(sessions.clone()),
+        uploads: std::env::temp_dir().join("saarthi-test-uploads"),
     };
     let cfg = link::Config {
         hub: format!("http://{addr}").into(),

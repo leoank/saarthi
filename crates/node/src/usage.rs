@@ -12,8 +12,8 @@ use anyhow::{Context, Result, anyhow};
 use saarthi_proto::event::v1::{HealthSample, Metric};
 use serde_json::Value;
 
-use saarthi_node::health::usage_windows;
-use saarthi_node::outbox::now_ms;
+use crate::health::usage_windows;
+use crate::outbox::now_ms;
 
 pub const ENDPOINT: &str = "https://api.anthropic.com/api/oauth/usage";
 

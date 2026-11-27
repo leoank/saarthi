@@ -17,7 +17,7 @@ use std::time::Duration;
 
 use saarthi_proto::event::v1::SessionStatus;
 
-use saarthi_node::sessions::Sessions;
+use crate::sessions::Sessions;
 
 /// Whether the hold is on, shared with the health sampler.
 pub type Held = Arc<AtomicBool>;
@@ -113,7 +113,7 @@ pub async fn keep(
     enabled: Arc<AtomicBool>,
     held: Held,
     every: Duration,
-    report: Option<saarthi_node::outbox::Outbox>,
+    report: Option<crate::outbox::Outbox>,
 ) {
     let mut child: Option<tokio::process::Child> = None;
     let mut tick = tokio::time::interval(every);
@@ -167,7 +167,7 @@ pub fn sample(enabled: bool, held: bool) -> saarthi_proto::event::v1::HealthSamp
     let flag = |b: bool| if b { 1.0 } else { 0.0 };
     let metric = |name: &str, value| saarthi_proto::event::v1::Metric { name: name.into(), value };
     saarthi_proto::event::v1::HealthSample {
-        time_ms: saarthi_node::outbox::now_ms(),
+        time_ms: crate::outbox::now_ms(),
         metrics: vec![metric("node.keep_awake", flag(held)), metric("node.keep_awake_enabled", flag(enabled))],
     }
 }
@@ -175,8 +175,8 @@ pub fn sample(enabled: bool, held: bool) -> saarthi_proto::event::v1::HealthSamp
 #[cfg(test)]
 mod tests {
     use super::*;
-    use saarthi_node::outbox::Outbox;
-    use saarthi_node::registry::Record;
+    use crate::outbox::Outbox;
+    use crate::registry::Record;
     use std::os::unix::fs::PermissionsExt;
 
     /// A stand-in `systemd-inhibit`: records its arguments, refuses when told to, then runs

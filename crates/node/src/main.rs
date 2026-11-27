@@ -4,30 +4,18 @@
 use std::io::IsTerminal;
 use std::net::SocketAddr;
 use std::path::PathBuf;
-use std::sync::Arc;
 use std::time::Duration;
 
 use anyhow::{Context, Result};
 use clap::{Args, Parser, Subcommand};
 
-use saarthi_node::outbox::Outbox;
-use saarthi_node::pending::Pending;
-use saarthi_node::sessions::Sessions;
 use saarthi_node::containment::Profiles;
-use saarthi_node::spawner::{self, Contained, Spawner};
-use saarthi_node::wrapper::{self, Wrappers};
-use saarthi_node::{health, hooks, link, registry, sink};
+use saarthi_node::link::HubAddr;
+use saarthi_node::node::{self, HOOK_TIMEOUT_SECS};
+use saarthi_node::{hooks, spawner, usage, wrapper};
 
-mod awake;
 mod ctl;
 mod tui;
-mod usage;
-
-/// Seconds Claude Code waits for a hook of the node's before giving up on it.
-const HOOK_TIMEOUT_SECS: u32 = 600;
-
-/// How often joining the hub's tailnet is tried again after it failed.
-const TAILNET_RETRY: Duration = Duration::from_secs(30);
 
 #[derive(Parser)]
 #[command(
@@ -309,28 +297,11 @@ async fn serve(args: Serve) -> Result<()> {
     };
     let default_claude_dir = args.claude_dir.is_none();
     let claude_dir = args.claude_dir.unwrap_or_else(|| home.join(".claude"));
-
-    let (outbox, rx) = Outbox::new(1024);
     let ignore = args
         .ignore_cwd
         .iter()
         .map(|g| glob::Pattern::new(g).with_context(|| format!("--ignore-cwd {g}")))
         .collect::<Result<Vec<_>>>()?;
-    let sessions = Arc::new(Sessions::new(
-        claude_dir.clone(),
-        outbox.clone(),
-        Duration::from_millis(args.transcript_poll_ms),
-        ignore,
-    ));
-    let pending = Pending::new(outbox.clone());
-    let wrappers = Wrappers::new(sessions.clone(), pending.clone(), outbox.clone());
-    let wrapper_socket = args
-        .wrapper_socket
-        .clone()
-        .unwrap_or_else(wrapper::default_socket);
-    let listener = Wrappers::bind(&wrapper_socket)?;
-    tracing::info!(socket = %wrapper_socket.display(), "listening for wrappers");
-    tokio::spawn(wrappers.clone().serve(listener));
     let profiles = match &args.profiles {
         // A bad profiles file costs the profiles, not the node (ADR-0044).
         Some(path) => Profiles::load(path, &home).unwrap_or_else(|e| {
@@ -339,7 +310,7 @@ async fn serve(args: Serve) -> Result<()> {
         }),
         None => Profiles::default(),
     };
-    let mut services = match &args.services {
+    let services = match &args.services {
         // A bad services file costs the services, not the node (ADR-0044).
         Some(path) => saarthi_node::services::Services::load(path, &home).unwrap_or_else(|e| {
             tracing::error!(path = %path.display(), error = %format!("{e:#}"), "local services left out");
@@ -347,296 +318,76 @@ async fn serve(args: Serve) -> Result<()> {
         }),
         None => Default::default(),
     };
-    // A session's changes, served by the node itself (ADR-0067).
-    let changes_socket = args.changes_socket.clone().unwrap_or_else(|| saarthi_node::changes::socket(&home));
-    if services.add_builtin(saarthi_node::changes::NAME, changes_socket.clone()) {
-        let sessions = sessions.clone();
-        tokio::spawn(async move {
-            if let Err(e) = saarthi_node::changes::serve(changes_socket, sessions).await {
-                tracing::error!(error = %format!("{e:#}"), "a session's changes cannot be served");
-            }
-        });
-    } else {
-        tracing::warn!("the services file names a service changes; it is served instead of the sessions' changes");
-    }
-    let services = Arc::new(services);
-    for name in services.names() {
-        tracing::info!(service = %name, "local service offered through the hub");
-    }
-    tokio::spawn(services.clone().reap_idle());
-    let hook_socket = args
-        .hook_socket
-        .clone()
-        .unwrap_or_else(|| home.join(".local/state/saarthi/hook.sock"));
-    if let Err(e) = saarthi_node::claude_api::make_host_socket_dir() {
-        tracing::warn!(error = %e, "the Claude API sockets' directory could not be made");
-    }
-    let contained = Contained {
-        hooks: Some(hooks::socket_settings(&hook_socket, HOOK_TIMEOUT_SECS)),
-        user_claude: claude_dir.clone(),
-        // The wrappers' socket would let a sandbox pose as `saarthi run`, the proxies of host
-        // and terminal sessions spend the hub's tokens (ADR-0051), and the local services
-        // answer the owner (ADR-0052).
-        deny: [wrapper_socket.clone(), saarthi_node::claude_api::host_socket_dir()]
-            .into_iter()
-            .chain(services.sockets())
-            .collect(),
-        profiles,
-    };
-    // The hooks block `saarthi node hooks` prints by default, so it matches the user's own
-    // and Claude Code asks each hook once (EXP-20261106-qt94y4).
-    let spawner = Spawner::new(
-        args.claude.clone(),
-        spawner::login_shell(),
-        &args.spawn_roots,
-        Some(hooks::settings(args.hook_addr, HOOK_TIMEOUT_SECS)),
-        contained,
-        sessions.clone(),
-    );
-    let sandboxed = spawner.profiles().any_sandboxed();
-    let profile_dirs = spawner.claude_dirs();
-    for p in spawner.profiles().all() {
-        tracing::info!(profile = %p.name, backend = ?p.backend, "launch profile");
-    }
-    if !args.spawn_roots.is_empty() {
-        tracing::info!(roots = ?spawner.roots(), "spawning allowed");
-    }
-    let keep_awake = Arc::new(std::sync::atomic::AtomicBool::new(args.keep_awake));
-    let mut hold = None;
-    let mut asking = None;
-    // The sessions running now, read before the hub link starts: the hub ends any session it
-    // has as live that the registration does not report.
-    let registry_dir = claude_dir.join("sessions");
-    sessions
-        .apply_registry(&scan_registry(&registry_dir, &profile_dirs).await)
-        .await;
-    let drain = match (args.hub, args.token_file) {
+    let hub = match (args.hub, args.token_file) {
         (Some(hub), Some(token_file)) => {
             let token = std::fs::read_to_string(&token_file)
                 .with_context(|| format!("reading {}", token_file.display()))?
                 .trim()
                 .to_string();
-            let hub = if args.tailnet {
-                saarthi_node::link::HubAddr::via_tailnet(hub)
-            } else {
-                saarthi_node::link::HubAddr::direct(hub)
-            };
-            wrappers.set_hub(hub.clone(), token.clone());
-            let name = args
-                .name
-                .or_else(sysinfo::System::host_name)
-                .unwrap_or_else(|| "node".to_string());
-            if args.tailnet {
-                let joined = hub.clone();
-                let opts = saarthi_tailnet::Options {
-                    name: "hub".to_string(),
-                    dir: args.tailnet_state.unwrap_or_else(|| {
-                        home.join(".local/state/saarthi/tailnet")
-                    }),
-                    hostname: args
-                        .tailnet_hostname
-                        .unwrap_or_else(|| format!("saarthi-{name}")),
-                    authkey: args.tailnet_authkey_file.map(saarthi_tailnet::AuthKey::File),
-                    ephemeral: false,
-                    give_up_after: None,
-                };
-                // Until it has joined the link retries; a tailnet that cannot be joined
-                // costs the link, not the node (ADR-0044). Joining is tried again until it
-                // works: the auth key may arrive after the node starts (on macOS nothing
-                // orders the node's launchd agent after agenix's).
-                tokio::spawn(async move {
-                    let mut last = None::<String>;
-                    loop {
-                        match saarthi_tailnet::Tailnet::start(opts.clone()).await {
-                            Ok(t) => {
-                                joined.tailnet_up(t);
-                                break;
-                            }
-                            Err(e) => {
-                                let e = format!("{e:#}");
-                                if last.as_ref() != Some(&e) {
-                                    tracing::error!(error = %e, "the hub's tailnet could not be joined; trying again every 30 s");
-                                    last = Some(e);
-                                }
-                                tokio::time::sleep(TAILNET_RETRY).await;
-                            }
-                        }
-                    }
-                });
-            }
-            let cfg = link::Config {
-                hub,
+            Some(node::Hub {
+                addr: if args.tailnet { HubAddr::via_tailnet(hub) } else { HubAddr::direct(hub) },
                 token,
-                name,
-                buffer_cap: args.buffer_events,
-                terminal: args.terminal.then(String::new),
-                shells: args.shells_socket.clone().unwrap_or_else(saarthi_node::shells::default_socket),
-            };
-            hold = Some(hooks::Hold {
-                pending: pending.clone(),
-                duration: Duration::from_secs(args.hold_secs),
-                wrapped_duration: Duration::from_secs(args.wrapped_hold_secs),
-                upload_roots: std::iter::once(saarthi_node::uploads::host_root(&home))
-                    .chain(spawner.profiles().all().filter_map(|p| p.state_dir.as_deref().map(saarthi_node::uploads::profile_root)))
-                    .collect(),
-            });
-            // Spawned sessions ask their questions through the hook port (ADR-0061).
-            let questions = spawner.questions();
-            questions.set_url(format!("http://{}/mcp", args.hook_addr));
-            asking = Some((questions, pending.clone()));
-            let parts = link::Parts {
-                sessions: sessions.clone(),
-                pending,
-                wrappers,
-                spawner,
-                keep_awake: keep_awake.clone(),
-                services: services.clone(),
-                queue: saarthi_node::queue::Queue::new(sessions.clone()),
-            };
-            link::run_queue(&parts);
-            tokio::spawn(link::run(cfg, rx, parts))
+                tailnet: node::Tailnet {
+                    authkey: args.tailnet_authkey_file.map(saarthi_tailnet::AuthKey::File),
+                    hostname: args.tailnet_hostname,
+                    state: args.tailnet_state,
+                },
+            })
         }
-        _ => tokio::spawn(sink::stdout(rx)),
+        _ => None,
     };
-
-    let listener = tokio::net::TcpListener::bind(args.hook_addr)
-        .await
-        .with_context(|| format!("binding the hook endpoint on {}", args.hook_addr))?;
-    tracing::info!(addr = %args.hook_addr, claude_dir = %claude_dir.display(), "node serving");
-    let mut app = hooks::router(outbox.clone(), sessions.clone(), hold.clone());
-    if let Some((questions, pending)) = asking {
-        app = app.merge(saarthi_node::questions::router(questions, pending));
-    }
-    tokio::spawn(async move { axum::serve(listener, app).await });
-    if sandboxed {
-        if let Some(dir) = hook_socket.parent() {
-            std::fs::create_dir_all(dir).with_context(|| format!("creating {}", dir.display()))?;
-        }
-        let _ = std::fs::remove_file(&hook_socket);
-        let listener = tokio::net::UnixListener::bind(&hook_socket)
-            .with_context(|| format!("binding the hook socket {}", hook_socket.display()))?;
-        tracing::info!(socket = %hook_socket.display(), "hooks of sandboxed sessions");
-        let app = hooks::router(outbox.clone(), sessions.clone(), hold);
-        tokio::spawn(async move { axum::serve(listener, app).await });
-    }
-
-    let scan = sessions.clone();
-    tokio::spawn(async move {
-        let mut tick = tokio::time::interval(Duration::from_secs(args.registry_secs));
-        // The first scan ran before the link started.
-        tick.tick().await;
-        loop {
-            tick.tick().await;
-            scan.apply_registry(&scan_registry(&registry_dir, &profile_dirs).await).await;
-        }
-    });
-
-    if args.claude_usage {
-        let store = match &args.claude_usage_service {
+    let usage = args.claude_usage.then(|| node::Usage {
+        store: match &args.claude_usage_service {
             Some(service) => usage::Store::Keychain {
                 service: service.clone(),
             },
             None => usage::Store::for_dir(&claude_dir, default_claude_dir),
-        };
-        let url = args.claude_usage_url.clone();
-        let every = Duration::from_secs(args.claude_usage_secs);
-        let usage_outbox = outbox.clone();
-        tokio::spawn(async move {
-            let client = reqwest::Client::new();
-            let mut wait = every;
-            loop {
-                match usage::poll(&client, &store, &url).await {
-                    Ok(sample) => {
-                        usage_outbox.health(sample).await;
-                        wait = every;
-                    }
-                    Err(e) => match e.downcast_ref::<usage::TooMany>() {
-                        Some(usage::TooMany(after)) => {
-                            wait = usage::backoff(every, wait, *after);
-                            tracing::warn!(wait_s = wait.as_secs(), "usage endpoint refused, too many requests; backing off");
-                        }
-                        None => tracing::warn!(error = %format!("{e:#}"), "usage poll failed"),
-                    },
-                }
-                tokio::time::sleep(wait).await;
-            }
-        });
-    }
-
-    let held: awake::Held = Arc::new(std::sync::atomic::AtomicBool::new(false));
-    let can_hold = match awake::Hold::detect().await {
-        Some(hold) => {
-            tokio::spawn(awake::keep(
-                hold,
-                sessions.clone(),
-                keep_awake.clone(),
-                held.clone(),
-                Duration::from_secs(args.registry_secs.max(1)),
-                Some(outbox.clone()),
-            ));
-            true
-        }
-        None => false,
-    };
-
-    let health_outbox = outbox.clone();
-    tokio::spawn(async move {
-        // With --claude-usage the poller reports the same metrics live; Claude Code's cached
-        // value, written only by /usage, would interleave hours-old numbers with them.
-        let cached = (!args.claude_usage).then_some(claude_json);
-        let mut sampler = health::Sampler::new(home, cached);
-        let mut tick = tokio::time::interval(Duration::from_secs(args.health_secs));
-        // The first tick is immediate; skip it so CPU usage has an interval to measure.
-        tick.tick().await;
-        loop {
-            tick.tick().await;
-            let mut sample = tokio::task::block_in_place(|| sampler.sample());
-            let flag = |b: &std::sync::atomic::AtomicBool| {
-                if b.load(std::sync::atomic::Ordering::Relaxed) { 1.0 } else { 0.0 }
-            };
-            // Only where the machine can be held up: a client shows the switch when the
-            // metric is there, so a node that cannot hold offers none.
-            if can_hold {
-                sample.metrics.push(saarthi_proto::event::v1::Metric {
-                    name: "node.keep_awake".into(),
-                    value: flag(&held),
-                });
-                sample.metrics.push(saarthi_proto::event::v1::Metric {
-                    name: "node.keep_awake_enabled".into(),
-                    value: flag(&keep_awake),
-                });
-            }
-            health_outbox.health(sample).await;
-        }
+        },
+        url: args.claude_usage_url.clone(),
+        every: Duration::from_secs(args.claude_usage_secs),
     });
-
-    drop(outbox);
+    let opts = node::Options {
+        hub,
+        name: args
+            .name
+            .or_else(sysinfo::System::host_name)
+            .unwrap_or_else(|| "node".to_string()),
+        state_dir: home.join(".local/state/saarthi"),
+        hook_addr: args.hook_addr,
+        claude: args.claude,
+        shell: spawner::login_shell(),
+        spawn_roots: args.spawn_roots,
+        profiles,
+        services,
+        user_claude: claude_dir.clone(),
+        claude_files: Vec::new(),
+        ignore_cwd: ignore,
+        transcript_poll: Duration::from_millis(args.transcript_poll_ms),
+        health_every: Duration::from_secs(args.health_secs),
+        hold: Duration::from_secs(args.hold_secs),
+        wrapped_hold: Duration::from_secs(args.wrapped_hold_secs),
+        buffer_events: args.buffer_events,
+        keep_awake: args.keep_awake,
+        changes_socket: args.changes_socket,
+        hook_socket: args.hook_socket,
+        machine: Some(node::Machine {
+            home: home.clone(),
+            claude_dir,
+            claude_json,
+            registry_every: Duration::from_secs(args.registry_secs),
+            wrapper_socket: args.wrapper_socket.unwrap_or_else(wrapper::default_socket),
+            terminal: args.terminal,
+            shells_socket: args.shells_socket.unwrap_or_else(saarthi_node::shells::default_socket),
+            usage,
+        }),
+    };
+    let mut node = node::Node::start(opts).await?;
     tokio::select! {
         _ = tokio::signal::ctrl_c() => tracing::info!("stopping"),
-        _ = drain => {}
+        _ = node.finished() => {}
     }
+    node.stop().await;
     Ok(())
-}
-
-/// The live sessions in Claude Code's registry, the host's and each launch profile's.
-async fn scan_registry(
-    dir: &std::path::Path,
-    profile_dirs: &[(String, std::path::PathBuf)],
-) -> Vec<registry::Record> {
-    let (dir, others) = (dir.to_path_buf(), profile_dirs.to_vec());
-    tokio::task::spawn_blocking(move || {
-        let mut live = registry::live(&dir);
-        for (profile, claude_dir) in others {
-            live.extend(registry::live(&claude_dir.join("sessions")).into_iter().map(|mut r| {
-                r.claude_dir = Some(claude_dir.clone());
-                r.profile = profile.clone();
-                r
-            }));
-        }
-        live
-    })
-    .await
-    .unwrap_or_default()
 }
 
 /// Extracts `--claude-token <name>`, `--claude-token=<name>`, or `--own-login` from the

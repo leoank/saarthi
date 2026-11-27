@@ -93,6 +93,7 @@ async fn the_core_reads_a_nodes_notebooks_and_streams_its_answers() {
         keep_awake: Default::default(),
         services: Arc::new(services),
         queue: saarthi_node::queue::Queue::new(sessions.clone()),
+        uploads: std::env::temp_dir().join("saarthi-test-uploads"),
     };
     let cfg = saarthi_node::link::Config {
         hub: format!("http://{addr}").into(),
