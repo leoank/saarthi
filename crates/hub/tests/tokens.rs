@@ -192,6 +192,8 @@ async fn sessions_run_under_named_tokens_chosen_or_by_default_and_report_their_u
     assert!(r.ok, "{}", r.error);
     own_login(&nth_start(&log, 0).await);
     assert_eq!(session(&mut c, &r.session_id, false).await.claude_token, "");
+    // The hub says who launched it (ADR-0082).
+    assert_eq!(session(&mut c, &r.session_id, false).await.launched_by, "client:test-client");
 
     // A default: every spawn that picks nothing runs under it.
     let unknown = c
@@ -281,6 +283,8 @@ async fn sessions_run_under_named_tokens_chosen_or_by_default_and_report_their_u
     assert!(r.ok, "{}", r.error);
     under_hub_token(&nth_start(&log, 5).await, "tok-personal").await;
     assert_eq!(session(&mut c, &id, false).await.claude_token, "personal");
+    // Kept through a resume.
+    assert_eq!(session(&mut c, &id, false).await.launched_by, "client:test-client");
 
     // A default model per account (ADR-0079): a spawn or resume under it that picks no
     // model runs on it; one that picks a model, or runs under another account or the own
@@ -582,6 +586,8 @@ async fn a_terminal_session_runs_under_the_node_default_or_a_named_account() {
     };
     node.sessions.apply_registry(std::slice::from_ref(&record)).await;
     assert_eq!(session(&mut c, "s-term", false).await.claude_token, "personal");
+    // Started at the node's terminal: the node's.
+    assert_eq!(session(&mut c, "s-term", false).await.launched_by, "node:test-node");
     node.sessions.set_wrapped(4242, false, "").await;
     node.sessions.apply_registry(&[record]).await;
     tokio::time::sleep(Duration::from_millis(300)).await;

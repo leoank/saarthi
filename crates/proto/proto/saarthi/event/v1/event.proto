@@ -42,6 +42,11 @@ message Session {
   // The session this one continues, resumed or forked from, as its transcript says; empty
   // for one that came from none (phase PHS-20261117-f22kxe item 15).
   string parent_id = 18;
+  // Who launched it, stamped by the hub and never by the caller (ADR-0082): `client:<name>`
+  // for a session a client's spawn started (or a resume of it forked), `node:<name>` for one
+  // its node started, at its terminal or under `saarthi run`. Kept through a resume. The
+  // node sends it empty; the hub fills it.
+  string launched_by = 19;
 }
 
 // A way a node can start a session (`--profiles`, ADR-0038), as the app offers it.

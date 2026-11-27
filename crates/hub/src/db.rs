@@ -257,8 +257,10 @@ impl Db {
         let just_ended = s.ended_ms.is_some() && matches!(was_live, Some((None,)));
         sqlx::query(
             "INSERT INTO sessions (node_id, id, harness, cwd, transcript_path, launch, pid, account_label, status,
-                                   started_ms, ended_ms, profile, claude_token)
-             VALUES (?1, ?2, ?3, ?4, ?5, ?6, ?7, ?8, ?9, ?10, ?11, ?12, ?13)
+                                   started_ms, ended_ms, profile, claude_token, launched_by)
+             VALUES (?1, ?2, ?3, ?4, ?5, ?6, ?7, ?8, ?9, ?10, ?11, ?12, ?13,
+                     COALESCE((SELECT launched_by FROM launches WHERE node_id = ?1 AND session_id = ?2),
+                              'node:' || COALESCE((SELECT name FROM nodes WHERE id = ?1), '')))
              ON CONFLICT (node_id, id) DO UPDATE SET
                harness = excluded.harness, cwd = excluded.cwd, transcript_path = excluded.transcript_path,
                launch = excluded.launch, pid = excluded.pid, account_label = excluded.account_label,
@@ -269,6 +271,8 @@ impl Db {
             // claude_token is set by `set_session_claude_token` when the hub starts or resumes
             // the session, or reported by the node for one started at its terminal under a
             // token (ADR-0046); kept when a restarted node reports the session without one.
+            // launched_by is the hub's alone (ADR-0082): set once, from `record_launch` or as
+            // the node's, whatever the node reports.
         )
         .bind(node_id)
         .bind(&s.id)
@@ -485,6 +489,24 @@ impl Db {
             .execute(&self.pool)
             .await?;
         Ok(done.rows_affected() == 1)
+    }
+
+    /// Records who launched session `id` on the node (ADR-0082), before the node is asked to
+    /// start it; a session the node reported already, as its own, takes it too.
+    pub async fn record_launch(&self, node_id: &str, id: &str, launched_by: &str) -> Result<()> {
+        sqlx::query("INSERT OR REPLACE INTO launches (node_id, session_id, launched_by) VALUES (?1, ?2, ?3)")
+            .bind(node_id)
+            .bind(id)
+            .bind(launched_by)
+            .execute(&self.pool)
+            .await?;
+        sqlx::query("UPDATE sessions SET launched_by = ?3 WHERE node_id = ?1 AND id = ?2 AND launched_by LIKE 'node:%'")
+            .bind(node_id)
+            .bind(id)
+            .bind(launched_by)
+            .execute(&self.pool)
+            .await?;
+        Ok(())
     }
 
     /// Records the token the hub started or resumed a session under.
@@ -920,6 +942,7 @@ pub(crate) fn session_from(r: &sqlx::sqlite::SqliteRow) -> Session {
         git_branch: r.get("git_branch"),
         last_reply: String::new(),
         parent_id: r.get("parent_id"),
+        launched_by: r.get("launched_by"),
     }
 }
 
@@ -1005,6 +1028,34 @@ mod tests {
         let opening = db.opening(&node, "s1", 8, 150).await.unwrap();
         let seqs: Vec<u64> = opening.iter().map(|e| e.seq).collect();
         assert_eq!(seqs, [4, 5], "only the typed prompts that fit");
+    }
+
+    #[tokio::test]
+    async fn the_hub_alone_says_who_launched_a_session() {
+        let dir = tempfile::tempdir().unwrap();
+        let db = Db::open(&dir.path().join("hub.db")).await.unwrap();
+        let (node, _) = db.register_node("mac", "0.1.0", 1).await.unwrap();
+        let by = |id: &'static str| {
+            let db = db.clone();
+            let node = node.clone();
+            async move { db.session(&node, id).await.unwrap().unwrap().launched_by }
+        };
+        let s = |id: &str| Session { id: id.into(), cwd: "/w".into(), ..Default::default() };
+        // Started at the node: the node's, whatever the node reports.
+        db.store_session(&node, &Session { launched_by: "client:me".into(), ..s("own") }).await.unwrap();
+        assert_eq!(by("own").await, "node:mac");
+        // Spawned by a client: recorded before the node reports it, kept through every report.
+        db.record_launch(&node, "spawned", "client:phone").await.unwrap();
+        db.store_session(&node, &s("spawned")).await.unwrap();
+        db.store_session(&node, &Session { ended_ms: Some(5), ..s("spawned") }).await.unwrap();
+        assert_eq!(by("spawned").await, "client:phone");
+        // A fork named after the node's reply takes its resumer, even reported first.
+        db.store_session(&node, &s("fork")).await.unwrap();
+        db.record_launch(&node, "fork", "client:ctl").await.unwrap();
+        assert_eq!(by("fork").await, "client:ctl");
+        // A client's session is never handed to another by a later record.
+        db.record_launch(&node, "spawned", "client:other").await.unwrap();
+        assert_eq!(by("spawned").await, "client:phone");
     }
 
     #[tokio::test]

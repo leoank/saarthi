@@ -513,7 +513,7 @@ impl ControlService for Hub {
         &self,
         request: Request<SpawnRequest>,
     ) -> Result<Response<CommandResponse>, Status> {
-        self.client(&request)?;
+        let client = self.client(&request)?;
         let r = request.into_inner();
         // A token picked, else the node's default (ADR-0039).
         let (name, why) = match r.claude_token {
@@ -534,6 +534,10 @@ impl ControlService for Hub {
         let model = self.model(r.model, &name).await?;
         // The hub names the session, so the client can open it as soon as this returns.
         let session_id = uuid::Uuid::new_v4().to_string();
+        self.db
+            .record_launch(&r.node_id, &session_id, &format!("client:{client}"))
+            .await
+            .map_err(internal)?;
         let action = command::Action::Spawn(Spawn {
             cwd: r.cwd,
             prompt: r.prompt,
@@ -559,7 +563,7 @@ impl ControlService for Hub {
         &self,
         request: Request<ResumeRequest>,
     ) -> Result<Response<CommandResponse>, Status> {
-        self.client(&request)?;
+        let client = self.client(&request)?;
         let r = request.into_inner();
         // The node may have restarted since the session ran, so the hub says where it ran.
         let Some(session) = self
@@ -591,6 +595,13 @@ impl ControlService for Hub {
         });
         let result = self.live.command(&r.node_id, &r.session_id, action).await?;
         let forked = result.session_id.clone();
+        // A resume keeps its session's launcher; a fork is a new session, the resumer's.
+        if result.ok && !forked.is_empty() {
+            self.db
+                .record_launch(&r.node_id, &forked, &format!("client:{client}"))
+                .await
+                .map_err(internal)?;
+        }
         if result.ok {
             self.db
                 .set_session_claude_token(&r.node_id, &r.session_id, &name)

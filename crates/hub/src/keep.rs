@@ -60,6 +60,7 @@ impl Db {
             "DELETE FROM events WHERE node_id = ?1 AND session_id = ?2",
             "DELETE FROM pending WHERE node_id = ?1 AND session_id = ?2",
             "DELETE FROM sessions WHERE node_id = ?1 AND id = ?2",
+            "DELETE FROM launches WHERE node_id = ?1 AND session_id = ?2",
         ] {
             sqlx::query(sql).bind(node_id).bind(session_id).execute(&mut *tx).await?;
         }

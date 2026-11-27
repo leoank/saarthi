@@ -41,7 +41,7 @@ done ones. The project page's *Progress* lists this phase on one line.
 - [x] 3. An ADR on identity and secrets: who a principal is (a person; a client or a node, each belonging to a person, with the hub's name for it, never one it claims), `launched_by` stamped by the hub, an app's own labels on a session, tokens the hub keeps beside the agenix files (client and node tokens stored as hashes, shown once; Claude tokens encrypted under a key from agenix), revocation of either kind, and the admin principal the agenix files bootstrap. Done: ADR-0082 proposed, with passkeys for the admin page (the owner's choice of 2026-11-27); [[EXP-20261127-1gz93p]] checks HTTPS for it before item 18.
 
 ### Who launched a session
-- [ ] 4. `launched_by` on every session: the client whose token made the `Spawn` or `Resume`, or the node for a session started there (by hand, under `saarthi run`, or by an embedded node's own app). Stored by the hub, carried in `Session`, kept through a resume.
+- [x] 4. `launched_by` on every session: the client whose token made the `Spawn` or `Resume`, or the node for a session started there (by hand, under `saarthi run`, or by an embedded node's own app). Stored by the hub, carried in `Session`, kept through a resume. Done: `Session.launched_by`, `client:<name>` or `node:<name>`, recorded before the node is asked (migration 0013); the app shows it with item 6.
 - [ ] 5. Labels: a small map an app sets on `Spawn` (`job=1234`) to match a session to its own work, returned with the session and searchable; separate from `launched_by`, which the app cannot set.
 - [ ] 6. Lists, watch, search and history filter by launcher and label; the app gets a filter (mine, apps, one app) and the launcher on each session row.
 
