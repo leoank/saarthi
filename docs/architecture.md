@@ -197,6 +197,14 @@ One Rust binary, tonic for gRPC, sqlx on SQLite in WAL mode.
   ranks sessions by their best match, titles first and older sessions lower. A session's
   stream can start at its last lines (`tail`) and page back (`before_seq`), so a client
   opens a long session without its whole history (ADR-0063).
+- **Who launched a session, and its labels.** The hub stamps `Session.launched_by`
+  itself: `client:<name>` for a client's spawn (and a fork its resume made), `node:<name>`
+  for a session its machine started; a resume keeps it. A spawn may carry labels
+  (`job=1234`, at most 16), which a resume keeps and a fork takes. Both are written to a
+  `launches` row before the node is asked, so the session's first report, which can beat
+  the node's reply, takes them (phase PHS-20261126-f3e51h items 4 and 5). `ListSessions`,
+  `History`, `Search` and `Watch` take one filter: a launcher, exactly or every launcher of
+  a kind (`node:`), and labels; `ListNodes` tells a client its own launcher name (item 6).
 - **Related sessions.** A session resumed or forked from another records it as its parent
   (`Session.parent_id`), as the node reads it from the transcript: a continuation's
   copied lines keep the old session's id, and a fork's first message has the uuid of its

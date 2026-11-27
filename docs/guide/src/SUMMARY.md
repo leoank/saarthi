@@ -25,6 +25,11 @@
 - [The terminal dashboard](using/tui.md)
 - [Troubleshooting](using/troubleshooting.md)
 
+# Building on saarthi
+
+- [Apps](building/apps.md)
+- [Embedding a node](building/embedded-node.md)
+
 # Reference
 
 - [Command line](reference/cli.md)

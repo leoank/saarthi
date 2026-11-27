@@ -8,14 +8,17 @@ returns to a part's first screen, then to *agents*.
 
 ## The home screen
 
-The home screen lists, from the top:
+The home screen is one list of live sessions across your machines, under the
+[filter](#filtering), by what each needs:
 
-- **Waiting for you**: every permission dialog and question held on any node, each with
-  its buttons, so what needs you is always the first thing you see.
-- **Each node**, with whether it is online and its live sessions, newest first. A session
-  shows its working directory, whether Claude is working or idle, a terminal icon when
-  it runs under `saarthi run`, and a rocket when it was started from the app. The chart
-  icon next to a node opens its [health](health.md).
+- **Needs you**: sessions waiting on a permission dialog or a question, oldest first,
+  each with one line on what it asks; you answer in its chat.
+- **Working**, then **Ready**: the rest, busy or idle, newest first.
+
+A row shows the session's title, its state, `repository:branch` (or its folder), the
+machine and how long ago it started, and Claude's latest reply. On the right it says
+`run` for a session under `saarthi run`, `by you` for one this phone started, and `by`
+another client's or app's name (`by ctl`) for one it started through the hub.
 
 ### Filtering
 

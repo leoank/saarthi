@@ -18,10 +18,12 @@ notification.
 - Notifications through UnifiedPush and ntfy, including alerts when your Claude rate
   limits are running out early.
 - Node health and rate-limit usage as charts per machine.
+- Your own apps start sessions through the hub, label them and find them again, or run
+  them on a node they embed with the Rust library.
 
-saarthi is in active development, built for one person's own machines on one Tailscale
-network. Claude Code is the only agent and Android the only client so far; resuming
-past sessions, several accounts per machine and sandboxed sessions are planned.
+saarthi is in active development, built for one person's own machines on their tailnets.
+Claude Code is the only agent and Android the only phone client so far; authorization by
+policy, other people and a web admin page for the hub are being built.
 
 ## Try it
 
