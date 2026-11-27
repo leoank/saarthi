@@ -1,6 +1,6 @@
 # ADR-0021: Clients authenticate with their own token file, and `rc2s2 ctl` stands in for the phone
 
-Status: accepted
+Status: accepted; superseded in part by ADR-0081
 Date: 2026-10-19
 
 ## Context

@@ -1,6 +1,6 @@
 # ADR-0082: Identity and secrets
 
-Status: proposed
+Status: accepted
 Date: 2026-11-27
 Amends: ADR-0021, ADR-0039
 

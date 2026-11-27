@@ -1,6 +1,6 @@
 # ADR-0081: Authorization with Cedar
 
-Status: proposed
+Status: accepted
 Date: 2026-11-27
 Supersedes: ADR-0021 in part, its client token that may do anything
 

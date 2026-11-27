@@ -35,7 +35,7 @@ spawns, with the owner's answers of 2026-11-07.
 | [ADR-0018](ADR-0018-credentials-as-leased-slots.md) | Agent credentials are grants the hub leases to nodes as slots | superseded by ADR-0039 |
 | [ADR-0019](ADR-0019-event-seq-from-the-clock.md) | A node numbers its events from the time in microseconds | accepted |
 | [ADR-0020](ADR-0020-dedup-transcript-lines-by-id.md) | The hub stores a transcript line once per session by its uuid | accepted |
-| [ADR-0021](ADR-0021-client-tokens-and-rc2s2-ctl.md) | Clients authenticate with their own token file, and `rc2s2 ctl` stands in for the phone | accepted |
+| [ADR-0021](ADR-0021-client-tokens-and-rc2s2-ctl.md) | Clients authenticate with their own token file, and `rc2s2 ctl` stands in for the phone | accepted; superseded in part by ADR-0081 |
 | [ADR-0022](ADR-0022-held-prompts-reported-from-permission-mode.md) | A prompt to a session that bypasses permissions is reported as held, from the session's permission mode | accepted |
 | [ADR-0023](ADR-0023-wrapper-socket-and-terminal-replies.md) | Wrappers reach the daemon over a per-user unix socket, and terminal replies are not keystrokes | accepted |
 | [ADR-0024](ADR-0024-android-toolchain-through-the-project-flake.md) | The Android toolchain comes from the project flake, in a shell of its own | accepted |
@@ -94,9 +94,9 @@ spawns, with the owner's answers of 2026-11-07.
 | [ADR-0077](ADR-0077-the-app-in-modules.md) | The app in modules | accepted |
 | [ADR-0078](ADR-0078-shells-that-persist.md) | Shells that persist | accepted |
 | [ADR-0079](ADR-0079-a-default-model-per-claude-account.md) | A default model per Claude account | accepted |
-| [ADR-0080](ADR-0080-the-node-as-a-library.md) | The node as a library | proposed |
-| [ADR-0081](ADR-0081-authorization-with-cedar.md) | Authorization with Cedar | proposed |
-| [ADR-0082](ADR-0082-identity-and-secrets.md) | Identity and secrets | proposed |
+| [ADR-0080](ADR-0080-the-node-as-a-library.md) | The node as a library | accepted |
+| [ADR-0081](ADR-0081-authorization-with-cedar.md) | Authorization with Cedar | accepted |
+| [ADR-0082](ADR-0082-identity-and-secrets.md) | Identity and secrets | accepted |
 
 Each record:
 

@@ -1,6 +1,6 @@
 # ADR-0080: The node as a library
 
-Status: proposed
+Status: accepted
 Date: 2026-11-26
 Amends: ADR-0048
 

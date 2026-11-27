@@ -146,7 +146,7 @@ facts come from hooks and the transcript, and the PTY is only a channel for inpu
 - **Tailnet identity.** Optionally (`--tailnet`), an embedded tsnet identity of its own,
   so the daemon reaches the hub on the hub's tailnet whatever network the host is on;
   every connection to the hub is dialled through it (ADR-0048).
-- **The node as a library (proposed, ADR-0080).** An app builds a `Node` from a hub, a name
+- **The node as a library (ADR-0080).** An app builds a `Node` from a hub, a name
   and a state directory, and runs it on its own runtime; nothing in the library is
   process-wide, and how a node reaches its hub is its own (`HubAddr`). The daemon is the
   machine's node, the one that watches the user's Claude dir; an embedded node sees only
@@ -160,12 +160,12 @@ facts come from hooks and the transcript, and the PTY is only a channel for inpu
 
 One Rust binary, tonic for gRPC, sqlx on SQLite in WAL mode.
 
-- **Authorization (proposed, ADR-0081).** Every control call, and what a node asks of the
+- **Authorization (ADR-0081).** Every control call, and what a node asks of the
   hub, becomes a Cedar request (principal, action, resource, context) decided against a
   live entity set and a policy set from a bootstrap file and the hub's database. Lists
   narrow by the hub's own query first. The default policies keep today's behaviour: every
   agenix client is a device of the owner, an admin ([[EXP-20261126-f3e5a9]]).
-- **Identity and secrets (proposed, ADR-0082).** People, their device clients, apps and
+- **Identity and secrets (ADR-0082).** People, their device clients, apps and
   nodes are principals the hub recorded, never what they claim; `launched_by` is stamped
   by the hub. Client, app and node tokens are shown once and kept as SHA-256 hashes; Claude
   tokens added from the admin page are encrypted under a key from agenix. The agenix files
