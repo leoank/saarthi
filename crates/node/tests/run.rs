@@ -2,7 +2,8 @@
 //! Code that records the bytes it receives on its terminal: a key typed at the wrapper
 //! reaches the program and releases a request held for its session, an interrupt types
 //! Escape, Ctrl-U and the follow-up prompt, and a kill ends the program; a wrapper whose
-//! daemon restarts says hello to the new one.
+//! daemon restarts says hello to the new one. Each wrapper starts without `SAARTHI_RUN`, so
+//! the tests run the same from inside a `saarthi run` session.
 
 use std::io::{BufRead, Write};
 use std::process::{Command, Stdio};
@@ -45,6 +46,7 @@ async fn the_wrapper_types_interrupts_reports_keystrokes_and_kills() {
         got = got.display()
     );
     let mut wrapper = Command::new(env!("CARGO_BIN_EXE_saarthi"))
+        .env_remove("SAARTHI_RUN")
         .args(["run", "--command", "sh", "--wrapper-socket"])
         .arg(&socket)
         .args(["--", "-c", &script])
@@ -128,6 +130,7 @@ async fn a_wrapper_says_hello_again_to_a_restarted_daemon() {
     let script = format!("echo $$ > {}; exec sleep 60", pid_file.display());
     // The machine's own login, so the first message is the hello.
     let mut wrapper = Command::new(env!("CARGO_BIN_EXE_saarthi"))
+        .env_remove("SAARTHI_RUN")
         .args(["run", "--own-login", "--command", "sh", "--wrapper-socket"])
         .arg(&socket)
         .args(["--", "-c", &script])
@@ -207,6 +210,7 @@ fn the_wrapper_runs_its_program_under_the_account_the_daemon_gives() {
     for (exported, seen) in [(None, "opus"), (Some("sonnet"), "sonnet")] {
         let _ = std::fs::remove_file(&got);
         let mut command = Command::new(env!("CARGO_BIN_EXE_saarthi"));
+        command.env_remove("SAARTHI_RUN");
         match exported {
             Some(m) => command.env("ANTHROPIC_MODEL", m),
             None => command.env_remove("ANTHROPIC_MODEL"),
@@ -256,6 +260,7 @@ fn the_wrapper_runs_its_program_under_the_account_the_daemon_gives() {
             .unwrap();
     });
     let out = Command::new(env!("CARGO_BIN_EXE_saarthi"))
+        .env_remove("SAARTHI_RUN")
         .args(["run", "--claude-token", "nope", "--command", "sh", "--wrapper-socket"])
         .arg(&socket)
         .args(["--", "-c", "echo started"])
