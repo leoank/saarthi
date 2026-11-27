@@ -165,6 +165,15 @@ One Rust binary, tonic for gRPC, sqlx on SQLite in WAL mode.
   live entity set and a policy set from a bootstrap file and the hub's database. Lists
   narrow by the hub's own query first. The default policies keep today's behaviour: every
   agenix client is a device of the owner, an admin ([[EXP-20261126-f3e5a9]]).
+  Built so far (`crates/hub/src/authz/`, phase item 7): the schema and the default
+  policies compiled in (`saarthi.cedarschema`, `default.cedar`); every one of the 29
+  control calls checked; the entity set filled from the database at start (the schema's
+  actions, so groups such as `read` match), each node at its registration with its
+  launch profiles, each session as it is published, before any watcher is asked about
+  it. Lists, search, history and the watch filter row by row; narrowing by query first
+  waits for principals other than the owner. Node principals are item 9, policies from a
+  file and the database item 8. cedar-policy turns on serde_json's `preserve_order` for
+  the whole workspace, so JSON the node writes keeps its keys' written order.
 - **Identity and secrets (ADR-0082).** People, their device clients, apps and
   nodes are principals the hub recorded, never what they claim; `launched_by` is stamped
   by the hub. Client, app and node tokens are shown once and kept as SHA-256 hashes; Claude

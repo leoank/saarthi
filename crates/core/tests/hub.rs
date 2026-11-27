@@ -83,6 +83,7 @@ async fn the_core_lists_watches_answers_and_streams() {
         claude_tokens: Default::default(),
         claude_api: Arc::new(saarthi_hub::claude_api::ClaudeApi::new(saarthi_hub::claude_api::UPSTREAM)),
         live: Live::new(),
+        authz: Arc::new(saarthi_hub::authz::Authz::new(saarthi_hub::authz::DEFAULT_POLICIES, ["phone"], []).unwrap()),
     };
     tokio::spawn(saarthi_hub::serve(listener, hub));
 

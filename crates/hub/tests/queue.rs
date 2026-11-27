@@ -19,9 +19,12 @@ use serde_json::Value;
 const FAKE: &str = r#"#!/bin/sh
 while IFS= read -r line; do
   echo "$line" >> LOG
+  # Whatever order the line's keys come in (serde_json keeps the written order where a
+  # dependency asks it to, as cedar-policy does).
   case "$line" in
-    *slow*'"type":"user"'*) while [ ! -f GO ]; do sleep 0.05; done; echo '{"type":"result","subtype":"success"}' ;;
-    *'"type":"user"'*) echo '{"type":"result","subtype":"success"}' ;;
+    *'"type":"user"'*)
+      case "$line" in *slow*) while [ ! -f GO ]; do sleep 0.05; done ;; esac
+      echo '{"type":"result","subtype":"success"}' ;;
   esac
 done
 "#;

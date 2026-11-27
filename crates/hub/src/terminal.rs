@@ -25,6 +25,7 @@ pub async fn open(hub: &Hub, client: &str, mut inbound: Streaming<TerminalUp>) -
         .message()
         .await?
         .ok_or_else(|| Status::invalid_argument("an empty stream"))?;
+    hub.authz.check(client, "Terminal", crate::authz::Res::Node(&first.node_id), serde_json::json!({}))?;
     let size = first.r#in.unwrap_or_default();
     if size.cols == 0 || size.rows == 0 {
         return Err(Status::invalid_argument("the first message carries the window size"));

@@ -15,7 +15,9 @@ use tokio::sync::broadcast::error::RecvError;
 use tokio_stream::Stream;
 use tonic::{Request, Response, Status};
 
+use crate::authz::{Res, account_context, spawn_context};
 use crate::node_service::Hub;
+use serde_json::json;
 
 type Stream_<T> = Pin<Box<dyn Stream<Item = Result<T, Status>> + Send>>;
 
@@ -34,6 +36,25 @@ impl Hub {
 }
 
 impl Hub {
+    /// Whether `client` may do `action` on a session (ADR-0081); a session the entity set
+    /// lacks yet joins it from its record first.
+    async fn may_session(&self, client: &str, action: &str, node: &str, id: &str, context: serde_json::Value) -> Result<(), Status> {
+        if !self.authz.knows_session(node, id)
+            && let Some(s) = self.db.session(node, id).await.map_err(internal)?
+        {
+            self.authz.set_session(node, &s).map_err(internal)?;
+        }
+        self.authz.check(client, action, Res::Session { node, id }, context)
+    }
+
+    /// Whether a list shows `client` the session `s`.
+    fn sees(&self, client: &str, s: &saarthi_proto::event::v1::Session) -> bool {
+        if !self.authz.knows_session(&s.node_id, &s.id) {
+            let _ = self.authz.set_session(&s.node_id, s);
+        }
+        self.authz.allows(client, "ViewSession", Res::Session { node: &s.node_id, id: &s.id }, json!({}))
+    }
+
     /// A node as clients see it: its record, and what its live link registered.
     pub(crate) async fn node_view(&self, row: crate::db::NodeRow) -> Node {
         let crate::db::NodeRow {
@@ -93,8 +114,13 @@ impl Hub {
         self.db.claude_token_model(token).await.map_err(internal)
     }
 
-    async fn token_list(&self) -> Result<Response<ListClaudeTokensResponse>, Status> {
-        let names: Vec<&str> = self.claude_tokens.names().collect();
+    /// The Claude tokens `client` may see, by name with their dates and usage.
+    async fn token_list(&self, client: &str) -> Result<Response<ListClaudeTokensResponse>, Status> {
+        let names: Vec<&str> = self
+            .claude_tokens
+            .names()
+            .filter(|n| self.authz.allows(client, "ViewAccount", Res::Account(n), json!({})))
+            .collect();
         let tokens = self.db.claude_tokens(&names).await.map_err(internal)?;
         Ok(Response::new(ListClaudeTokensResponse { tokens }))
     }
@@ -135,7 +161,9 @@ impl ControlService for Hub {
             .unwrap_or_default();
         let mut nodes = Vec::new();
         for row in self.db.nodes().await.map_err(internal)? {
-            nodes.push(self.node_view(row).await);
+            if self.authz.allows(&client, "ViewNode", Res::Node(&row.id), json!({})) {
+                nodes.push(self.node_view(row).await);
+            }
         }
         Ok(Response::new(ListNodesResponse { nodes, tailnet, you: format!("client:{client}") }))
     }
@@ -144,7 +172,7 @@ impl ControlService for Hub {
         &self,
         request: Request<ListSessionsRequest>,
     ) -> Result<Response<ListSessionsResponse>, Status> {
-        self.client(&request)?;
+        let client = self.client(&request)?;
         let r = request.into_inner();
         let filter = filter(r.launched_by, r.labels)?;
         let mut sessions = self
@@ -152,6 +180,7 @@ impl ControlService for Hub {
             .sessions(&r.node_id, r.include_ended, &filter)
             .await
             .map_err(internal)?;
+        sessions.retain(|s| self.sees(&client, s));
         for s in &mut sessions {
             s.last_reply = self.db.last_reply(&s.node_id, &s.id).await.map_err(internal)?;
         }
@@ -162,18 +191,14 @@ impl ControlService for Hub {
         &self,
         request: Request<ListPendingRequest>,
     ) -> Result<Response<ListPendingResponse>, Status> {
-        self.client(&request)?;
-        let pending = self
-            .db
-            .open_pendings()
-            .await
-            .map_err(internal)?
-            .into_iter()
-            .map(|(node_id, request)| PendingOnNode {
-                node_id,
-                request: Some(request),
-            })
-            .collect();
+        let client = self.client(&request)?;
+        let mut pending = Vec::new();
+        for (node_id, request) in self.db.open_pendings().await.map_err(internal)? {
+            // A request is seen by those who may see its session.
+            if self.may_session(&client, "ViewSession", &node_id, &request.session_id, json!({})).await.is_ok() {
+                pending.push(PendingOnNode { node_id, request: Some(request) });
+            }
+        }
         Ok(Response::new(ListPendingResponse { pending }))
     }
 
@@ -187,11 +212,18 @@ impl ControlService for Hub {
         let r = request.into_inner();
         let filter = filter(r.launched_by, r.labels)?;
         let mut updates = self.live.subscribe();
+        let authz = self.authz.clone();
         let stream = async_stream(move |tx| async move {
+            // Only what the client may see (ADR-0081): a node it may view, a session or a
+            // request on a session it may view.
+            let sees = |node: &str, session: &str| authz.allows(&client, "ViewSession", Res::Session { node, id: session }, json!({}));
             loop {
                 match updates.recv().await {
                     // Sessions the filter leaves out are not sent; nodes and requests are.
-                    Ok(Update { body: Some(update::Body::Session(s)) }) if !filter.matches(&s) => {}
+                    Ok(Update { body: Some(update::Body::Session(s)) }) if !filter.matches(&s) || !sees(&s.node_id, &s.id) => {}
+                    Ok(Update { body: Some(update::Body::Node(n)) }) if !authz.allows(&client, "ViewNode", Res::Node(&n.id), json!({})) => {}
+                    Ok(Update { body: Some(update::Body::Pending(p)) })
+                        if !sees(&p.node_id, p.request.as_ref().map(|r| r.session_id.as_str()).unwrap_or_default()) => {}
                     Ok(u) => {
                         if tx.send(Ok(u)).await.is_err() {
                             return;
@@ -219,6 +251,7 @@ impl ControlService for Hub {
         request: Request<NotificationsRequest>,
     ) -> Result<Response<Self::NotificationsStream>, Status> {
         let client = self.client(&request)?;
+        self.authz.check(&client, "Notifications", Res::Hub, json!({}))?;
         let mut held = self.notifier.hold(&client);
         tracing::info!(%client, "holds the notifications stream");
         let stream = async_stream(move |tx| async move {
@@ -253,8 +286,9 @@ impl ControlService for Hub {
         &self,
         request: Request<StreamSessionRequest>,
     ) -> Result<Response<Self::StreamSessionStream>, Status> {
-        self.client(&request)?;
+        let client = self.client(&request)?;
         let r = request.into_inner();
+        self.may_session(&client, "StreamSession", &r.node_id, &r.session_id, json!({})).await?;
         // Subscribe before reading the record, so nothing stored in between is missed; the
         // live part skips what the stored part already sent.
         let mut live = self.live.subscribe_events();
@@ -343,8 +377,9 @@ impl ControlService for Hub {
         &self,
         request: Request<GetHealthRequest>,
     ) -> Result<Response<GetHealthResponse>, Status> {
-        self.client(&request)?;
+        let client = self.client(&request)?;
         let r = request.into_inner();
+        self.authz.check(&client, "GetHealth", Res::Node(&r.node_id), json!({}))?;
         let samples = self
             .db
             .health_since(&r.node_id, r.since_ms)
@@ -370,6 +405,7 @@ impl ControlService for Hub {
         else {
             return Err(Status::not_found("no such open request"));
         };
+        self.may_session(&client, "Resolve", &r.node_id, &pending.session_id, json!({})).await?;
         let decision = match &resolution.decision {
             Some(resolution::Decision::Allow(_)) => "allow",
             Some(resolution::Decision::Deny(_)) => "deny",
@@ -398,8 +434,9 @@ impl ControlService for Hub {
         &self,
         request: Request<PromptRequest>,
     ) -> Result<Response<CommandResponse>, Status> {
-        self.client(&request)?;
+        let client = self.client(&request)?;
         let r = request.into_inner();
+        self.may_session(&client, "Prompt", &r.node_id, &r.session_id, json!({})).await?;
         let action = command::Action::Prompt(Prompt {
             text: r.text,
             queue: r.queue,
@@ -414,8 +451,9 @@ impl ControlService for Hub {
         &self,
         request: Request<InterruptRequest>,
     ) -> Result<Response<CommandResponse>, Status> {
-        self.client(&request)?;
+        let client = self.client(&request)?;
         let r = request.into_inner();
+        self.may_session(&client, "Interrupt", &r.node_id, &r.session_id, json!({})).await?;
         let action = command::Action::Interrupt(Interrupt {
             then_prompt: r.then_prompt,
         });
@@ -428,8 +466,9 @@ impl ControlService for Hub {
         &self,
         request: Request<DeleteSessionRequest>,
     ) -> Result<Response<CommandResponse>, Status> {
-        self.client(&request)?;
+        let client = self.client(&request)?;
         let r = request.into_inner();
+        self.may_session(&client, "DeleteSession", &r.node_id, &r.session_id, json!({})).await?;
         let refused = |error: &str| CommandResponse { ok: false, error: error.into(), ..Default::default() };
         let done = self.db.delete_session(&r.node_id, &r.session_id, crate::node_service::now_ms()).await.map_err(internal)?;
         Ok(Response::new(match done {
@@ -443,16 +482,18 @@ impl ControlService for Hub {
     }
 
     async fn session_about(&self, request: Request<SessionAboutRequest>) -> Result<Response<SessionAboutResponse>, Status> {
-        self.client(&request)?;
+        let client = self.client(&request)?;
         let r = request.into_inner();
+        self.may_session(&client, "SessionAbout", &r.node_id, &r.session_id, json!({})).await?;
         let (events, bytes, transcript_lines, first_ms, last_ms) =
             self.db.session_about(&r.node_id, &r.session_id).await.map_err(internal)?;
         Ok(Response::new(SessionAboutResponse { events, bytes, transcript_lines, first_ms, last_ms }))
     }
 
     async fn set_model(&self, request: Request<SetModelRequest>) -> Result<Response<CommandResponse>, Status> {
-        self.client(&request)?;
+        let client = self.client(&request)?;
         let r = request.into_inner();
+        self.may_session(&client, "SetModel", &r.node_id, &r.session_id, json!({})).await?;
         let action = command::Action::SetModel(SetModel { model: r.model, effort: r.effort });
         Ok(response(self.live.command(&r.node_id, &r.session_id, action).await?))
     }
@@ -461,8 +502,9 @@ impl ControlService for Hub {
         &self,
         request: Request<UnqueueRequest>,
     ) -> Result<Response<CommandResponse>, Status> {
-        self.client(&request)?;
+        let client = self.client(&request)?;
         let r = request.into_inner();
+        self.may_session(&client, "Unqueue", &r.node_id, &r.session_id, json!({})).await?;
         let action = command::Action::Unqueue(Unqueue { queued_id: r.queued_id, send: r.send });
         Ok(response(
             self.live.command(&r.node_id, &r.session_id, action).await?,
@@ -473,8 +515,9 @@ impl ControlService for Hub {
         &self,
         request: Request<KillRequest>,
     ) -> Result<Response<CommandResponse>, Status> {
-        self.client(&request)?;
+        let client = self.client(&request)?;
         let r = request.into_inner();
+        self.may_session(&client, "Kill", &r.node_id, &r.session_id, json!({})).await?;
         let action = command::Action::Kill(Kill {});
         let result = self.live.command(&r.node_id, &r.session_id, action).await?;
         // The node has nothing of it running: it ends here, so it can be resumed.
@@ -495,8 +538,9 @@ impl ControlService for Hub {
         &self,
         request: Request<ListShellsRequest>,
     ) -> Result<Response<ListShellsResponse>, Status> {
-        self.client(&request)?;
+        let client = self.client(&request)?;
         let r = request.into_inner();
+        self.authz.check(&client, "ListShells", Res::Node(&r.node_id), json!({}))?;
         let result = self.live.command(&r.node_id, "", command::Action::ListShells(ListShells {})).await?;
         if !result.ok {
             return Err(Status::failed_precondition(result.error));
@@ -508,8 +552,10 @@ impl ControlService for Hub {
         &self,
         request: Request<KillShellRequest>,
     ) -> Result<Response<CommandResponse>, Status> {
-        self.client(&request)?;
+        let client = self.client(&request)?;
         let r = request.into_inner();
+        self.authz.set_shell(&r.node_id, &r.shell_id).map_err(internal)?;
+        self.authz.check(&client, "KillShell", Res::Shell { node: &r.node_id, id: &r.shell_id }, json!({}))?;
         let action = command::Action::KillShell(KillShell { shell_id: r.shell_id });
         Ok(response(self.live.command(&r.node_id, "", action).await?))
     }
@@ -538,6 +584,7 @@ impl ControlService for Hub {
         };
         let claude_token = self.claude_token(&name, why)?;
         let model = self.model(r.model, &name).await?;
+        self.authz.check(&client, "Spawn", Res::Node(&r.node_id), spawn_context(&r.node_id, &r.profile, &name, &model))?;
         // The hub names the session, so the client can open it as soon as this returns.
         let session_id = uuid::Uuid::new_v4().to_string();
         self.db
@@ -588,6 +635,7 @@ impl ControlService for Hub {
             Some(name) => (name, "picked"),
             None => (session.claude_token, "the session's last; pick another"),
         };
+        self.may_session(&client, "Resume", &r.node_id, &r.session_id, account_context(&name)).await?;
         let claude_token = self.claude_token(&name, why)?;
         let model = self.model(r.model, &name).await?;
         // A fork carries on the session's work, under its labels.
@@ -623,7 +671,7 @@ impl ControlService for Hub {
     }
 
     async fn search(&self, request: Request<SearchRequest>) -> Result<Response<SearchResponse>, Status> {
-        self.client(&request)?;
+        let client = self.client(&request)?;
         let r = request.into_inner();
         let limit = if r.limit > 0 { r.limit.min(100) } else { 30 } as usize;
         let hits = self
@@ -634,6 +682,7 @@ impl ControlService for Hub {
         Ok(Response::new(SearchResponse {
             hits: hits
                 .into_iter()
+                .filter(|h| self.sees(&client, &h.session))
                 .map(|h| SearchHit { session: Some(h.session), snippet: h.snippet, seq: h.seq })
                 .collect(),
         }))
@@ -649,7 +698,7 @@ impl ControlService for Hub {
         /// A prompt pasted longer than this is passed over for the title; it keeps a page of
         /// fifty sessions well under the client's 4 MB message limit.
         const OPENING_BYTES: i64 = 16 * 1024;
-        self.client(&request)?;
+        let client = self.client(&request)?;
         let r = request.into_inner();
         let before = if r.before_ms > 0 { r.before_ms } else { i64::MAX };
         let limit = if r.limit > 0 { r.limit.min(200) } else { 50 };
@@ -657,6 +706,9 @@ impl ControlService for Hub {
         let mut sessions = Vec::new();
         let filter = filter(r.launched_by, r.labels)?;
         for session in db.history(&r.node_id, before, limit.into(), &filter).await.map_err(internal)? {
+            if !self.sees(&client, &session) {
+                continue;
+            }
             let opening = db
                 .opening(&session.node_id, &session.id, OPENING, OPENING_BYTES)
                 .await
@@ -679,8 +731,9 @@ impl ControlService for Hub {
         &self,
         request: Request<SetKeepAwakeRequest>,
     ) -> Result<Response<CommandResponse>, Status> {
-        self.client(&request)?;
+        let client = self.client(&request)?;
         let r = request.into_inner();
+        self.authz.check(&client, "SetKeepAwake", Res::Node(&r.node_id), json!({}))?;
         let action = command::Action::SetKeepAwake(SetKeepAwake { on: r.on });
         Ok(response(self.live.command(&r.node_id, "", action).await?))
     }
@@ -689,8 +742,8 @@ impl ControlService for Hub {
         &self,
         request: Request<ListClaudeTokensRequest>,
     ) -> Result<Response<ListClaudeTokensResponse>, Status> {
-        self.client(&request)?;
-        self.token_list().await
+        let client = self.client(&request)?;
+        self.token_list(&client).await
     }
 
     async fn set_claude_token_expiry(
@@ -699,6 +752,7 @@ impl ControlService for Hub {
     ) -> Result<Response<ListClaudeTokensResponse>, Status> {
         let client = self.client(&request)?;
         let r = request.into_inner();
+        self.authz.check(&client, "SetClaudeTokenExpiry", Res::Account(&r.name), json!({}))?;
         if self.claude_tokens.get(&r.name).is_none() {
             return Err(Status::not_found(format!(
                 "the hub holds no Claude token named {}",
@@ -711,7 +765,7 @@ impl ControlService for Hub {
             .await
             .map_err(internal)?;
         tracing::info!(%client, token = %r.name, expires_ms = r.expires_ms, "Claude token expiry set");
-        self.token_list().await
+        self.token_list(&client).await
     }
 
     async fn set_claude_token_model(
@@ -720,6 +774,7 @@ impl ControlService for Hub {
     ) -> Result<Response<ListClaudeTokensResponse>, Status> {
         let client = self.client(&request)?;
         let r = request.into_inner();
+        self.authz.check(&client, "SetClaudeTokenModel", Res::Account(&r.name), json!({}))?;
         if !valid_model(&r.model) {
             return Err(Status::invalid_argument(format!(
                 "not a model Claude Code takes: {:?}",
@@ -739,7 +794,7 @@ impl ControlService for Hub {
             )));
         }
         tracing::info!(%client, token = %r.name, model = %r.model, "Claude token default model set");
-        self.token_list().await
+        self.token_list(&client).await
     }
 
     async fn set_default_claude_token(
@@ -748,6 +803,7 @@ impl ControlService for Hub {
     ) -> Result<Response<SetDefaultClaudeTokenResponse>, Status> {
         let client = self.client(&request)?;
         let r = request.into_inner();
+        self.authz.check(&client, "SetDefaultClaudeToken", Res::Node(&r.node_id), account_context(&r.name))?;
         if !r.name.is_empty() && self.claude_tokens.get(&r.name).is_none() {
             return Err(Status::not_found(format!(
                 "the hub holds no Claude token named {}",
@@ -777,6 +833,7 @@ impl ControlService for Hub {
         request: Request<RegisterPushRequest>,
     ) -> Result<Response<RegisterPushResponse>, Status> {
         let client = self.client(&request)?;
+        self.authz.check(&client, "RegisterPush", Res::Hub, json!({}))?;
         let r = request.into_inner();
         let url = reqwest::Url::parse(&r.endpoint)
             .map_err(|_| Status::invalid_argument("the endpoint is not a URL"))?;

@@ -35,6 +35,11 @@ impl Tokens {
         Ok(Self(map))
     }
 
+    /// Every name in the file.
+    pub fn names(&self) -> impl Iterator<Item = &str> {
+        self.0.values().map(String::as_str)
+    }
+
     /// The name for an `authorization` header value of `Bearer <token>`.
     pub fn name_for(&self, authorization: &str) -> Option<&str> {
         let token = authorization.strip_prefix("Bearer ")?;

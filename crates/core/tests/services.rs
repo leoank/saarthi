@@ -67,6 +67,7 @@ async fn the_core_reads_a_nodes_notebooks_and_streams_its_answers() {
         claude_tokens: Default::default(),
         claude_api: Arc::new(saarthi_hub::claude_api::ClaudeApi::new(saarthi_hub::claude_api::UPSTREAM)),
         live: Live::new(),
+        authz: Arc::new(saarthi_hub::authz::Authz::new(saarthi_hub::authz::DEFAULT_POLICIES, ["phone"], []).unwrap()),
     };
     tokio::spawn(saarthi_hub::serve(tcp, hub));
 

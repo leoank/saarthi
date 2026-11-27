@@ -14,6 +14,14 @@ Where to look first: the daemon's log (the file named in the launchd plist on ma
 - A node is named by its token's line in the hub's node-token file, not by `--name`. Two
   machines with the same token show up as one node.
 
+## A call fails with "not allowed"
+
+*not allowed: Kill on this session* (or another action and thing) is the hub's policies
+refusing it (see [Who may do what](../setup/hub.md#who-may-do-what)). The hub's log has
+a `refused` line with the client, the action and what it was on. With the hub's default
+policies every client in its client-token file may do everything, so a refusal there means
+the client's token is in another file, or the hub runs policies of your own.
+
 ## A second node will not start
 
 - *another node runs on this state directory*: a daemon already runs as this user on this

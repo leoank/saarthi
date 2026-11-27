@@ -40,6 +40,8 @@ pub struct Hub {
     pub live: Arc<Live>,
     /// Push to registered phones and to the ntfy topic, if one is configured.
     pub notifier: Arc<Notifier>,
+    /// Who may do what (ADR-0081).
+    pub authz: Arc<crate::authz::Authz>,
 }
 
 #[tonic::async_trait]
@@ -282,6 +284,8 @@ async fn serve_node(
         tracing::info!(node = %name, claimed = %register.name, "node registered under another name than its token's");
     }
     let (node_id, last_seq) = db.register_node(name, &register.version, now_ms()).await?;
+    let profiles: Vec<(String, bool)> = register.profiles.iter().map(|p| (p.name.clone(), p.sandboxed)).collect();
+    hub.authz.set_node(&node_id, &profiles)?;
     let (tailnet, peer) = match &remote {
         Some(r) => {
             let peer = r.peer().await.map(|p| p.to_string()).unwrap_or_default();
@@ -453,6 +457,8 @@ fn publish(hub: &Hub, body: update::Body) {
 /// A session to the clients watching, with its reply preview.
 async fn publish_session(hub: &Hub, node_id: &str, mut session: Session) -> Result<()> {
     session.node_id = node_id.to_string();
+    // Into the entity set before any watcher is asked whether it may see it.
+    hub.authz.set_session(node_id, &session)?;
     session.last_reply = hub.db.last_reply(node_id, &session.id).await?;
     publish(hub, update::Body::Session(session));
     Ok(())

@@ -47,6 +47,10 @@ async fn a_node_links_over_the_tailnet_and_the_hub_records_who_it_is() {
         claude_tokens: Arc::new(ClaudeTokens::parse("").unwrap()),
         claude_api: Arc::new(saarthi_hub::claude_api::ClaudeApi::new(saarthi_hub::claude_api::UPSTREAM)),
         live: Live::new(),
+        authz: Arc::new(
+            saarthi_hub::authz::Authz::new(saarthi_hub::authz::DEFAULT_POLICIES, Tokens::parse(common::CLIENT_TOKENS).unwrap().names(), [])
+                .unwrap(),
+        ),
     };
     let serving = hub_tailnet.clone();
     tokio::spawn(async move { saarthi_hub::serve_tailnet(&serving, 7700, hub).await });

@@ -81,6 +81,11 @@ impl HubProc {
         Self::start_inner(db_path, addr, ntfy, claude_tokens, None, saarthi_hub::claude_api::UPSTREAM)
     }
 
+    /// The same, deciding by `policies` (ADR-0081) instead of the default set.
+    pub fn start_with_policies(db_path: &std::path::Path, addr: &str, policies: &str) -> (Self, String) {
+        Self::start_inner_with(db_path, addr, None, "", None, saarthi_hub::claude_api::UPSTREAM, policies)
+    }
+
     fn start_inner(
         db_path: &std::path::Path,
         addr: &str,
@@ -89,6 +94,19 @@ impl HubProc {
         probes: Option<(String, Duration)>,
         upstream: &str,
     ) -> (Self, String) {
+        Self::start_inner_with(db_path, addr, ntfy, claude_tokens, probes, upstream, saarthi_hub::authz::DEFAULT_POLICIES)
+    }
+
+    fn start_inner_with(
+        db_path: &std::path::Path,
+        addr: &str,
+        ntfy: Option<String>,
+        claude_tokens: &str,
+        probes: Option<(String, Duration)>,
+        upstream: &str,
+        policies: &str,
+    ) -> (Self, String) {
+        let policies = policies.to_string();
         let claude_tokens = claude_tokens.to_string();
         let upstream = upstream.to_string();
         let (stop, stopped) = tokio::sync::oneshot::channel();
@@ -110,7 +128,15 @@ impl HubProc {
                 bound_tx
                     .send(listener.local_addr().unwrap().to_string())
                     .unwrap();
+                let authz = saarthi_hub::authz::Authz::new(
+                    &policies,
+                    Tokens::parse(CLIENT_TOKENS).unwrap().names(),
+                    claude_tokens.names(),
+                )
+                .unwrap();
+                authz.fill(&db).await.unwrap();
                 let hub = Hub {
+                    authz: Arc::new(authz),
                     notifier: Arc::new(saarthi_hub::notify::Notifier::new(ntfy, db.clone(), Vec::new()).quiet(Default::default(), Default::default())),
                     db,
                     node_tokens: Arc::new(Tokens::parse(TOKENS).unwrap()),

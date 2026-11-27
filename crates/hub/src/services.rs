@@ -47,6 +47,7 @@ pub async fn request(
     let mut head = first
         .head
         .ok_or_else(|| Status::invalid_argument("the first message carries the request head"))?;
+    hub.authz.check(client, "ServiceRequest", crate::authz::Res::Node(&first.node_id), serde_json::json!({}))?;
     if !head.path.starts_with('/') {
         return Err(Status::invalid_argument("the path must start with /"));
     }

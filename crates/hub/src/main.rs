@@ -102,11 +102,21 @@ async fn main() -> Result<()> {
     db.sync_claude_tokens(&fingerprints, saarthi_hub::node_service::now_ms())
         .await?;
     tracing::info!(names = ?claude_tokens, "Claude tokens");
+    let client_tokens = Tokens::load(&cli.client_tokens)?;
+    // Who may do what (ADR-0081): the default policies, the owner with every client in the
+    // client-token file as a device of theirs, and every node, session and account recorded.
+    let authz = saarthi_hub::authz::Authz::new(
+        saarthi_hub::authz::DEFAULT_POLICIES,
+        client_tokens.names(),
+        claude_tokens.names(),
+    )?;
+    authz.fill(&db).await?;
     let hub = Hub {
         notifier: Arc::new(Notifier::new(cli.ntfy.clone(), db.clone(), cli.no_notify.clone())),
         db,
         node_tokens: Arc::new(Tokens::load(&cli.node_tokens)?),
-        client_tokens: Arc::new(Tokens::load(&cli.client_tokens)?),
+        client_tokens: Arc::new(client_tokens),
+        authz: Arc::new(authz),
         claude_tokens: Arc::new(claude_tokens),
         claude_api: Arc::new(saarthi_hub::claude_api::ClaudeApi::new(saarthi_hub::claude_api::UPSTREAM)),
         live: Live::new(),

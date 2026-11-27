@@ -1,6 +1,7 @@
 //! The saarthi hub: records every node's sessions, events and health, and passes a person's
 //! decisions and prompts from a client to the node that holds the session.
 
+pub mod authz;
 pub mod claude_api;
 pub mod claude_tokens;
 pub mod control_service;

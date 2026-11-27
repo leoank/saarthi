@@ -144,6 +144,20 @@ hardened systemd service. The port stays closed in the firewall unless you set
 `dataDir`. Every option is in
 [`nix/hub-module.nix`](https://github.com/leoank/saarthi/blob/main/nix/hub-module.nix).
 
+## Who may do what
+
+Every call a client makes is checked by the hub against
+[Cedar](https://www.cedarpolicy.com) policies (ADR-0081): who is asking, what they ask
+(`Prompt`, `Kill`, `Spawn`, `ViewSession`, …), on what (a session, a node, a Claude
+account) and how (a spawn's launch profile and account). A list or the live updates show
+only what the asker may read.
+
+For now the hub knows one person, you, as its admin: every client in the client-token file
+is a device of yours, and every node and Claude account is yours, so every client may do
+everything, as before. Other people, apps held to a grant, and policies of your own are
+coming (phase items 8 to 11). A call the policies refuse fails with `PERMISSION_DENIED`,
+*not allowed: Kill on this session*, and the hub logs who was refused what.
+
 ## Checking it
 
 `journalctl -u saarthi-hub` shows `hub serving` at start and one `node registered` line per
