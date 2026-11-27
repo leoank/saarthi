@@ -11,8 +11,21 @@ Where to look first: the daemon's log (the file named in the launchd plist on ma
   the hub over the tailnet (`tailscale ping hub`).
 - An `Unauthenticated` error means the token is not in the hub's node-token file, or the
   hub has not been restarted since it was added.
-- The node's name is `--name`, or the hostname. Two machines with the same token show up
-  as one node.
+- A node is named by its token's line in the hub's node-token file, not by `--name`. Two
+  machines with the same token show up as one node.
+
+## A second node will not start
+
+- *another node runs on this state directory*: a daemon already runs as this user on this
+  machine, with `~/.local/state/saarthi` as its state. Stop it first, or, for a second
+  node on purpose, give it a `--state-dir` of its own, with `--wrapper-socket`,
+  `--shells-socket` and `--hook-addr` apart too (see [A node](../setup/node.md#2-the-daemon)).
+  Only one node should watch a Claude directory: two on `~/.claude` both list every
+  session and upload every transcript.
+- *another node answers there; give this one its own --wrapper-socket*: the socket
+  `saarthi run` connects to belongs to a node that is still running.
+- *a socket's path would be … bytes*: the state directory is too long for a unix socket
+  (103 bytes on macOS). Choose a shorter one.
 
 ## A session is listed but its dialogs never reach the phone
 

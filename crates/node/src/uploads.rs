@@ -1,7 +1,8 @@
 //! Photos sent with a prompt from the app (ADR-0071). Each is saved where the session can
 //! read it, and its path is added to the prompt's text, so Claude reads it with its own
 //! tools; that works for every kind of session, a terminal one included, which only takes
-//! typed text. A session on the host gets `~/.local/state/saarthi/uploads/<session>/`; one
+//! typed text. A session on the host gets `uploads/<session>/` in its node's state
+//! directory (`~/.local/state/saarthi` for the daemon); one
 //! in a sandboxed profile gets `tmp/uploads/<session>/` in the profile's state directory,
 //! which its sandbox can read.
 
@@ -13,11 +14,6 @@ use saarthi_proto::node::v1::Attachment;
 /// the app's call to the hub and the hub's to the node keep. The app shrinks each photo to a
 /// few hundred KB.
 pub const MAX_BYTES: usize = 3 << 20;
-
-/// Where the photos of sessions on the host go, one directory per session.
-pub fn host_root(home: &Path) -> PathBuf {
-    home.join(".local/state/saarthi/uploads")
-}
 
 /// Where the photos of a sandboxed profile's sessions go, inside what its sandbox reads.
 pub fn profile_root(state_dir: &Path) -> PathBuf {
@@ -125,13 +121,13 @@ mod tests {
     fn a_sandboxed_session_gets_its_profiles_tmp() {
         let d = dir(Path::new("/home/u"), Some(Path::new("/srv/box")), "s1");
         assert_eq!(d, Path::new("/srv/box/tmp/uploads/s1"));
-        assert_eq!(dir(&host_root(Path::new("/home/u")), None, "s1"), Path::new("/home/u/.local/state/saarthi/uploads/s1"));
+        assert_eq!(dir(Path::new("/state/uploads"), None, "s1"), Path::new("/state/uploads/s1"));
     }
 
     #[test]
     fn only_a_file_saved_for_the_session_counts_as_its_photo() {
         let tmp = tempfile::tempdir().unwrap();
-        let root = host_root(tmp.path());
+        let root = tmp.path().join("uploads");
         let d = dir(&root, None, "s1");
         save(&d, "x", &[photo("a.jpg", b"1")], 3).unwrap();
         let roots = [root.clone()];

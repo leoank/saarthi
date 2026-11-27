@@ -214,10 +214,8 @@ impl Node {
             Some(m) => m.claude_dir.clone(),
             None => state.join("claude"),
         };
-        let uploads = match &opts.machine {
-            Some(m) => crate::uploads::host_root(&m.home),
-            None => state.join("uploads"),
-        };
+        // `~/.local/state/saarthi/uploads` for the daemon on its default state directory.
+        let uploads = state.join("uploads");
 
         let (outbox, rx) = Outbox::new(1024);
         let sessions = Arc::new(Sessions::new(

@@ -57,8 +57,7 @@ pub struct Parts {
     /// Prompts held while their sessions work (phase PHS-20261117-f22kxe item 7).
     pub queue: Arc<crate::queue::Queue>,
     /// Where photos sent to sessions on the host are saved, one directory per session
-    /// (ADR-0071): [`crate::uploads::host_root`] for the daemon, the state directory's
-    /// `uploads/` for a node built as a library (ADR-0080).
+    /// (ADR-0071): the state directory's `uploads/` (ADR-0080).
     pub uploads: std::path::PathBuf,
 }
 

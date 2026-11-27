@@ -21,9 +21,22 @@ Put the token alone in a file on the machine, readable only by you, for example
 $ saarthi node serve --hub http://hub:7700 --token-file ~/.config/saarthi/node-token --name laptop
 ```
 
-`--name` is what the app shows; it defaults to the hostname. The daemon connects out to
-the hub and reconnects by itself, with backoff, when the link drops. While the hub is
+The app shows the node by its token's name in the hub's node-token file (`laptop` above):
+the hub knows a node by its token, whatever name it registers with. `--name`, which
+defaults to the hostname, is the name it registers with and logs. The daemon connects out
+to the hub and reconnects by itself, with backoff, when the link drops. While the hub is
 unreachable it keeps up to 200,000 events and sends them when the link is back.
+
+Its own files live in its state directory, `~/.local/state/saarthi` unless `--state-dir`
+says otherwise: the changes and sandbox-hook sockets, photos sent to sessions, the tailnet
+identity, and `node.lock`. One node runs per state directory: a second daemon started on
+the same one stops at once with *another node runs on this state directory*, and one given
+the socket of a node still answering on it stops with *another node answers there* rather
+than taking it. Keep the path short: a socket's path has at most 103 bytes on macOS, and
+the node refuses a state directory that would make one longer. Stopping the daemon (Ctrl-C, or
+its service stopping) ends the sessions it started from the app: their input closes, and
+any still running five seconds later are killed. Their transcripts stay, so they can be
+resumed. Sessions you started yourself are not touched.
 
 Useful flags (all of them are in the [command line reference](../reference/cli.md)):
 
@@ -37,8 +50,9 @@ Useful flags (all of them are in the [command line reference](../reference/cli.m
 | `--services <file>` | Local HTTP services on unix sockets, such as yajna's notebook server, that your clients reach through the hub. A file that does not parse is left out, with an error in the log. See [Local services](#local-services). |
 | `--terminal` | Let your clients open a shell on this machine: your login shell, in your home directory, through the hub, kept by the shell holder until it exits or is killed. Off by default; a shell is your whole account. See [The terminal](../using/terminal.md). |
 | `--shells-socket` | Where the shell holder listens (`saarthi shells serve`); the node starts one there when none answers. Default `$XDG_RUNTIME_DIR/saarthi/shells.sock`, else `~/.local/state/saarthi/shells.sock`. With the home-manager module the holder runs as a service of its own, `saarthi-shells`, so your shells outlive the node's restarts. |
-| `--changes-socket <path>` | Where the node serves its sessions' changes, the local service `changes` (see [What it changed](../using/sessions.md#what-it-changed)). Default `~/.local/state/saarthi/changes.sock`. |
-| `--hook-socket <path>` | Where sandboxed sessions send their hooks. Default `~/.local/state/saarthi/hook.sock`. |
+| `--state-dir <dir>` | Where the node keeps its own files and its lock (see below). Default `~/.local/state/saarthi`; the changes and hook sockets and the tailnet state default to it. |
+| `--changes-socket <path>` | Where the node serves its sessions' changes, the local service `changes` (see [What it changed](../using/sessions.md#what-it-changed)). Default `changes.sock` in the state directory. |
+| `--hook-socket <path>` | Where sandboxed sessions send their hooks. Default `hook.sock` in the state directory. |
 | `--ignore-cwd <glob>` | Do not track sessions whose working directory matches, for example throwaway test sessions. Repeatable. |
 | `--hold-secs` | How long a permission dialog of a plain `claude` session waits for the phone before falling through to the terminal. Default 120. |
 | `--wrapped-hold-secs` | The same for sessions under `saarthi run`, where a key press releases it at once. Default 540. |

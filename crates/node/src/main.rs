@@ -153,7 +153,7 @@ struct Serve {
     /// The node's machine name on the tailnet. Defaults to `saarthi-<name>`.
     #[arg(long, requires = "tailnet")]
     tailnet_hostname: Option<String>,
-    /// Where the identity keeps its state. Defaults to `~/.local/state/saarthi/tailnet`.
+    /// Where the identity keeps its state. Defaults to `tailnet` in the state directory.
     #[arg(long, requires = "tailnet")]
     tailnet_state: Option<PathBuf>,
     /// The name this node registers under; the hub keys nodes by token, not by name.
@@ -173,8 +173,13 @@ struct Serve {
     /// The unix socket `saarthi run` wrappers connect to.
     #[arg(long)]
     wrapper_socket: Option<PathBuf>,
+    /// Where the node keeps its own files, and the lock that keeps a second node off them
+    /// (ADR-0080): the changes and sandbox-hook sockets, photos sent to sessions and the
+    /// tailnet identity, unless given apart.
+    #[arg(long)]
+    state_dir: Option<PathBuf>,
     /// The unix socket the node serves its sessions' changes on, the local service `changes`
-    /// (ADR-0067). Defaults to `~/.local/state/saarthi/changes.sock`.
+    /// (ADR-0067). Defaults to `changes.sock` in the state directory.
     #[arg(long)]
     changes_socket: Option<PathBuf>,
     /// A glob over working directories whose sessions are not tracked at all: not listed,
@@ -230,7 +235,7 @@ struct Serve {
     #[arg(long)]
     shells_socket: Option<PathBuf>,
     /// The unix socket sandboxed sessions post their hooks to, since loopback TCP is closed
-    /// inside. Defaults to `~/.local/state/saarthi/hook.sock`; bound only when a profile is
+    /// inside. Defaults to `hook.sock` in the state directory; bound only when a profile is
     /// sandboxed. Keep it short: a socket path has at most 104 bytes on macOS.
     #[arg(long)]
     hook_socket: Option<PathBuf>,
@@ -352,7 +357,7 @@ async fn serve(args: Serve) -> Result<()> {
             .name
             .or_else(sysinfo::System::host_name)
             .unwrap_or_else(|| "node".to_string()),
-        state_dir: home.join(".local/state/saarthi"),
+        state_dir: args.state_dir.unwrap_or_else(|| home.join(".local/state/saarthi")),
         hook_addr: args.hook_addr,
         claude: args.claude,
         shell: spawner::login_shell(),
