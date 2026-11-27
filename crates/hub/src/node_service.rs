@@ -114,6 +114,9 @@ impl NodeService for Hub {
                 "the hub holds no Claude token named {name}"
             )));
         }
+        // Which accounts this node may run under (phase item 9).
+        let node_id = self.registered(&node).await?;
+        self.authz.check_node(&node_id, "GetClaudeToken", crate::authz::Res::Account(&name), serde_json::json!({}))?;
         let model = self
             .db
             .claude_token_model(&name)
@@ -224,6 +227,9 @@ impl NodeService for Hub {
             .map_err(internal)?
             .ok_or_else(|| Status::failed_precondition("the node has not registered"))?;
         let session_id = request.into_inner().session_id;
+        // Its own sessions' transcripts only (phase item 9).
+        self.know_session(&node_id, &session_id).await?;
+        self.authz.check_node(&node_id, "GetTranscript", crate::authz::Res::Session { node: &node_id, id: &session_id }, serde_json::json!({}))?;
         let (tx, rx) = mpsc::channel(4);
         let db = self.db.clone();
         tokio::spawn(async move {
@@ -266,6 +272,15 @@ impl NodeService for Hub {
 impl Hub {
     fn tokens_name(&self, auth: &str) -> Option<String> {
         self.node_tokens.name_for(auth).map(str::to_string)
+    }
+
+    /// The hub's id for the node its token names, once it has registered.
+    pub(crate) async fn registered(&self, node: &str) -> Result<String, Status> {
+        self.db
+            .node_id(node)
+            .await
+            .map_err(|e| Status::internal(format!("{e:#}")))?
+            .ok_or_else(|| Status::failed_precondition("the node has not registered"))
     }
 }
 

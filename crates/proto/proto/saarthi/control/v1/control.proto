@@ -71,6 +71,13 @@ service ControlService {
   // The shells a node's holder keeps, to attach to again (ADR-0078), and ending one.
   rpc ListShells(ListShellsRequest) returns (ListShellsResponse);
   rpc KillShell(KillShellRequest) returns (CommandResponse);
+  // The policies the hub decides by (ADR-0081, phase PHS-20261126-f3e51h item 8): the
+  // bootstrap set from its policies file (or its built-in defaults), read-only here, and
+  // the stored ones, added, replaced and removed by id. A change is checked against the
+  // schema with the rest first and refused when it does not fit; one taken applies at once.
+  rpc ListPolicies(ListPoliciesRequest) returns (ListPoliciesResponse);
+  rpc SetPolicy(SetPolicyRequest) returns (ListPoliciesResponse);
+  rpc DeletePolicy(DeletePolicyRequest) returns (ListPoliciesResponse);
 }
 
 message Node {
@@ -399,4 +406,28 @@ message ServiceRequestPart {
 message ServiceResponsePart {
   saarthi.node.v1.HttpStatus head = 1;              // the first message only
   bytes body = 2;
+}
+
+message Policy {
+  string id = 1;                // 1 to 64 letters, digits, `-` or `_`
+  string text = 2;              // one or more Cedar policies
+  int64 updated_ms = 3;
+  string updated_by = 4;        // the client that set it
+}
+
+message ListPoliciesRequest {}
+
+message ListPoliciesResponse {
+  string bootstrap = 1;         // the bootstrap policies' text
+  string bootstrap_source = 2;  // their file, or "built in"
+  repeated Policy stored = 3;   // by id
+}
+
+message SetPolicyRequest {
+  string id = 1;
+  string text = 2;
+}
+
+message DeletePolicyRequest {
+  string id = 1;
 }

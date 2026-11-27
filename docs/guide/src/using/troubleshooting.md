@@ -18,9 +18,17 @@ Where to look first: the daemon's log (the file named in the launchd plist on ma
 
 *not allowed: Kill on this session* (or another action and thing) is the hub's policies
 refusing it (see [Who may do what](../setup/hub.md#who-may-do-what)). The hub's log has
-a `refused` line with the client, the action and what it was on. With the hub's default
+a `refused` line with who asked (`Saarthi::Client::"phone"`, or a node), the action and what it was on. With the hub's default
 policies every client in its client-token file may do everything, so a refusal there means
 the client's token is in another file, or the hub runs policies of your own.
+
+## The hub will not start: "the stored policies"
+
+A policy stored from a client no longer fits the schema, usually after an upgrade changed
+it. The hub refuses to start rather than run without it, since a `forbid` left out would
+allow what it forbade. The error names the policy; remove it with the command it prints
+(`sqlite3 … "DELETE FROM policies WHERE id = '…'"`), start the hub, and store a corrected
+one.
 
 ## A second node will not start
 

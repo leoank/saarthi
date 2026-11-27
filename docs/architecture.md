@@ -171,8 +171,13 @@ One Rust binary, tonic for gRPC, sqlx on SQLite in WAL mode.
   actions, so groups such as `read` match), each node at its registration with its
   launch profiles, each session as it is published, before any watcher is asked about
   it. Lists, search, history and the watch filter row by row; narrowing by query first
-  waits for principals other than the owner. Node principals are item 9, policies from a
-  file and the database item 8. cedar-policy turns on serde_json's `preserve_order` for
+  waits for principals other than the owner. Policies come from the bootstrap file
+  (`--policies`, read again when it changes, else the built-in set) and the `policies`
+  table (`ListPolicies`, `SetPolicy`, `DeletePolicy`, an admin's `ManagePolicies`); every
+  change is validated with the rest and swapped in at once, and a stored policy that no
+  longer fits keeps the hub from starting (item 8). Nodes are principals too: a Claude
+  token by name (`GetClaudeToken`), the API relay (`UseClaudeApi`) and a transcript to
+  resume (`GetTranscript`, its own sessions only) are checked (item 9). cedar-policy turns on serde_json's `preserve_order` for
   the whole workspace, so JSON the node writes keeps its keys' written order.
 - **Identity and secrets (ADR-0082).** People, their device clients, apps and
   nodes are principals the hub recorded, never what they claim; `launched_by` is stamped

@@ -86,6 +86,17 @@ impl HubProc {
         Self::start_inner_with(db_path, addr, None, "", None, saarthi_hub::claude_api::UPSTREAM, policies)
     }
 
+    /// The same, holding Claude tokens and relaying to `upstream`, under `policies`.
+    pub fn start_relaying_with_policies(
+        db_path: &std::path::Path,
+        addr: &str,
+        claude_tokens: &str,
+        upstream: &str,
+        policies: &str,
+    ) -> (Self, String) {
+        Self::start_inner_with(db_path, addr, None, claude_tokens, None, upstream, policies)
+    }
+
     fn start_inner(
         db_path: &std::path::Path,
         addr: &str,
@@ -135,6 +146,7 @@ impl HubProc {
                 )
                 .unwrap();
                 authz.fill(&db).await.unwrap();
+                authz.load_stored(&db).await.unwrap();
                 let hub = Hub {
                     authz: Arc::new(authz),
                     notifier: Arc::new(saarthi_hub::notify::Notifier::new(ntfy, db.clone(), Vec::new()).quiet(Default::default(), Default::default())),

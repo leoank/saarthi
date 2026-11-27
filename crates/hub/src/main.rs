@@ -49,6 +49,11 @@ struct Cli {
     /// A file of `<client name> <token>` lines, for the phone and `saarthi ctl`.
     #[arg(long)]
     client_tokens: PathBuf,
+    /// The bootstrap Cedar policies (ADR-0081), in place of the built-in defaults: read at
+    /// start and again whenever the file changes. A version that does not fit the schema is
+    /// refused and the one in force stays.
+    #[arg(long)]
+    policies: Option<PathBuf>,
     /// A file of `<name> <token>` lines: `claude setup-token` tokens that spawned sessions
     /// may run under (ADR-0039). Read at start. No value leaves the hub: it adds the token
     /// to the Claude API requests nodes relay for those sessions (ADR-0051); clients and
@@ -111,6 +116,15 @@ async fn main() -> Result<()> {
         claude_tokens.names(),
     )?;
     authz.fill(&db).await?;
+    if let Some(path) = &cli.policies {
+        let text = std::fs::read_to_string(path).with_context(|| format!("reading {}", path.display()))?;
+        authz.set_bootstrap(&text, &path.display().to_string())?;
+    }
+    // A stored policy that no longer fits keeps the hub from starting rather than going
+    // unenforced: a forbid dropped would allow what it forbade.
+    authz.load_stored(&db).await.with_context(|| {
+        format!("the stored policies; remove the one named with sqlite3 {} \"DELETE FROM policies WHERE id = '...'\"", cli.db.display())
+    })?;
     let hub = Hub {
         notifier: Arc::new(Notifier::new(cli.ntfy.clone(), db.clone(), cli.no_notify.clone())),
         db,
@@ -121,6 +135,9 @@ async fn main() -> Result<()> {
         claude_api: Arc::new(saarthi_hub::claude_api::ClaudeApi::new(saarthi_hub::claude_api::UPSTREAM)),
         live: Live::new(),
     };
+    if let Some(path) = cli.policies.clone() {
+        tokio::spawn(saarthi_hub::authz::watch_file(hub.authz.clone(), path));
+    }
     let listener = tokio::net::TcpListener::bind(cli.listen)
         .await
         .with_context(|| format!("binding {}", cli.listen))?;

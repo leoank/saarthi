@@ -115,6 +115,10 @@ pub async fn relay(
             head.claude_token
         )));
     };
+    // Under the accounts this node may use (phase item 9).
+    let node_id = hub.registered(node).await?;
+    hub.authz
+        .check_node(&node_id, "UseClaudeApi", crate::authz::Res::Account(&head.claude_token), serde_json::json!({}))?;
     if !head.path.starts_with("/v1/") {
         tracing::warn!(%node, path = %head.path, "refused a Claude API request outside /v1/");
         return Err(Status::permission_denied("the hub relays only the Claude API's /v1/"));

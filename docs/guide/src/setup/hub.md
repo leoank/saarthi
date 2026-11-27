@@ -154,9 +154,42 @@ only what the asker may read.
 
 For now the hub knows one person, you, as its admin: every client in the client-token file
 is a device of yours, and every node and Claude account is yours, so every client may do
-everything, as before. Other people, apps held to a grant, and policies of your own are
-coming (phase items 8 to 11). A call the policies refuse fails with `PERMISSION_DENIED`,
-*not allowed: Kill on this session*, and the hub logs who was refused what.
+everything, as before. Other people and apps held to a grant are coming. A call the
+policies refuse fails with `PERMISSION_DENIED`, *not allowed: Kill on this session*, and
+the hub logs who was refused what.
+
+Nodes are asked too: a node gets a Claude token, and its sessions reach the Claude API,
+only under the accounts the policies give it (by default its owner's, which is every
+account), and it fetches the hub's copy of a transcript only for its own sessions.
+
+### Policies of your own
+
+The policies come from two places, and both apply at once, without a restart:
+
+- **The bootstrap file**, `--policies <file>` (`policiesFile` in the NixOS module), in place
+  of the built-in defaults. The hub reads it again when it changes; a version that does not
+  fit the schema is refused, logged, and the one in force stays. Start from the defaults
+  (`saarthi ctl policies --full` prints them) when you write one, or you may lock yourself
+  out.
+- **Stored policies**, added from a client by id and kept in the hub's database:
+
+```console
+$ cat keep.cedar
+// No one kills or deletes a session labelled keep=true.
+@id("keep")
+forbid (principal, action in [Saarthi::Action::"Kill", Saarthi::Action::"DeleteSession"], resource is Saarthi::Session)
+when { resource.hasTag("keep") && resource.getTag("keep") == "true" };
+$ saarthi ctl set-policy keep keep.cedar
+bootstrap  built in
+keep  set 2026-11-27 by phone
+$ saarthi ctl delete-policy keep
+```
+
+Every change is checked against the schema
+([`saarthi.cedarschema`](https://github.com/leoank/saarthi/blob/main/crates/hub/src/authz/saarthi.cedarschema))
+together with the rest before it is taken, so a policy naming an attribute that does not
+exist is refused with the reason. A `forbid` wins over every `permit`, the admin's too.
+Managing policies is itself the action `ManagePolicies`, an admin's.
 
 ## Checking it
 

@@ -90,6 +90,11 @@ pub fn account_context(account: &str) -> Value {
 pub struct Authz {
     schema: Schema,
     policies: RwLock<Arc<PolicySet>>,
+    /// Where the policies in force come from (phase item 8): the bootstrap text (a file, or
+    /// the defaults) and the stored ones by id.
+    sources: std::sync::Mutex<(String, Vec<(String, String)>)>,
+    /// Where the bootstrap policies were read from: a file, or "built in".
+    bootstrap_source: std::sync::Mutex<String>,
     entities: RwLock<Entities>,
     /// Each entity's JSON as last set, so an unchanged one is not upserted again.
     known: RwLock<HashMap<String, Value>>,
@@ -110,6 +115,8 @@ impl Authz {
         let actions = Entities::from_entities(std::iter::empty(), Some(&schema)).map_err(|e| anyhow!("the schema's actions: {e}"))?;
         let this = Self {
             policies: RwLock::new(Arc::new(validated(&schema, policies)?)),
+            sources: std::sync::Mutex::new((policies.to_string(), Vec::new())),
+            bootstrap_source: std::sync::Mutex::new("built in".into()),
             schema,
             entities: RwLock::new(actions),
             known: RwLock::new(HashMap::new()),
@@ -137,15 +144,24 @@ impl Authz {
     /// Whether `client` may do `action` on `res` in `context`; a refusal says which action
     /// on what kind of thing, and is logged.
     pub fn check(&self, client: &str, action: &str, res: Res, context: Value) -> Result<(), Status> {
-        match self.decide(client, action, res, context) {
+        self.check_as(uid("Client", client), action, res, context)
+    }
+
+    /// The same for a node, by its hub id, asking the hub for something (phase item 9).
+    pub fn check_node(&self, node: &str, action: &str, res: Res, context: Value) -> Result<(), Status> {
+        self.check_as(uid("Node", node), action, res, context)
+    }
+
+    fn check_as(&self, principal: EntityUid, action: &str, res: Res, context: Value) -> Result<(), Status> {
+        match self.decide(principal.clone(), action, res, context) {
             Ok(true) => Ok(()),
             Ok(false) => {
-                tracing::info!(%client, %action, resource = %res.uid(), "refused");
+                tracing::info!(%principal, %action, resource = %res.uid(), "refused");
                 Err(Status::permission_denied(format!("not allowed: {action} on this {}", res.kind())))
             }
             // A request the schema does not admit is refused the same way (ADR-0081).
             Err(e) => {
-                tracing::warn!(%client, %action, resource = %res.uid(), error = %format!("{e:#}"), "refused: the request does not fit the schema");
+                tracing::warn!(%principal, %action, resource = %res.uid(), error = %format!("{e:#}"), "refused: the request does not fit the schema");
                 Err(Status::permission_denied(format!("not allowed: {action} on this {}", res.kind())))
             }
         }
@@ -153,19 +169,64 @@ impl Authz {
 
     /// [`Self::check`] as a yes or no, for filtering a list: a refusal there is not logged.
     pub fn allows(&self, client: &str, action: &str, res: Res, context: Value) -> bool {
-        self.decide(client, action, res, context).unwrap_or(false)
+        self.decide(uid("Client", client), action, res, context).unwrap_or(false)
     }
 
-    fn decide(&self, client: &str, action: &str, res: Res, context: Value) -> Result<bool> {
+    fn decide(&self, principal: EntityUid, action: &str, res: Res, context: Value) -> Result<bool> {
         let action = EntityUid::from_type_name_and_id("Saarthi::Action".parse()?, action.parse()?);
         let context = Context::from_json_value(context, Some((&self.schema, &action)))
             .map_err(|e| anyhow!("context: {e}"))?;
-        let request = Request::new(uid("Client", client), action, res.uid(), context, Some(&self.schema))
+        let request = Request::new(principal, action, res.uid(), context, Some(&self.schema))
             .map_err(|e| anyhow!("request: {e}"))?;
         let policies = self.policies.read().unwrap().clone();
         let entities = self.entities.read().unwrap();
         let answer = self.authorizer.is_authorized(&request, &policies, &entities);
         Ok(answer.decision() == Decision::Allow)
+    }
+
+    /// Puts `bootstrap` in force with the stored policies, once the whole validates against
+    /// the schema; otherwise the set in force stays and the error says which part failed.
+    pub fn set_bootstrap(&self, bootstrap: &str, source: &str) -> Result<()> {
+        let mut sources = self.sources.lock().unwrap();
+        self.swap(bootstrap, &sources.1)?;
+        sources.0 = bootstrap.to_string();
+        *self.bootstrap_source.lock().unwrap() = source.to_string();
+        Ok(())
+    }
+
+    /// The same for the stored policies, by id.
+    pub fn set_stored(&self, stored: Vec<(String, String)>) -> Result<()> {
+        let mut sources = self.sources.lock().unwrap();
+        self.swap(&sources.0, &stored)?;
+        sources.1 = stored;
+        Ok(())
+    }
+
+    /// The policies stored in the hub's database, put in force at start.
+    pub async fn load_stored(&self, db: &crate::db::Db) -> Result<()> {
+        let stored = db.policies().await?.into_iter().map(|(id, text, ..)| (id, text)).collect();
+        self.set_stored(stored)
+    }
+
+    /// The bootstrap policies in force, and where they were read from.
+    pub fn bootstrap(&self) -> (String, String) {
+        (self.sources.lock().unwrap().0.clone(), self.bootstrap_source.lock().unwrap().clone())
+    }
+
+    fn swap(&self, bootstrap: &str, stored: &[(String, String)]) -> Result<()> {
+        // Each part alone first, so an error names the part.
+        PolicySet::from_str(bootstrap).map_err(|e| anyhow!("the bootstrap policies do not parse: {e}"))?;
+        for (id, text) in stored {
+            validated(&self.schema, text).map_err(|e| anyhow!("policy {id}: {e:#}"))?;
+        }
+        let mut text = bootstrap.to_string();
+        for (_, t) in stored {
+            text.push('\n');
+            text.push_str(t);
+        }
+        let set = validated(&self.schema, &text)?;
+        *self.policies.write().unwrap() = Arc::new(set);
+        Ok(())
     }
 
     /// A node of the owner's, with its launch profiles (name, sandboxed); the host's profile,
@@ -236,6 +297,25 @@ impl Authz {
             known.insert(key(&e), e);
         }
         Ok(())
+    }
+}
+
+/// Reads the bootstrap policies file again whenever it changes, until the hub stops: one
+/// that does not fit is logged and the set in force stays (phase item 8).
+pub async fn watch_file(authz: Arc<Authz>, path: std::path::PathBuf) {
+    let mut last = authz.bootstrap().0;
+    let mut tick = tokio::time::interval(std::time::Duration::from_secs(5));
+    loop {
+        tick.tick().await;
+        let Ok(text) = tokio::fs::read_to_string(&path).await else { continue };
+        if text == last {
+            continue;
+        }
+        match authz.set_bootstrap(&text, &path.display().to_string()) {
+            Ok(()) => tracing::info!(path = %path.display(), "bootstrap policies read again"),
+            Err(e) => tracing::error!(path = %path.display(), error = %format!("{e:#}"), "bootstrap policies refused; the ones in force stay"),
+        }
+        last = text;
     }
 }
 
@@ -391,6 +471,44 @@ mod tests {
         assert!(a.allows("mo-tv", "StreamSession", hers, json!({})));
         assert!(!a.allows("mo-tv", "Kill", owners, json!({})));
         assert!(!a.allows("mo-tv", "Terminal", Res::Node("n1"), json!({})));
+    }
+
+    #[test]
+    fn stored_policies_apply_at_once_and_one_that_does_not_fit_changes_nothing() {
+        let a = authz();
+        let node = Res::Node("n1");
+        assert!(a.allows("phone", "ListShells", node, json!({})));
+        let no_shells = r#"forbid (principal, action == Saarthi::Action::"ListShells", resource);"#;
+        a.set_stored(vec![("no-shells".into(), no_shells.into())]).unwrap();
+        assert!(!a.allows("phone", "ListShells", node, json!({})));
+        let bad = r#"forbid (principal, action, resource) when { resource.nope };"#;
+        let e = a.set_stored(vec![("no-shells".into(), no_shells.into()), ("bad".into(), bad.into())]).unwrap_err();
+        assert!(format!("{e:#}").starts_with("policy bad:"), "{e:#}");
+        // Still the set before.
+        assert!(!a.allows("phone", "ListShells", node, json!({})));
+        assert!(a.allows("phone", "Prompt", Res::Session { node: "n1", id: "s1" }, json!({})));
+        a.set_stored(Vec::new()).unwrap();
+        assert!(a.allows("phone", "ListShells", node, json!({})));
+        // A bootstrap set without the admin's permit allows only what it says.
+        a.set_bootstrap(r#"permit (principal, action == Saarthi::Action::"ViewNode", resource);"#, "test").unwrap();
+        assert!(a.allows("phone", "ViewNode", node, json!({})));
+        assert!(!a.allows("phone", "ListShells", node, json!({})));
+        assert_eq!(a.bootstrap().1, "test");
+    }
+
+    #[test]
+    fn a_node_runs_under_its_owners_accounts_and_reads_its_own_transcripts() {
+        let a = authz();
+        a.set_node("n2", &[]).unwrap();
+        a.set_session("n2", &Session { id: "s2".into(), ..Default::default() }).unwrap();
+        for action in ["GetClaudeToken", "UseClaudeApi"] {
+            a.check_node("n1", action, Res::Account("work"), json!({})).unwrap();
+        }
+        a.check_node("n1", "GetTranscript", Res::Session { node: "n1", id: "s1" }, json!({})).unwrap();
+        let e = a.check_node("n1", "GetTranscript", Res::Session { node: "n2", id: "s2" }, json!({})).unwrap_err();
+        assert_eq!(e.message(), "not allowed: GetTranscript on this session");
+        // A node is not a client: it may not prompt.
+        assert!(a.check_node("n1", "Prompt", Res::Session { node: "n1", id: "s1" }, json!({})).is_err());
     }
 
     #[test]

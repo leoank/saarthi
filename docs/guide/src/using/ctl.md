@@ -78,6 +78,17 @@ $ saarthi ctl resume laptop <session id> "and now the docs"
 `resume` continues a finished session in place, idle without a prompt; see
 [Resuming a session](sessions.md#resuming-a-session).
 
+## Policies
+
+```console
+$ saarthi ctl policies                    # the bootstrap set's source, then each stored policy
+$ saarthi ctl policies --full             # with their Cedar text
+$ saarthi ctl set-policy keep keep.cedar  # store a policy under an id (- for stdin)
+$ saarthi ctl delete-policy keep
+```
+
+See [Policies of your own](../setup/hub.md#policies-of-your-own).
+
 ## Claude accounts
 
 ```console

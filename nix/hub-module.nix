@@ -96,6 +96,17 @@ in
       description = "File of `<client name> <token>` lines, readable by the service user.";
     };
 
+    policiesFile = lib.mkOption {
+      type = lib.types.nullOr lib.types.path;
+      default = null;
+      example = "/etc/saarthi/policies.cedar";
+      description = ''
+        Cedar policies the hub decides by (ADR-0081), in place of its built-in defaults:
+        read at start and again whenever the file changes. Policies stored from a client
+        (`saarthi ctl set-policy`) apply on top of these.
+      '';
+    };
+
     claudeTokensFile = lib.mkOption {
       type = lib.types.nullOr lib.types.path;
       default = null;
@@ -214,6 +225,10 @@ in
             (toString cfg.nodeTokensFile)
             "--client-tokens"
             (toString cfg.clientTokensFile)
+          ]
+          ++ lib.optionals (cfg.policiesFile != null) [
+            "--policies"
+            (toString cfg.policiesFile)
           ]
           ++ lib.optionals (cfg.claudeTokensFile != null) [
             "--claude-tokens"

@@ -106,6 +106,17 @@ pub enum Ctl {
     /// Set the model a session under a Claude token starts on when none is picked
     /// (ADR-0079): an alias such as `opus` or a model id, or `clear` for Claude Code's own.
     TokenModel { name: String, model: String },
+    /// The policies the hub decides by (ADR-0081): where the bootstrap set comes from, and
+    /// each stored policy with when and by whom it was set. `--full` prints their text.
+    Policies {
+        #[arg(long)]
+        full: bool,
+    },
+    /// Store a policy under an id, from a file of Cedar text (`-` for stdin), replacing one
+    /// stored under that id; refused when the set it makes does not fit the schema.
+    SetPolicy { id: String, file: std::path::PathBuf },
+    /// Remove a stored policy.
+    DeletePolicy { id: String },
     /// Set the Claude token a node's spawned sessions run under when none is picked.
     DefaultToken {
         node: String,
@@ -589,6 +600,23 @@ pub async fn run(hub: &str, token: &str, cmd: Ctl) -> Result<()> {
                 println!("{}", token_line(&t, saarthi_node::outbox::now_ms()));
             }
         }
+        Ctl::Policies { full } => {
+            let r = c.inner.list_policies(c.request(ListPoliciesRequest {})).await?.into_inner();
+            print_policies(&r, full);
+        }
+        Ctl::SetPolicy { id, file } => {
+            let text = if file.as_os_str() == "-" {
+                std::io::read_to_string(std::io::stdin())?
+            } else {
+                std::fs::read_to_string(&file).with_context(|| format!("reading {}", file.display()))?
+            };
+            let r = c.inner.set_policy(c.request(SetPolicyRequest { id, text })).await?.into_inner();
+            print_policies(&r, false);
+        }
+        Ctl::DeletePolicy { id } => {
+            let r = c.inner.delete_policy(c.request(DeletePolicyRequest { id })).await?.into_inner();
+            print_policies(&r, false);
+        }
         Ctl::DefaultToken {
             node,
             name,
@@ -761,6 +789,21 @@ fn first_prompt(payload: &str) -> Option<String> {
     (!text.is_empty() && !text.starts_with('<')).then(|| text.lines().next().unwrap_or(text).to_string())
 }
 
+
+
+/// The policies in force: the bootstrap set's source, then each stored one.
+fn print_policies(r: &ListPoliciesResponse, full: bool) {
+    println!("bootstrap  {}", r.bootstrap_source);
+    if full {
+        println!("{}", r.bootstrap.trim_end());
+    }
+    for p in &r.stored {
+        println!("{}  set {} by {}", p.id, date(p.updated_ms), p.updated_by);
+        if full {
+            println!("{}", p.text.trim_end());
+        }
+    }
+}
 
 /// A `key=value` label.
 fn label(s: &str) -> Result<(String, String), String> {

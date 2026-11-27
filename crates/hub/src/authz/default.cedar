@@ -144,6 +144,10 @@ when {
   else principal.owner == resource.owner || resource.shared_with.contains(principal.owner)
 };
 
+@id("node-transcripts")
+permit (principal is Saarthi::Node, action == Saarthi::Action::"GetTranscript", resource is Saarthi::Session)
+when { resource.node == principal };
+
 @id("node-report")
 permit (principal is Saarthi::Node, action == Saarthi::Action::"ReportSession", resource is Saarthi::Session)
 when { resource.node == principal };

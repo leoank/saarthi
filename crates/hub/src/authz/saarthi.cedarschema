@@ -76,4 +76,7 @@ namespace Saarthi {
     appliesTo { principal: [Node], resource: [ClaudeAccount] };
   action ReportSession
     appliesTo { principal: [Node], resource: [Session] };
+  // The hub's copy of a session's transcript, to resume it (ADR-0066).
+  action GetTranscript
+    appliesTo { principal: [Node], resource: [Session] };
 }

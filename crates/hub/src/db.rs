@@ -523,6 +523,31 @@ impl Db {
         Ok(())
     }
 
+    /// The stored policies (phase item 8), by id: id, text, when and by whom last set.
+    pub async fn policies(&self) -> Result<Vec<(String, String, i64, String)>> {
+        let rows = sqlx::query("SELECT id, text, updated_ms, updated_by FROM policies ORDER BY id")
+            .fetch_all(&self.pool)
+            .await?;
+        Ok(rows.iter().map(|r| (r.get("id"), r.get("text"), r.get("updated_ms"), r.get("updated_by"))).collect())
+    }
+
+    pub async fn set_policy(&self, id: &str, text: &str, now_ms: i64, by: &str) -> Result<()> {
+        sqlx::query("INSERT OR REPLACE INTO policies (id, text, updated_ms, updated_by) VALUES (?1, ?2, ?3, ?4)")
+            .bind(id)
+            .bind(text)
+            .bind(now_ms)
+            .bind(by)
+            .execute(&self.pool)
+            .await?;
+        Ok(())
+    }
+
+    /// Whether there was one to delete.
+    pub async fn delete_policy(&self, id: &str) -> Result<bool> {
+        let done = sqlx::query("DELETE FROM policies WHERE id = ?1").bind(id).execute(&self.pool).await?;
+        Ok(done.rows_affected() > 0)
+    }
+
     /// Records the token the hub started or resumed a session under.
     pub async fn set_session_claude_token(
         &self,

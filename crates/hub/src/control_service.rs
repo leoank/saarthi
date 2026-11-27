@@ -36,15 +36,50 @@ impl Hub {
 }
 
 impl Hub {
-    /// Whether `client` may do `action` on a session (ADR-0081); a session the entity set
-    /// lacks yet joins it from its record first.
-    async fn may_session(&self, client: &str, action: &str, node: &str, id: &str, context: serde_json::Value) -> Result<(), Status> {
+    /// The session joins the entity set from its record, if it has not yet.
+    pub(crate) async fn know_session(&self, node: &str, id: &str) -> Result<(), Status> {
         if !self.authz.knows_session(node, id)
             && let Some(s) = self.db.session(node, id).await.map_err(internal)?
         {
             self.authz.set_session(node, &s).map_err(internal)?;
         }
+        Ok(())
+    }
+
+    /// Whether `client` may do `action` on a session (ADR-0081); a session the entity set
+    /// lacks yet joins it from its record first.
+    pub(crate) async fn may_session(&self, client: &str, action: &str, node: &str, id: &str, context: serde_json::Value) -> Result<(), Status> {
+        self.know_session(node, id).await?;
         self.authz.check(client, action, Res::Session { node, id }, context)
+    }
+
+    /// The policies in force, the bootstrap set and the stored ones (phase item 8).
+    async fn policy_list(&self) -> Result<Response<ListPoliciesResponse>, Status> {
+        let (bootstrap, bootstrap_source) = self.authz.bootstrap();
+        let stored = self
+            .db
+            .policies()
+            .await
+            .map_err(internal)?
+            .into_iter()
+            .map(|(id, text, updated_ms, updated_by)| Policy { id, text, updated_ms, updated_by })
+            .collect();
+        Ok(Response::new(ListPoliciesResponse { bootstrap, bootstrap_source, stored }))
+    }
+
+    /// Puts `stored` in force, then records the change in the database; a change that does
+    /// not fit the schema is refused, and one the database does not take is undone.
+    async fn change_policies(&self, stored: Vec<(String, String)>, write: impl std::future::Future<Output = anyhow::Result<()>>) -> Result<(), Status> {
+        let before: Vec<(String, String)> =
+            self.db.policies().await.map_err(internal)?.into_iter().map(|(id, text, ..)| (id, text)).collect();
+        self.authz
+            .set_stored(stored)
+            .map_err(|e| Status::invalid_argument(format!("{e:#}")))?;
+        if let Err(e) = write.await {
+            let _ = self.authz.set_stored(before);
+            return Err(internal(e));
+        }
+        Ok(())
     }
 
     /// Whether a list shows `client` the session `s`.
@@ -879,6 +914,44 @@ impl ControlService for Hub {
         crate::services::request(self, &client, request.into_inner())
             .await
             .map(Response::new)
+    }
+
+    async fn list_policies(&self, request: Request<ListPoliciesRequest>) -> Result<Response<ListPoliciesResponse>, Status> {
+        let client = self.client(&request)?;
+        self.authz.check(&client, "ManagePolicies", Res::Hub, json!({}))?;
+        self.policy_list().await
+    }
+
+    async fn set_policy(&self, request: Request<SetPolicyRequest>) -> Result<Response<ListPoliciesResponse>, Status> {
+        let client = self.client(&request)?;
+        self.authz.check(&client, "ManagePolicies", Res::Hub, json!({}))?;
+        let r = request.into_inner();
+        if !(1..=64).contains(&r.id.len()) || !r.id.chars().all(|c| c.is_ascii_alphanumeric() || c == '-' || c == '_') {
+            return Err(Status::invalid_argument("a policy id is 1 to 64 letters, digits, - or _"));
+        }
+        let mut stored: Vec<(String, String)> =
+            self.db.policies().await.map_err(internal)?.into_iter().map(|(id, text, ..)| (id, text)).filter(|(id, _)| *id != r.id).collect();
+        stored.push((r.id.clone(), r.text.clone()));
+        stored.sort();
+        self.change_policies(stored, self.db.set_policy(&r.id, &r.text, crate::node_service::now_ms(), &client)).await?;
+        tracing::info!(%client, policy = %r.id, "policy set");
+        self.policy_list().await
+    }
+
+    async fn delete_policy(&self, request: Request<DeletePolicyRequest>) -> Result<Response<ListPoliciesResponse>, Status> {
+        let client = self.client(&request)?;
+        self.authz.check(&client, "ManagePolicies", Res::Hub, json!({}))?;
+        let r = request.into_inner();
+        let all = self.db.policies().await.map_err(internal)?;
+        if !all.iter().any(|(id, ..)| *id == r.id) {
+            return Err(Status::not_found(format!("no stored policy {}", r.id)));
+        }
+        let stored = all.into_iter().map(|(id, text, ..)| (id, text)).filter(|(id, _)| *id != r.id).collect();
+        let db = self.db.clone();
+        let id = r.id.clone();
+        self.change_policies(stored, async move { db.delete_policy(&id).await.map(|_| ()) }).await?;
+        tracing::info!(%client, policy = %r.id, "policy removed");
+        self.policy_list().await
     }
 }
 
