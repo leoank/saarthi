@@ -160,6 +160,12 @@ facts come from hooks and the transcript, and the PTY is only a channel for inpu
 
 One Rust binary, tonic for gRPC, sqlx on SQLite in WAL mode.
 
+- **Authorization (proposed, ADR-0081).** Every control call, and what a node asks of the
+  hub, becomes a Cedar request (principal, action, resource, context) decided against a
+  live entity set and a policy set from a bootstrap file and the hub's database. Lists
+  narrow by the hub's own query first. The default policies keep today's behaviour: every
+  agenix client is a device of the owner, an admin ([[EXP-20261126-f3e5a9]]).
+
 - **Node service.** The daemon-facing API: register, stream events, receive commands,
   push health samples, and relay the Claude API requests of sessions under the hub's
   tokens (`ClaudeApi`, ADR-0051).
