@@ -165,6 +165,12 @@ One Rust binary, tonic for gRPC, sqlx on SQLite in WAL mode.
   live entity set and a policy set from a bootstrap file and the hub's database. Lists
   narrow by the hub's own query first. The default policies keep today's behaviour: every
   agenix client is a device of the owner, an admin ([[EXP-20261126-f3e5a9]]).
+- **Identity and secrets (proposed, ADR-0082).** People, their device clients, apps and
+  nodes are principals the hub recorded, never what they claim; `launched_by` is stamped
+  by the hub. Client, app and node tokens are shown once and kept as SHA-256 hashes; Claude
+  tokens added from the admin page are encrypted under a key from agenix. The agenix files
+  bootstrap the owner (an admin) and their devices, nodes and accounts. People sign in to
+  the admin page with passkeys, over HTTPS ([[EXP-20261127-1gz93p]]).
 
 - **Node service.** The daemon-facing API: register, stream events, receive commands,
   push health samples, and relay the Claude API requests of sessions under the hub's

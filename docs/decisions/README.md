@@ -96,6 +96,7 @@ spawns, with the owner's answers of 2026-11-07.
 | [ADR-0079](ADR-0079-a-default-model-per-claude-account.md) | A default model per Claude account | accepted |
 | [ADR-0080](ADR-0080-the-node-as-a-library.md) | The node as a library | proposed |
 | [ADR-0081](ADR-0081-authorization-with-cedar.md) | Authorization with Cedar | proposed |
+| [ADR-0082](ADR-0082-identity-and-secrets.md) | Identity and secrets | proposed |
 
 Each record:
 

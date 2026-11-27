@@ -38,7 +38,7 @@ done ones. The project page's *Progress* lists this phase on one line.
 ### Design and experiments
 - [x] 1. Cedar in the hub: [[EXP-20261126-f3e5a9]], a spike of the schema (principals, actions per control call, resources and their attributes), the policies for the owner, another person held to their own nodes and sessions, and an app held to its own sessions, checked case by case, and the cost of an authorization at the hub's sizes. Then an ADR: authorization with Cedar, superseding the all-or-nothing client token of ADR-0021. Done: the experiment concluded (draft) and ADR-0081 proposed.
 - [x] 2. Two nodes on one machine and in one process: [[EXP-20261126-f3e5v3]], what the daemon holds that is the machine's or the process's (the hooks in `~/.claude/settings.json`, the session registry it scans, its sockets and state directory, the Claude API proxy, tsnet's state, process environment and signals). Then an ADR: the node as a library. Done: the experiment concluded (draft), its two fixes in c3e3fb0 and 5282158, and ADR-0080 proposed.
-- [ ] 3. An ADR on identity and secrets: who a principal is (a person; a client or a node, each belonging to a person, with the hub's name for it, never one it claims), `launched_by` stamped by the hub, an app's own labels on a session, tokens the hub keeps beside the agenix files (client and node tokens stored as hashes, shown once; Claude tokens encrypted under a key from agenix), revocation of either kind, and the admin principal the agenix files bootstrap.
+- [x] 3. An ADR on identity and secrets: who a principal is (a person; a client or a node, each belonging to a person, with the hub's name for it, never one it claims), `launched_by` stamped by the hub, an app's own labels on a session, tokens the hub keeps beside the agenix files (client and node tokens stored as hashes, shown once; Claude tokens encrypted under a key from agenix), revocation of either kind, and the admin principal the agenix files bootstrap. Done: ADR-0082 proposed, with passkeys for the admin page (the owner's choice of 2026-11-27); [[EXP-20261127-1gz93p]] checks HTTPS for it before item 18.
 
 ### Who launched a session
 - [ ] 4. `launched_by` on every session: the client whose token made the `Spawn` or `Resume`, or the node for a session started there (by hand, under `saarthi run`, or by an embedded node's own app). Stored by the hub, carried in `Session`, kept through a resume.
@@ -63,7 +63,7 @@ done ones. The project page's *Progress* lists this phase on one line.
 - [ ] 17. An example app and an end-to-end test: an embedded node and a client in one process, spawning and collecting a session against a test hub.
 
 ### The hub admin UI
-- [ ] 18. A web page the hub serves (the owner's choice of 2026-11-26), on a listener of its own, signed in to as a person and allowed by the same policies; the phone app gets no admin screen for now.
+- [ ] 18. A web page the hub serves (the owner's choice of 2026-11-26), on a listener of its own, signed in to as a person and allowed by the same policies; the phone app gets no admin screen for now. Signed in to with a passkey over HTTPS (ADR-0082), once [[EXP-20261127-1gz93p]] has run.
 - [ ] 19. Monitoring: people, clients and nodes with their last call, address or tailnet peer, open streams, sessions launched, recent refusals; a client's or node's calls over time.
 - [ ] 20. People and secrets: onboard a person (and offboard one, revoking all they hold); add a client or node token (shown once, stored as a hash), revoke or rotate one, add or revoke a Claude token (stored encrypted); the agenix ones listed as bootstrap, revocable here, replaced only by editing the agenix file.
 - [ ] 21. Policies: view the bootstrap and stored policies, edit the stored ones with the schema's validation, and try a request against them before saving.
@@ -77,7 +77,8 @@ the hub.
 
 Open questions:
 - How does a person sign in to the admin page: a token the agenix file or another admin
-  gives them, or something more (a passkey)? For the ADR of item 3.
+  gives them, or something more (a passkey)? For the ADR of item 3. Answered on
+  2026-11-27: passkeys (ADR-0082).
 
 Settled with the owner on 2026-11-26: the hub serves the admin page; the Rust library
 comes first, other languages later; no gRPC-web, since most apps are daemons on machines;
