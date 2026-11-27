@@ -17,6 +17,22 @@ The home screen lists, from the top:
   it runs under `saarthi run`, and a rocket when it was started from the app. The chart
   icon next to a node opens its [health](health.md).
 
+### Filtering
+
+The bar under the title says what the list shows, *all sessions* until you narrow it. Tap
+it for the filter, where each choice shows how many sessions it keeps and applies at once:
+
+- **Launched by**: anyone; this phone; *by hand at a machine* (in a terminal, or under
+  `saarthi run`); any client or app; or one client or app by name. A session a client or
+  app started says so on its row, *by ctl*, in place of *spawn*.
+- **Labels**: the `key = value` labels an app sets on the sessions it starts. Type one, or
+  pick one the sessions carry.
+- **Machine** and **repository**, when there is more than one.
+
+The bar then lists what is set, `ghost001 · by you · job=1234`, with how many live
+sessions pass, and × clears it. The filter is remembered, and History uses it too,
+without the repository.
+
 Pull down or tap refresh to reload. The app keeps one stream open to the hub and
 reconnects on its own with backoff when it breaks. A phone's link often drops for a
 second or two, so the subtitle says *Reconnecting to …* only after about 4 seconds, or at
@@ -190,8 +206,8 @@ can then be resumed, from the hub's copy of its transcript if the machine lost i
 ## History
 
 The clock icon in the home screen's top bar opens **History**: every session the hub
-knows, live and ended, newest first and grouped by day. A chip per node narrows it to one
-machine. Each row shows the session's title or the first thing typed in it; under that,
+knows, live and ended, newest first and grouped by day, under the home screen's
+[filter](#filtering) (its machine, launcher and labels; search keeps to it too). Each row shows the session's title or the first thing typed in it; under that,
 how long ago it was last active, its node, its repository and branch and how many
 messages Claude wrote; and then when it started, how long it ran, and its tokens and
 estimated cost; a terminal icon or a

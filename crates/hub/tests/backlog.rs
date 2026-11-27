@@ -65,7 +65,7 @@ async fn a_large_backlog_is_resent_on_one_link() {
     let (hub, _) = HubProc::start(&db_path, &addr);
     let mut c = ControlServiceClient::connect(format!("http://{addr}")).await.unwrap();
     // Watch first, then wait for the node: any disconnect after it joined shows here.
-    let mut watch = c.watch(req(WatchRequest {})).await.unwrap().into_inner();
+    let mut watch = c.watch(req(WatchRequest::default())).await.unwrap().into_inner();
     let node_id = loop {
         let nodes = c.list_nodes(req(ListNodesRequest {})).await.unwrap().into_inner().nodes;
         if let Some(n) = nodes.into_iter().find(|n| n.connected) {

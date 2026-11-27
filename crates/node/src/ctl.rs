@@ -20,6 +20,10 @@ pub enum Ctl {
     Sessions {
         #[arg(long)]
         all: bool,
+        /// Only sessions this launched (`client:phone`), or, ending in `:`, every launcher of
+        /// a kind (`node:` for those started at a machine).
+        #[arg(long, default_value = "")]
+        by: String,
         /// Only sessions with this label, `key=value`; repeatable, every one must match.
         #[arg(long = "label", value_parser = label)]
         labels: Vec<(String, String)>,
@@ -118,6 +122,13 @@ pub enum Ctl {
         node: Option<String>,
         #[arg(long, default_value_t = 20)]
         limit: u32,
+        /// Only sessions this launched (`client:phone`), or, ending in `:`, every launcher of
+        /// a kind (`node:` for those started at a machine).
+        #[arg(long, default_value = "")]
+        by: String,
+        /// Only sessions with this label, `key=value`; repeatable.
+        #[arg(long = "label", value_parser = label)]
+        labels: Vec<(String, String)>,
     },
     /// Switch a node's keep-awake hold on or off.
     KeepAwake {
@@ -395,21 +406,23 @@ pub async fn run(hub: &str, token: &str, cmd: Ctl) -> Result<()> {
                 );
             }
         }
-        Ctl::Sessions { all, labels } => {
+        Ctl::Sessions { all, by, labels } => {
             let req = ListSessionsRequest {
                 node_id: String::new(),
                 include_ended: all,
                 labels: labels.into_iter().collect(),
+                launched_by: by,
             };
             let r = c.inner.list_sessions(c.request(req)).await?;
             for s in r.into_inner().sessions {
                 let ended = if s.ended_ms.is_some() { "  ended" } else { "" };
                 println!(
-                    "{}  {}  pid {}  {}  {}{ended}",
+                    "{}  {}  pid {}  {}  {}  {}{ended}",
                     s.node_id,
                     s.id,
                     s.pid,
                     s.status().as_str_name(),
+                    s.launched_by,
                     s.cwd
                 );
             }
@@ -435,7 +448,7 @@ pub async fn run(hub: &str, token: &str, cmd: Ctl) -> Result<()> {
         Ctl::Watch => {
             let mut s = c
                 .inner
-                .watch(c.request(WatchRequest {}))
+                .watch(c.request(WatchRequest::default()))
                 .await?
                 .into_inner();
             while let Some(u) = s.message().await? {
@@ -588,7 +601,7 @@ pub async fn run(hub: &str, token: &str, cmd: Ctl) -> Result<()> {
             };
             c.inner.set_default_claude_token(c.request(req)).await?;
         }
-        Ctl::History { node, limit } => {
+        Ctl::History { node, limit, by, labels } => {
             let node_id = match node {
                 Some(n) => c.node_id(&n).await?,
                 None => String::new(),
@@ -597,6 +610,8 @@ pub async fn run(hub: &str, token: &str, cmd: Ctl) -> Result<()> {
                 node_id,
                 before_ms: 0,
                 limit,
+                launched_by: by,
+                labels: labels.into_iter().collect(),
             };
             for h in c.inner.history(c.request(req)).await?.into_inner().sessions {
                 let s = h.session.unwrap_or_default();

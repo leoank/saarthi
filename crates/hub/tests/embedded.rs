@@ -14,6 +14,7 @@ use common::{HubProc, fake_claude_api, through_socket};
 use saarthi_node::node::{Hub, Node, Options};
 use saarthi_proto::control::v1::control_service_client::ControlServiceClient;
 use saarthi_proto::control::v1::*;
+use tokio_stream::StreamExt;
 use tonic::transport::Channel;
 
 /// Records where it runs and under what, then answers each `user` line with a `result`;
@@ -57,7 +58,7 @@ async fn node_ids(c: &mut ControlServiceClient<Channel>) -> (String, String) {
 
 /// The nodes that list session `id`, and whether it has ended on each.
 async fn listed(c: &mut ControlServiceClient<Channel>, id: &str) -> Vec<(String, bool)> {
-    c.list_sessions(req(ListSessionsRequest { node_id: String::new(), include_ended: true, labels: Default::default() }))
+    c.list_sessions(req(ListSessionsRequest { node_id: String::new(), include_ended: true, ..Default::default() }))
         .await
         .unwrap()
         .into_inner()
@@ -114,6 +115,11 @@ async fn two_embedded_nodes_in_one_process_keep_to_their_own_sessions() {
     assert!(r.error.contains("only under the hub's Claude tokens"), "{}", r.error);
     assert!(!log.exists(), "nothing started");
 
+    // Watches that keep the app's sessions, and ones started at a machine (phase item 6).
+    let watch = |launched_by: &str| WatchRequest { launched_by: launched_by.into(), ..Default::default() };
+    let mut mine = c.watch(req(watch("client:test-client"))).await.unwrap().into_inner();
+    let mut by_hand = c.watch(req(watch("node:"))).await.unwrap().into_inner();
+
     let r = c.spawn(req(spawn(Some("work")))).await.unwrap().into_inner();
     assert!(r.ok, "{}", r.error);
     let id = r.session_id;
@@ -136,12 +142,32 @@ async fn two_embedded_nodes_in_one_process_keep_to_their_own_sessions() {
         node_id: String::new(),
         include_ended: true,
         labels: [("job".to_string(), job.to_string())].into(),
+        launched_by: String::new(),
     };
     let found = c.list_sessions(req(by_label("1234"))).await.unwrap().into_inner().sessions;
     assert_eq!(found.iter().map(|s| s.id.as_str()).collect::<Vec<_>>(), [id.as_str()]);
     assert_eq!(found[0].labels["job"], "1234");
     assert_eq!(found[0].launched_by, "client:test-client");
     assert!(c.list_sessions(req(by_label("9"))).await.unwrap().into_inner().sessions.is_empty());
+    // And by launcher: this client, every client, not those started at a machine.
+    let by = |l: &str| ListSessionsRequest { include_ended: true, launched_by: l.into(), ..Default::default() };
+    for (l, n) in [("client:test-client", 1), ("client:", 1), ("node:", 0), ("client:other", 0)] {
+        assert_eq!(c.list_sessions(req(by(l))).await.unwrap().into_inner().sessions.len(), n, "{l}");
+    }
+    // The hub tells a client its own name as a launcher.
+    assert_eq!(c.list_nodes(req(ListNodesRequest {})).await.unwrap().into_inner().you, "client:test-client");
+    // The watch on this client's sessions saw it; the one on machines' saw no session.
+    let session_in = async |w: &mut tonic::Streaming<Update>, wait: Duration| {
+        let deadline = tokio::time::Instant::now() + wait;
+        while let Ok(Some(Ok(u))) = tokio::time::timeout_at(deadline, w.next()).await {
+            if let Some(update::Body::Session(s)) = u.body {
+                return Some(s.id);
+            }
+        }
+        None
+    };
+    assert_eq!(session_in(&mut mine, Duration::from_secs(5)).await.as_deref(), Some(id.as_str()));
+    assert_eq!(session_in(&mut by_hand, Duration::from_millis(500)).await, None);
     let bad = SpawnRequest { labels: [("no spaces".to_string(), String::new())].into(), ..spawn(Some("work")) };
     let e = c.spawn(req(bad)).await.unwrap_err();
     assert_eq!(e.code(), tonic::Code::InvalidArgument, "{e}");

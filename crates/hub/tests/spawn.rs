@@ -65,7 +65,7 @@ async fn session(c: &mut ControlServiceClient<Channel>, id: &str, ended: bool) -
             .list_sessions(req(ListSessionsRequest {
                 node_id: String::new(),
                 include_ended: true,
-                labels: Default::default(),
+                ..Default::default()
             }))
             .await
             .unwrap()
@@ -312,6 +312,7 @@ async fn history_lists_a_session_with_its_first_prompt_and_usage_and_it_resumes_
                 node_id: String::new(),
                 before_ms: 0,
                 limit: 10,
+                ..Default::default()
             }))
             .await
             .unwrap()
@@ -411,7 +412,7 @@ async fn a_session_resumes_on_a_node_that_lost_its_transcript_from_the_hubs_copy
     // The hub has the reply once its usage is in the history.
     for _ in 0..250 {
         let h = c
-            .history(req(HistoryRequest { node_id: String::new(), before_ms: 0, limit: 10 }))
+            .history(req(HistoryRequest { node_id: String::new(), before_ms: 0, limit: 10, ..Default::default() }))
             .await
             .unwrap()
             .into_inner()

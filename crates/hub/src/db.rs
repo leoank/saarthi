@@ -671,23 +671,17 @@ impl Db {
         Ok(())
     }
 
-    /// Sessions of one node, or of every node when `node_id` is empty, with every one of
-    /// `labels`.
-    pub async fn sessions(
-        &self,
-        node_id: &str,
-        include_ended: bool,
-        labels: &std::collections::HashMap<String, String>,
-    ) -> Result<Vec<Session>> {
-        let rows = sqlx::query(
-            "SELECT * FROM sessions s WHERE (?1 = '' OR node_id = ?1) AND (?2 OR ended_ms IS NULL)
-               AND NOT EXISTS (SELECT 1 FROM json_each(?3) w
-                               WHERE json_extract(s.labels, '$.\"' || w.key || '\"') IS NOT w.value)
-             ORDER BY started_ms",
-        )
+    /// Sessions of one node, or of every node when `node_id` is empty, that `filter` keeps.
+    pub async fn sessions(&self, node_id: &str, include_ended: bool, filter: &Filter) -> Result<Vec<Session>> {
+        let rows = sqlx::query(concat!(
+            "SELECT * FROM sessions s WHERE (?1 = '' OR node_id = ?1) AND (?2 OR ended_ms IS NULL) AND ",
+            filter_sql!("3", "4"),
+            " ORDER BY started_ms",
+        ))
         .bind(node_id)
         .bind(include_ended)
-        .bind(serde_json::to_string(labels)?)
+        .bind(&filter.launched_by)
+        .bind(serde_json::to_string(&filter.labels)?)
         .fetch_all(&self.pool)
         .await?;
         Ok(rows.iter().map(session_from).collect())
@@ -696,17 +690,20 @@ impl Db {
     /// Sessions started before `before_ms`, newest first, at most `limit`: only those with a
     /// transcript line, since one without (a tool's throwaway run that kept none) has no
     /// conversation to show or resume.
-    pub async fn history(&self, node_id: &str, before_ms: i64, limit: i64) -> Result<Vec<Session>> {
-        let rows = sqlx::query(
+    pub async fn history(&self, node_id: &str, before_ms: i64, limit: i64, filter: &Filter) -> Result<Vec<Session>> {
+        let rows = sqlx::query(concat!(
             "SELECT * FROM sessions s WHERE (?1 = '' OR node_id = ?1) AND started_ms < ?2
                AND EXISTS (SELECT 1 FROM events e WHERE e.node_id = s.node_id
-                           AND e.session_id = s.id AND e.source = ?4)
-             ORDER BY started_ms DESC LIMIT ?3",
-        )
+                           AND e.session_id = s.id AND e.source = ?4) AND ",
+            filter_sql!("5", "6"),
+            " ORDER BY started_ms DESC LIMIT ?3",
+        ))
         .bind(node_id)
         .bind(before_ms)
         .bind(limit)
         .bind(EventSource::Transcript.as_str_name())
+        .bind(&filter.launched_by)
+        .bind(serde_json::to_string(&filter.labels)?)
         .fetch_all(&self.pool)
         .await?;
         Ok(rows.iter().map(session_from).collect())
@@ -941,6 +938,40 @@ fn event_from(r: &sqlx::sqlite::SqliteRow) -> Event {
     }
 }
 
+/// [`Filter`] as SQL, its launcher bound to `?$by` and its labels, as a JSON object, to
+/// `?$labels`. A launcher ending in `:` matches by prefix, compared with `substr` so a name
+/// holding `%` or `_` stays literal.
+macro_rules! filter_sql {
+    ($by:literal, $labels:literal) => {
+        concat!(
+            "(?", $by, " = '' OR s.launched_by = ?", $by,
+            " OR (substr(?", $by, ", -1) = ':' AND substr(s.launched_by, 1, length(?", $by, ")) = ?", $by, "))",
+            " AND NOT EXISTS (SELECT 1 FROM json_each(?", $labels, ") w",
+            " WHERE json_extract(s.labels, '$.\"' || w.key || '\"') IS NOT w.value)"
+        )
+    };
+}
+use filter_sql;
+
+/// Which sessions a list, the history, a search or a watch keeps (phase PHS-20261126-f3e51h
+/// item 6): those `launched_by` names, exactly or, ending in `:`, every launcher of that kind;
+/// and those with every one of `labels`. The default keeps all.
+#[derive(Debug, Default, Clone)]
+pub struct Filter {
+    pub launched_by: String,
+    pub labels: std::collections::HashMap<String, String>,
+}
+
+impl Filter {
+    pub fn matches(&self, s: &Session) -> bool {
+        let by = &self.launched_by;
+        let launcher = by.is_empty()
+            || if by.ends_with(':') { s.launched_by.starts_with(by.as_str()) } else { s.launched_by == *by };
+        launcher && self.labels.iter().all(|(k, v)| s.labels.get(k) == Some(v))
+    }
+}
+
+
 pub(crate) fn session_from(r: &sqlx::sqlite::SqliteRow) -> Session {
     Session {
         id: r.get("id"),
@@ -1097,7 +1128,8 @@ mod tests {
         db.store_session(&node, &s("c")).await.unwrap();
         let ids = |l: HashMap<String, String>| {
             let db = db.clone();
-            async move { db.sessions("", true, &l).await.unwrap().into_iter().map(|s| s.id).collect::<Vec<_>>() }
+            let f = Filter { labels: l, ..Default::default() };
+            async move { db.sessions("", true, &f).await.unwrap().into_iter().map(|s| s.id).collect::<Vec<_>>() }
         };
         assert_eq!(db.session(&node, "a").await.unwrap().unwrap().labels, map(&[("job", "1234"), ("app/run.id", "7")]));
         assert_eq!(db.session(&node, "c").await.unwrap().unwrap().labels, map(&[]));
@@ -1169,7 +1201,7 @@ mod tests {
             db.store_event(&node, &e).await.unwrap();
         }
         let ids: Vec<String> = db
-            .history("", i64::MAX, 50)
+            .history("", i64::MAX, 50, &Filter::default())
             .await
             .unwrap()
             .into_iter()

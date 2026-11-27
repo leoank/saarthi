@@ -127,7 +127,7 @@ impl ControlService for Hub {
         &self,
         request: Request<ListNodesRequest>,
     ) -> Result<Response<ListNodesResponse>, Status> {
-        self.client(&request)?;
+        let client = self.client(&request)?;
         let tailnet = request
             .extensions()
             .get::<saarthi_tailnet::Remote>()
@@ -137,7 +137,7 @@ impl ControlService for Hub {
         for row in self.db.nodes().await.map_err(internal)? {
             nodes.push(self.node_view(row).await);
         }
-        Ok(Response::new(ListNodesResponse { nodes, tailnet }))
+        Ok(Response::new(ListNodesResponse { nodes, tailnet, you: format!("client:{client}") }))
     }
 
     async fn list_sessions(
@@ -146,10 +146,10 @@ impl ControlService for Hub {
     ) -> Result<Response<ListSessionsResponse>, Status> {
         self.client(&request)?;
         let r = request.into_inner();
-        check_labels(&r.labels)?;
+        let filter = filter(r.launched_by, r.labels)?;
         let mut sessions = self
             .db
-            .sessions(&r.node_id, r.include_ended, &r.labels)
+            .sessions(&r.node_id, r.include_ended, &filter)
             .await
             .map_err(internal)?;
         for s in &mut sessions {
@@ -184,10 +184,14 @@ impl ControlService for Hub {
         request: Request<WatchRequest>,
     ) -> Result<Response<Self::WatchStream>, Status> {
         let client = self.client(&request)?;
+        let r = request.into_inner();
+        let filter = filter(r.launched_by, r.labels)?;
         let mut updates = self.live.subscribe();
         let stream = async_stream(move |tx| async move {
             loop {
                 match updates.recv().await {
+                    // Sessions the filter leaves out are not sent; nodes and requests are.
+                    Ok(Update { body: Some(update::Body::Session(s)) }) if !filter.matches(&s) => {}
                     Ok(u) => {
                         if tx.send(Ok(u)).await.is_err() {
                             return;
@@ -624,7 +628,7 @@ impl ControlService for Hub {
         let limit = if r.limit > 0 { r.limit.min(100) } else { 30 } as usize;
         let hits = self
             .db
-            .search(&r.query, &r.node_id, limit, crate::node_service::now_ms())
+            .search(&r.query, &r.node_id, limit, crate::node_service::now_ms(), &filter(r.launched_by, r.labels)?)
             .await
             .map_err(internal)?;
         Ok(Response::new(SearchResponse {
@@ -651,7 +655,8 @@ impl ControlService for Hub {
         let limit = if r.limit > 0 { r.limit.min(200) } else { 50 };
         let db = &self.db;
         let mut sessions = Vec::new();
-        for session in db.history(&r.node_id, before, limit.into()).await.map_err(internal)? {
+        let filter = filter(r.launched_by, r.labels)?;
+        for session in db.history(&r.node_id, before, limit.into(), &filter).await.map_err(internal)? {
             let opening = db
                 .opening(&session.node_id, &session.id, OPENING, OPENING_BYTES)
                 .await
@@ -853,4 +858,11 @@ fn check_labels(labels: &std::collections::HashMap<String, String>) -> Result<()
         }
     }
     Ok(())
+}
+
+/// The sessions a list, history, search or watch keeps, from its request's fields; labels
+/// are checked as a spawn's are, since their keys go into a JSON path.
+fn filter(launched_by: String, labels: std::collections::HashMap<String, String>) -> Result<crate::db::Filter, Status> {
+    check_labels(&labels)?;
+    Ok(crate::db::Filter { launched_by, labels })
 }

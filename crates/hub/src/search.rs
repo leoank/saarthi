@@ -188,8 +188,9 @@ impl Db {
         Ok(())
     }
 
-    /// The sessions matching `query`, on one node or (empty) every node, best first.
-    pub async fn search(&self, query: &str, node_id: &str, limit: usize, now_ms: i64) -> Result<Vec<Hit>> {
+    /// The sessions matching `query`, on one node or (empty) every node, that `filter`
+    /// keeps, best first.
+    pub async fn search(&self, query: &str, node_id: &str, limit: usize, now_ms: i64, filter: &crate::db::Filter) -> Result<Vec<Hit>> {
         let Some(q) = fts_query(query) else {
             return Ok(Vec::new());
         };
@@ -254,6 +255,9 @@ impl Db {
                     None => continue,
                 },
             };
+            if !filter.matches(&session) {
+                continue;
+            }
             let last = session.ended_ms.unwrap_or(now_ms);
             ranked.push((rank * freshness(last, now_ms), Hit { session, snippet, seq }));
         }
@@ -346,14 +350,19 @@ mod tests {
         }
         while db.index_search().await.unwrap() as i64 >= BATCH {}
 
-        let hits = db.search("parse", &node, 10, now).await.unwrap();
+        let all = crate::db::Filter::default();
+        let hits = db.search("parse", &node, 10, now, &all).await.unwrap();
         let ids: Vec<&str> = hits.iter().map(|h| h.session.id.as_str()).collect();
         // The title counts five times; of the same words, the newer session first.
         assert_eq!(ids, ["titled", "new", "old"]);
         assert_eq!(hits[0].seq, 0);
         assert!(hits[1].snippet.contains("parser"), "{}", hits[1].snippet);
-        assert_eq!(db.search("parser tabs", "", 10, now).await.unwrap().len(), 2);
-        assert!(db.search("nothing like it", "", 10, now).await.unwrap().is_empty());
+        assert_eq!(db.search("parser tabs", "", 10, now, &all).await.unwrap().len(), 2);
+        assert!(db.search("nothing like it", "", 10, now, &all).await.unwrap().is_empty());
+        // Only what the filter keeps: these were all started at their machine.
+        let by = |l: &str| crate::db::Filter { launched_by: l.into(), ..Default::default() };
+        assert_eq!(db.search("parser tabs", "", 10, now, &by("node:")).await.unwrap().len(), 2);
+        assert!(db.search("parser tabs", "", 10, now, &by("client:")).await.unwrap().is_empty());
         // A resumed copy's lines from "new" are credited to "new", its own to itself.
         let copy = Session { id: "copy".into(), cwd: "/w/copy".into(), started_ms: 1, ended_ms: Some(399 * 86_400_000), ..Default::default() };
         db.store_session(&node, &copy).await.unwrap();
@@ -365,11 +374,11 @@ mod tests {
             db.store_event(&node, &e).await.unwrap();
         }
         while db.index_search().await.unwrap() as i64 >= BATCH {}
-        let ids: Vec<String> = db.search("parser tabs", "", 10, now).await.unwrap().into_iter().map(|h| h.session.id).collect();
+        let ids: Vec<String> = db.search("parser tabs", "", 10, now, &all).await.unwrap().into_iter().map(|h| h.session.id).collect();
         assert!(!ids.contains(&"copy".to_string()), "{ids:?}");
-        assert_eq!(db.search("spaces", "", 10, now).await.unwrap()[0].session.id, "copy");
+        assert_eq!(db.search("spaces", "", 10, now, &all).await.unwrap()[0].session.id, "copy");
         // A title that changes is found by its new words.
         db.set_session_meta(&node, "old", "Tab handling", "ai", "main", "").await.unwrap();
-        assert_eq!(db.search("handling", "", 10, now).await.unwrap()[0].session.id, "old");
+        assert_eq!(db.search("handling", "", 10, now, &all).await.unwrap()[0].session.id, "old");
     }
 }

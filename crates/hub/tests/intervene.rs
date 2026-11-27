@@ -72,7 +72,7 @@ async fn a_client_allows_and_answers_what_the_node_holds() {
     let (hub, addr) = HubProc::start(&dir.path().join("hub.db"), "127.0.0.1:0");
     let node = start_node(&addr, "t-node", dir.path(), LONG_HOLD).await;
     let mut c = client(&addr).await;
-    let mut watch = c.watch(req(WatchRequest {})).await.unwrap().into_inner();
+    let mut watch = c.watch(req(WatchRequest::default())).await.unwrap().into_inner();
 
     // A permission request: held until the client allows it.
     let hook = tokio::spawn(post_hook(node.hooks, permission("s1")));

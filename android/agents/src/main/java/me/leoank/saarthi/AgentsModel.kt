@@ -169,21 +169,36 @@ class AgentsModel(val conn: Connection) {
         prefs.edit().putBoolean("wrap", wrap).apply()
     }
 
-    /** What Home lists: every machine (empty), one machine (`node:<id>`) or one repository
-     *  (`repo:<name>`), remembered across launches (phase PHS-20261117-f22kxe item 4). */
-    var scope by mutableStateOf(prefs.getString("scope", "")!!)
+    /** What Home and History show, remembered across launches (phase PHS-20261126-f3e51h
+     *  item 6; Home's old machine-or-repository scope carries over). */
+    var filter by mutableStateOf(
+        prefs.getString("filter", null)?.let(SessionsFilter::fromJson)
+            ?: SessionsFilter.fromScope(prefs.getString("scope", "")!!),
+    )
         private set
 
-    fun changeScope(to: String) {
-        scope = to
-        prefs.edit().putString("scope", to).apply()
+    fun changeFilter(to: SessionsFilter) {
+        filter = to
+        prefs.edit().putString("filter", to.toJson()).apply()
     }
 
-    fun inScope(nodeId: String, s: SessionInfo?): Boolean = when {
-        scope.startsWith("node:") -> nodeId == scope.removePrefix("node:")
-        scope.startsWith("repo:") -> s?.repo() == scope.removePrefix("repo:")
-        else -> true
+    /** The filter's launcher as the hub names it: `you` is this phone's own name. */
+    fun launchedBy(): String = if (filter.launcher == SessionsFilter.YOU) conn.you else filter.launcher
+
+    /** Whether Home shows a session (null: a request whose session this phone does not
+     *  know, kept unless the filter needs the session to say). */
+    fun inScope(nodeId: String, s: SessionInfo?): Boolean {
+        val f = filter
+        if (f.nodeId.isNotEmpty() && nodeId != f.nodeId) return false
+        if (s == null) return f.repo.isEmpty() && f.launcher.isEmpty() && f.labels.isEmpty()
+        return f.matches(s, conn.you)
     }
+
+    /** The hub's side of the filter, for the history and search; null while it names this
+     *  phone and the hub has not said its name, when nothing can pass. */
+    private fun hubFilter(): uniffi.saarthi_core.SessionFilter? =
+        launchedBy().takeIf { it.isNotEmpty() || filter.launcher.isEmpty() }
+            ?.let { uniffi.saarthi_core.SessionFilter(it, filter.labels) }
 
     /** Finished turns open with every step shown, instead of folded under their header. */
     var openTurns by mutableStateOf(prefs.getBoolean("open_turns", false))
@@ -296,7 +311,7 @@ class AgentsModel(val conn: Connection) {
             val h = conn.connection ?: return@launch
             searching = true
             try {
-                val hits = h.search(query, nodeId)
+                val hits = hubFilter()?.let { h.search(query, nodeId, it) }.orEmpty()
                 searchHits.clear()
                 searchHits.addAll(hits)
                 searched = query
@@ -436,7 +451,7 @@ class AgentsModel(val conn: Connection) {
         historyLoading = true
         try {
             val before = if (more) history.lastOrNull()?.session?.startedMs ?: 0L else 0L
-            val page = it.history(nodeId, before, HISTORY_PAGE.toUInt())
+            val page = hubFilter()?.let { f -> it.history(nodeId, before, HISTORY_PAGE.toUInt(), f) }.orEmpty()
             if (!more) history.clear()
             history.addAll(page)
             historyMore = page.size == HISTORY_PAGE

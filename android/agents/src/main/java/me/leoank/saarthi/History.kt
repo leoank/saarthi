@@ -21,7 +21,6 @@ import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.size
 import androidx.compose.foundation.lazy.LazyColumn
-import androidx.compose.foundation.lazy.LazyRow
 import androidx.compose.foundation.lazy.items
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.automirrored.filled.ArrowBack
@@ -31,7 +30,6 @@ import androidx.compose.material3.Card
 import androidx.compose.material3.CardDefaults
 import androidx.compose.material3.CircularProgressIndicator
 import androidx.compose.material3.ExperimentalMaterial3Api
-import androidx.compose.material3.FilterChip
 import androidx.compose.material3.Icon
 import androidx.compose.material3.IconButton
 import androidx.compose.material3.LinearProgressIndicator
@@ -61,12 +59,15 @@ import uniffi.saarthi_core.SessionInfo
 
 private val dayFormat: DateTimeFormatter = DateTimeFormatter.ofPattern("EEEE d MMMM")
 
-/** Past and live sessions from every node, newest first and grouped by day, with node
- *  filter chips (ADR-0036). A row opens the session; an ended one can be resumed there. */
+/** Past and live sessions from every node, newest first and grouped by day, under the
+ *  filter Home shares (phase PHS-20261126-f3e51h item 6; its repository is Home's alone). A
+ *  row opens the session; an ended one can be resumed there (ADR-0036). */
 @OptIn(ExperimentalMaterial3Api::class)
 @Composable
 fun HistoryScreen(model: AgentsModel, snackbar: SnackbarHostState, back: () -> Unit, openSession: (SessionInfo, String?) -> Unit) {
-    var nodeId by rememberSaveable { mutableStateOf("") }
+    val nodeId = model.filter.nodeId
+    // The hub filters by launcher and labels; `you` comes with the first node list.
+    val hubSide = Triple(nodeId, model.launchedBy(), model.filter.labels)
     var query by rememberSaveable { mutableStateOf("") }
     var deleting by remember { mutableStateOf<HistoryItem?>(null) }
     deleting?.let { d ->
@@ -75,9 +76,9 @@ fun HistoryScreen(model: AgentsModel, snackbar: SnackbarHostState, back: () -> U
             model.deleteSession(d.session)
         }
     }
-    LaunchedEffect(nodeId) { model.loadHistory(nodeId) }
-    // Searched a moment after typing stops, on the node the chips pick (ADR-0063).
-    LaunchedEffect(query, nodeId) {
+    LaunchedEffect(hubSide) { model.loadHistory(nodeId) }
+    // Searched a moment after typing stops, under the filter (ADR-0063).
+    LaunchedEffect(query, hubSide) {
         delay(250)
         model.search(query.trim(), nodeId)
     }
@@ -103,17 +104,7 @@ fun HistoryScreen(model: AgentsModel, snackbar: SnackbarHostState, back: () -> U
                 shape = RoundedCornerShape(6.dp),
                 modifier = Modifier.fillMaxWidth().padding(horizontal = 16.dp, vertical = 4.dp),
             )
-            if (model.conn.nodes.size > 1) {
-                LazyRow(
-                    horizontalArrangement = Arrangement.spacedBy(8.dp),
-                    contentPadding = PaddingValues(horizontal = 16.dp),
-                ) {
-                    item { FilterChip(selected = nodeId.isEmpty(), onClick = { nodeId = "" }, label = { Text("All") }) }
-                    items(model.conn.nodes.sortedBy { it.name }, key = { it.id }) { n ->
-                        FilterChip(selected = nodeId == n.id, onClick = { nodeId = n.id }, label = { Text(n.name) })
-                    }
-                }
-            }
+            FilterBar(model, withRepo = false, live = null, modifier = Modifier.padding(horizontal = 16.dp, vertical = 4.dp))
             if (query.isNotBlank()) {
                 if (model.searching) LinearProgressIndicator(Modifier.fillMaxWidth())
                 LazyColumn(
@@ -152,7 +143,10 @@ fun HistoryScreen(model: AgentsModel, snackbar: SnackbarHostState, back: () -> U
                 if (error != null && model.history.isEmpty() && !model.historyLoading) {
                     item { Empty("History did not load", error) }
                 } else if (model.history.isEmpty() && !model.historyLoading) {
-                    item { Empty("No sessions yet", "Sessions appear here once a node has reported them.") }
+                    item {
+                        if (model.filter.count(withRepo = false) > 0) Empty("Nothing passes the filter", "Clear it, or change it, to see more.")
+                        else Empty("No sessions yet", "Sessions appear here once a node has reported them.")
+                    }
                 }
                 for ((d, rows) in days) {
                     item(key = "d$d") { SectionTitle(dayLabel(d)) }
@@ -161,6 +155,7 @@ fun HistoryScreen(model: AgentsModel, snackbar: SnackbarHostState, back: () -> U
                             HistoryRow(
                                 h,
                                 model.conn.node(h.session.nodeId)?.name ?: "node",
+                                you = model.conn.you,
                                 onDelete = if (h.session.endedMs != null) ({ deleting = h }) else null,
                             ) { openSession(h.session, null) }
                             for (c in descendants(h)) ContinuedRow(c) { openSession(c.session, null) }
@@ -181,7 +176,7 @@ fun HistoryScreen(model: AgentsModel, snackbar: SnackbarHostState, back: () -> U
 }
 
 @Composable
-private fun HistoryRow(h: HistoryItem, node: String, onDelete: (() -> Unit)? = null, onOpen: () -> Unit) {
+private fun HistoryRow(h: HistoryItem, node: String, you: String, onDelete: (() -> Unit)? = null, onOpen: () -> Unit) {
     val s = h.session
     Card(
         // A long press on an ended session offers to delete it.
@@ -224,6 +219,8 @@ private fun HistoryRow(h: HistoryItem, node: String, onDelete: (() -> Unit)? = n
             Text(
                 listOfNotNull(
                     s.profile.ifEmpty { null },
+                    // Who launched it, when not by hand at its machine (phase item 6).
+                    s.launchedBy.takeIf { it.isNotEmpty() && !it.startsWith("node:") }?.let { "by " + launcherLabel(it, you) },
                     clockTime(s.startedMs),
                     s.endedMs?.let { e -> "ran ${span(e - s.startedMs)}" } ?: "live",
                     if (h.inputTokens + h.outputTokens > 0uL) "${thousands(h.inputTokens)} in · ${thousands(h.outputTokens)} out" else null,

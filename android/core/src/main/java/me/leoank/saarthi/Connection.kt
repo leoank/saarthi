@@ -62,6 +62,11 @@ class Connection(val app: Application, val scope: CoroutineScope) {
     var tailnet by mutableStateOf<String?>(null)
         private set
 
+    /** This phone as a launcher, `client:<name>` as a session's `launchedBy` names it; empty
+     *  while not connected or from an older hub (phase PHS-20261126-f3e51h item 6). */
+    var you by mutableStateOf("")
+        private set
+
     val nodes = mutableStateListOf<NodeInfo>()
     val sessions = mutableStateListOf<SessionInfo>()
     val pending = mutableStateListOf<PendingInfo>()
@@ -227,6 +232,7 @@ class Connection(val app: Application, val scope: CoroutineScope) {
         hub?.close(); hub = null
         link = Link.Disconnected
         tailnet = null
+        you = ""
         nodes.clear(); sessions.clear(); pending.clear()
     }
 
@@ -317,6 +323,7 @@ class Connection(val app: Application, val scope: CoroutineScope) {
         sessions.replaceAll(s)
         pending.replaceAll(p)
         tailnet = h.tailnet()
+        you = h.you()
     }
 
     private fun apply(change: Change) {

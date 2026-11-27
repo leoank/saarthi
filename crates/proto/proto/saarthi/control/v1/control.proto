@@ -106,12 +106,18 @@ message ListNodesResponse {
   // The tailnet this call came over, by the hub's name for it; empty for plain TCP
   // (ADR-0076), so a client can say which tailnet it reaches the hub on.
   string tailnet = 2;
+  // This client as a launcher, `client:<name>` as `Session.launched_by` names it, so it can
+  // pick the sessions it started.
+  string you = 3;
 }
 
 message ListSessionsRequest {
   string node_id = 1;           // empty for every node
   bool include_ended = 2;
   map<string, string> labels = 3; // only sessions with every one of these labels; empty for all
+  // Only sessions this launched (`client:phone`), or, ending in `:`, every launcher of a kind
+  // (`node:` for those started at a machine); empty for any (phase PHS-20261126-f3e51h item 6).
+  string launched_by = 4;
 }
 
 message ListSessionsResponse {
@@ -129,7 +135,13 @@ message PendingOnNode {
   saarthi.event.v1.PendingRequest request = 2;
 }
 
-message WatchRequest {}
+// Node and pending updates all come; session updates only for sessions the filter keeps.
+message WatchRequest {
+  // Only sessions this launched (`client:phone`), or, ending in `:`, every launcher of a kind
+  // (`node:` for those started at a machine); empty for any (phase PHS-20261126-f3e51h item 6).
+  string launched_by = 1;
+  map<string, string> labels = 2; // only sessions with every one of these labels
+}
 
 message Update {
   oneof body {
@@ -251,12 +263,20 @@ message HistoryRequest {
   string node_id = 1;           // empty for every node
   int64 before_ms = 2;          // sessions started before this; 0 for now
   uint32 limit = 3;             // at most this many; 0 for 50
+  // Only sessions this launched (`client:phone`), or, ending in `:`, every launcher of a kind
+  // (`node:` for those started at a machine); empty for any (phase PHS-20261126-f3e51h item 6).
+  string launched_by = 4;
+  map<string, string> labels = 5; // only sessions with every one of these labels
 }
 
 message SearchRequest {
   string query = 1;             // every word must match; the last may be the start of one
   string node_id = 2;           // empty for every node
   uint32 limit = 3;             // at most this many; 0 for 30
+  // Only sessions this launched (`client:phone`), or, ending in `:`, every launcher of a kind
+  // (`node:` for those started at a machine); empty for any (phase PHS-20261126-f3e51h item 6).
+  string launched_by = 4;
+  map<string, string> labels = 5; // only sessions with every one of these labels
 }
 
 message SearchResponse {

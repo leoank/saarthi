@@ -239,6 +239,20 @@ pub struct SessionInfo {
     pub last_reply: String,
     /// The session this one continues (resumed or forked from); empty for none.
     pub parent_id: String,
+    /// Who launched it, as the hub stamped it (ADR-0082): `client:<name>` for a client's
+    /// spawn, `node:<name>` for one started at its machine.
+    pub launched_by: String,
+    /// The labels its launcher set on the spawn (`job` = `1234`).
+    pub labels: HashMap<String, String>,
+}
+
+/// Which sessions the history or a search returns (phase PHS-20261126-f3e51h item 6): those
+/// `launched_by` names exactly, or, ending in `:`, every launcher of that kind (`node:`,
+/// `client:`); empty for any. And those with every one of `labels`.
+#[derive(Debug, Clone, Default, PartialEq, uniffi::Record)]
+pub struct SessionFilter {
+    pub launched_by: String,
+    pub labels: HashMap<String, String>,
 }
 
 /// How much the hub holds of a session: its events, their bytes, its transcript lines, and
@@ -469,6 +483,8 @@ pub struct Hub {
     bearer: tonic::metadata::MetadataValue<tonic::metadata::Ascii>,
     /// The tailnet the last node list came over, by the hub's name for it.
     tailnet: std::sync::Mutex<String>,
+    /// This client as a launcher, from the last node list.
+    you: std::sync::Mutex<String>,
 }
 
 impl Hub {
@@ -510,6 +526,7 @@ impl Hub {
             client: ControlServiceClient::new(channel),
             bearer,
             tailnet: std::sync::Mutex::new(String::new()),
+            you: std::sync::Mutex::new(String::new()),
         };
         // Fail now on a wrong token rather than at the first screen.
         hub.nodes().await?;
@@ -546,7 +563,14 @@ impl Hub {
             .await?
             .into_inner();
         *self.tailnet.lock().unwrap() = r.tailnet;
+        *self.you.lock().unwrap() = r.you;
         Ok(r.nodes.into_iter().map(node).collect())
+    }
+
+    /// This client as a launcher, `client:<name>` as a session's `launched_by` names it, as
+    /// of the last node list; empty from a hub older than 0.24.
+    pub fn you(&self) -> String {
+        self.you.lock().unwrap().clone()
     }
 
     /// The tailnet this connection reaches the hub over, by the hub's name for it, as of
@@ -561,6 +585,7 @@ impl Hub {
             node_id: String::new(),
             include_ended,
             labels: Default::default(),
+            launched_by: String::new(),
         };
         let r = self.client.clone().list_sessions(self.req(req)).await?;
         Ok(r.into_inner().sessions.into_iter().map(session).collect())
@@ -784,17 +809,20 @@ impl Hub {
     }
 
     /// Sessions newest first, live and ended, started before `before_ms` (0 for now), at
-    /// most `limit`; `node_id` empty for every node.
+    /// most `limit`, that `filter` keeps; `node_id` empty for every node.
     pub async fn history(
         &self,
         node_id: String,
         before_ms: i64,
         limit: u32,
+        filter: SessionFilter,
     ) -> Result<Vec<HistoryItem>, CoreError> {
         let req = HistoryRequest {
             node_id,
             before_ms,
             limit,
+            launched_by: filter.launched_by,
+            labels: filter.labels,
         };
         let r = self.client.clone().history(self.req(req)).await?.into_inner();
         Ok(r.sessions.into_iter().map(history_item).collect())
@@ -826,9 +854,9 @@ impl Hub {
     }
 
     /// Sessions whose transcript or title match `query`, best first, on one node or (empty)
-    /// every node (ADR-0063).
-    pub async fn search(&self, query: String, node_id: String) -> Result<Vec<SearchHit>, CoreError> {
-        let req = SearchRequest { query, node_id, limit: 0 };
+    /// every node (ADR-0063), that `filter` keeps.
+    pub async fn search(&self, query: String, node_id: String, filter: SessionFilter) -> Result<Vec<SearchHit>, CoreError> {
+        let req = SearchRequest { query, node_id, limit: 0, launched_by: filter.launched_by, labels: filter.labels };
         let r = self.client.clone().search(self.req(req)).await?.into_inner();
         Ok(r.hits
             .into_iter()
@@ -1084,7 +1112,7 @@ impl Hub {
         let mut stream = self
             .client
             .clone()
-            .watch(self.req(WatchRequest {}))
+            .watch(self.req(WatchRequest::default()))
             .await?
             .into_inner();
         let (stop, mut stopped) = watch::channel(false);
@@ -1427,6 +1455,8 @@ fn session(s: ev::Session) -> SessionInfo {
         git_branch: s.git_branch,
         last_reply: s.last_reply,
         parent_id: s.parent_id,
+        launched_by: s.launched_by,
+        labels: s.labels,
     }
 }
 

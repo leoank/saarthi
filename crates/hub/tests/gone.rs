@@ -35,7 +35,7 @@ async fn session(addr: &str, id: &str, ended: bool) -> Session {
     let mut c = ControlServiceClient::connect(format!("http://{addr}")).await.unwrap();
     for _ in 0..250 {
         let all = c
-            .list_sessions(req(ListSessionsRequest { node_id: String::new(), include_ended: true, labels: Default::default() }))
+            .list_sessions(req(ListSessionsRequest { node_id: String::new(), include_ended: true, ..Default::default() }))
             .await
             .unwrap()
             .into_inner()
@@ -135,7 +135,7 @@ async fn a_session_carries_its_title_and_branch_from_its_transcript() {
     let mut c = ControlServiceClient::connect(format!("http://{addr}")).await.unwrap();
     let mut hits = Vec::new();
     for _ in 0..250 {
-        let q = saarthi_proto::control::v1::SearchRequest { query: "handles ta".into(), node_id: String::new(), limit: 0 };
+        let q = saarthi_proto::control::v1::SearchRequest { query: "handles ta".into(), node_id: String::new(), limit: 0, ..Default::default() };
         hits = c.search(req(q)).await.unwrap().into_inner().hits;
         if !hits.is_empty() {
             break;

@@ -15,7 +15,6 @@ import androidx.compose.foundation.layout.size
 import androidx.compose.foundation.layout.width
 import androidx.compose.foundation.lazy.LazyColumn
 import androidx.compose.material3.FilterChip
-import androidx.compose.foundation.lazy.LazyRow
 import androidx.compose.foundation.lazy.items
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.filled.Add
@@ -127,7 +126,8 @@ fun HomeScreen(
             val asking = live.filter { model.pendingFor(it).isNotEmpty() }
             val working = live.filter { it.busy && it !in asking }.sortedByDescending { it.startedMs }
             val ready = live.filter { !it.busy && it !in asking }.sortedByDescending { it.startedMs }
-            val oneNode = model.scope.startsWith("node:") || model.conn.nodes.size == 1
+            val oneNode = model.filter.nodeId.isNotEmpty() || model.conn.nodes.size == 1
+            val you = model.conn.you
             LazyColumn(
                 // Room under the last row for the New session button, which floats over the
                 // list's end: its 56 dp, its 16 dp margin and a little air, so the last
@@ -141,7 +141,9 @@ fun HomeScreen(
                 verticalArrangement = Arrangement.spacedBy(0.dp),
                 modifier = Modifier.fillMaxSize(),
             ) {
-                item(key = "scope") { ScopeChips(model) }
+                item(key = "filter") {
+                    FilterBar(model, withRepo = true, live = live.size to model.conn.sessions.size, modifier = Modifier.padding(bottom = 4.dp))
+                }
                 // A session that asks is a row like the rest, marked `input`, with one line on
                 // what it asks (ADR-0069); the request itself is answered in its chat. Only a
                 // request whose session this phone does not know shows here in full.
@@ -151,7 +153,7 @@ fun HomeScreen(
                     val oldestFirst = asking.sortedBy { s -> model.pendingFor(s).minOfOrNull { it.createdMs } ?: Long.MAX_VALUE }
                     itemsIndexed(oldestFirst, key = { _, it -> "a" + it.nodeId + it.id }) { i, s ->
                         val asks = model.pendingFor(s)
-                        SessionRow(s, asks.size, if (oneNode) null else model.conn.node(s.nodeId)?.name, model.conn.node(s.nodeId)?.tailnet, first = i == 0, asks = asks.firstOrNull()?.let(::askLine)) { openSession(s) }
+                        SessionRow(s, asks.size, if (oneNode) null else model.conn.node(s.nodeId)?.name, model.conn.node(s.nodeId)?.tailnet, first = i == 0, asks = asks.firstOrNull()?.let(::askLine), you = you) { openSession(s) }
                     }
                     items(orphans, key = { "p" + it.id }) { p ->
                         PendingCard(model, p, model.conn.node(p.nodeId)?.name.orEmpty(), Modifier.padding(vertical = 8.dp))
@@ -161,11 +163,13 @@ fun HomeScreen(
                     if (list.isEmpty()) continue
                     item(key = "t$name") { SectionTitle(name, count = list.size) }
                     itemsIndexed(list, key = { _, it -> "s" + it.nodeId + it.id }) { i, s ->
-                        SessionRow(s, model.pendingFor(s).size, if (oneNode) null else model.conn.node(s.nodeId)?.name, model.conn.node(s.nodeId)?.tailnet, first = i == 0) { openSession(s) }
+                        SessionRow(s, model.pendingFor(s).size, if (oneNode) null else model.conn.node(s.nodeId)?.name, model.conn.node(s.nodeId)?.tailnet, first = i == 0, you = you) { openSession(s) }
                     }
                 }
                 if (live.isEmpty() && waiting.isEmpty() && model.conn.nodes.isNotEmpty()) {
-                    item(key = "quiet") { Caption("No live sessions here") }
+                    item(key = "quiet") {
+                        Caption(if (model.filter.count() > 0) "No live session passes the filter" else "No live sessions here")
+                    }
                 }
                 if (model.conn.nodes.isEmpty()) {
                     item(key = "none") {
@@ -183,38 +187,16 @@ fun HomeScreen(
     }
 }
 
-/** What Home lists: all, a machine, or a repository with a live session. */
-@Composable
-private fun ScopeChips(model: AgentsModel) {
-    val repos = model.conn.sessions.map { it.repo() }.filter { it.isNotBlank() }.distinct().sorted()
-    if (model.conn.nodes.size < 2 && repos.size < 2) return
-    LazyRow(horizontalArrangement = Arrangement.spacedBy(6.dp), modifier = Modifier.padding(bottom = 4.dp)) {
-        item {
-            Tag("all", model.scope.isEmpty(), onClick = { model.changeScope("") })
-        }
-        items(model.conn.nodes.sortedBy { it.name }, key = { "n" + it.id }) { n ->
-            Tag(
-                n.name,
-                model.scope == "node:${n.id}",
-                onClick = { model.changeScope(if (model.scope == "node:${n.id}") "" else "node:${n.id}") },
-                mark = { StatusDot(n.connected) },
-            )
-        }
-        items(repos, key = { "r$it" }) { r ->
-            Tag(r, model.scope == "repo:$r", onClick = { model.changeScope(if (model.scope == "repo:$r") "" else "repo:$r") })
-        }
-    }
-}
-
 /** What a request asks, on one line: the question, or the tool and what it would act on. */
 private fun askLine(p: PendingInfo): String =
     p.questions.firstOrNull()?.question?.let { "asks: $it" } ?: listOf("allow ${p.toolName}", p.summary).filter { it.isNotBlank() }.joinToString(": ")
 
 /** A session as a terminal row (ADR-0069): a gutter mark, the title as Claude or the owner
  *  named it, its state as a word, `repo:branch · machine · age` in mono, and the last reply;
+ *  a client's or app's session says who launched it in place of `spawn`;
  *  rows are set apart by dashed hairlines, and one that needs the owner gets an amber wash. */
 @Composable
-private fun SessionRow(s: SessionInfo, waiting: Int, machine: String?, tailnet: String?, first: Boolean, asks: String? = null, onOpen: () -> Unit) {
+private fun SessionRow(s: SessionInfo, waiting: Int, machine: String?, tailnet: String?, first: Boolean, asks: String? = null, you: String = "", onOpen: () -> Unit) {
     val state = s.state(waiting)
     Row(
         Modifier
@@ -244,8 +226,10 @@ private fun SessionRow(s: SessionInfo, waiting: Int, machine: String?, tailnet: 
                     overflow = TextOverflow.Ellipsis,
                     modifier = Modifier.weight(1f),
                 )
+                // How it runs, or who launched it when a client or app did (phase item 6).
+                val by = s.launchedBy.takeIf { it.isNotEmpty() && !it.startsWith("node:") }?.let { "by " + launcherLabel(it, you) }
                 if (s.wrapped || s.spawned) {
-                    Text(if (s.wrapped) "run " else "spawn ", fontFamily = Mono, fontSize = 10.sp, color = Flame.Dim)
+                    Text(if (s.wrapped) "run " else (by ?: "spawn") + " ", fontFamily = Mono, fontSize = 10.sp, color = if (by != null) Flame.Soft else Flame.Dim, maxLines = 1)
                 }
                 StatePill(state)
             }

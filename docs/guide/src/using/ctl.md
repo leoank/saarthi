@@ -62,6 +62,7 @@ $ saarthi ctl spawn laptop ~/workspace/app "tidy the imports" --permission-mode 
 $ saarthi ctl spawn laptop ~/workspace/app "try the new parser" --profile sandbox
 $ saarthi ctl spawn laptop ~/workspace/app "run job 1234" --label job=1234
 $ saarthi ctl sessions --all --label job=1234       # the sessions labelled so
+$ saarthi ctl sessions --by client:ctl              # those ctl started; --by node: for those started by hand
 $ saarthi ctl keep-awake laptop on
 ```
 

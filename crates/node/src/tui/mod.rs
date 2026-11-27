@@ -113,7 +113,7 @@ fn key(code: KeyCode, mods: KeyModifiers) -> Option<Key> {
 /// Follows `Watch`, reconnecting every few seconds after it ends.
 async fn watch(mut c: Client, tx: mpsc::Sender<Watched>) {
     loop {
-        let why = match c.inner.watch(c.request(WatchRequest {})).await {
+        let why = match c.inner.watch(c.request(WatchRequest::default())).await {
             Ok(stream) => {
                 if tx.send(Watched::Up).await.is_err() {
                     return;
@@ -159,7 +159,7 @@ async fn reload(c: &mut Client, state: &mut State) {
             .list_sessions(c.request(ListSessionsRequest {
                 node_id: String::new(),
                 include_ended: false,
-                labels: Default::default(),
+                ..Default::default()
             }))
             .await?
             .into_inner()

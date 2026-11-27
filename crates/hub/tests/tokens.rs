@@ -62,7 +62,7 @@ async fn session(c: &mut ControlServiceClient<Channel>, id: &str, ended: bool) -
             .list_sessions(req(ListSessionsRequest {
                 node_id: String::new(),
                 include_ended: true,
-                labels: Default::default(),
+                ..Default::default()
             }))
             .await
             .unwrap()
@@ -428,7 +428,7 @@ async fn usage_probes_keep_every_account_fresh_without_listing_a_session() {
         .list_sessions(req(ListSessionsRequest {
             node_id: String::new(),
             include_ended: true,
-            labels: Default::default(),
+            ..Default::default()
         }))
         .await
         .unwrap()
